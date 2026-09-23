@@ -102,7 +102,7 @@ VibeHub 支持两种传输，密钥均在 Web 端「MCP 密钥」页创建：
 }
 ```
 
-> 密钥的 scope 决定可调用的工具（默认最小权限 `context:read`）；stdio 模式不配置密钥时为本地全权（单机信任模型）。未指定 `project_slug` 时，AI 会自动按当前工作目录名匹配项目 slug。
+> 密钥的 scope 决定可调用的工具（默认最小权限 `context:read`）；stdio 模式不配置密钥时为本地全权（单机信任模型）。`project_slug` 可在 Web 端「项目」页复制；系统只有一个进行中的项目时可省略，多项目时不传会报错并列出全部可选 slug（不会再按目录名猜测、写错项目）。
 
 ### MCP Tools 一览（15 个）
 
@@ -141,7 +141,7 @@ POST   /api/upload                         multipart 上传（files[] + project_
 POST   /api/upload/base64                  剪贴板 Base64 兜底通道
 GET    /api/attachments?project_id=&entity_type=&entity_id=&q=
 GET    /api/attachments/:id                附件元数据
-GET    /api/attachments/:id/raw            本地文件直读（规避防盗链）
+GET    /api/attachments/:id/raw            原文件下发（列表返回的 public_url 已带 exp+sig 签名，<img> 免令牌；否则需 Bearer）
 GET    /api/attachments/:id/text           文本分片读取
 GET    /api/attachments/:id/image          图片降采样信息
 DELETE /api/attachments/:id

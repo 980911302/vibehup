@@ -1,8 +1,9 @@
 # VibeHub 构建驾驶舱（PROGRESS）```
-状态：三期「UX 与人性化改造」进行中（R75：卡片 48 归档 + 卡片 50 部分交付；卡片 49、50 的浏览器回归均因 IAB 环境故障留待补验）
+状态：三期「UX 与人性化改造」进行中（R76 人工会话：git 基线 + 评审四项 P0 修复已提交至分支 fix/p0-review；卡片 49、50 的浏览器回归仍待补验）
 下一步：执行卡片 51：看板表格视图（⌘⇧V）
-前置：测试库容器 vibehub-test-db(55432) 在跑；dev 库 vibehub-dev-db(55433) 承载用户真实数据（勿 TRUNCATE）；
-      服务常驻中；IAB 浏览器环境仍不稳定（R74/R75 连续两轮浏览器回归失败），本轮如再遇水合失败，
+前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76 修复，待用户合并）——每轮结束按 AGENTS.md §10 提交；
+      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据（勿 TRUNCATE）；
+      起库脚本可自动拉起已停止的容器（R76）；IAB 浏览器环境仍不稳定（R74/R75 连续两轮浏览器回归失败），本轮如再遇水合失败，
       可验证项（tsc/build/vitest）跑全后浏览器回归如实标注跳过，不得阻塞卡片推进、不得冒充通过
 加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/07 §7.1（⌘⇧V 列表视图规格）+ docs/规范/00
 动作：
@@ -13,6 +14,8 @@
   3. 视图切换按钮放筛选条右侧（与 AI 活动按钮同级）；动效只动 transform/opacity；≤300 行/文件（必要时拆 BugTable.tsx）
   4. 验证：tsc + next build + 浏览器回归（⌘⇧V 切换/内联编辑/状态下拉改状态/列显存刷新保持）
 边界：只做卡片 51；不碰拖拽看板模式（两模式并存）；不引新依赖
+R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
+      MCP 工具多项目时必须传 project_slug；浏览器回归顺带确认看板缩略图/详情大图可见（R76 前一直 401）
 ```
 
 
@@ -24,9 +27,9 @@
 ## 1. 当前状态（每次运行结束更新）
 
 - **当前步骤**：✅ **发布态候选**——42 张卡片全部关闭（主体 25 + 二期 27-30 + 修复 31/40/41 + 交付 42-47）；唯一未闭环项为卡片 39（全局截图即录入口，**阻塞等用户三决策**：扩展/托盘路线、快捷键、项目选择）
-- **当前子任务**：R75 完成卡片 48 归档 + 卡片 50 部分交付（表格视图拆卡片 51）；浏览器回归连续两轮因 IAB 环境跳过；下一步卡片 51
-- **环境状态**：双库容器在跑（dev 55433 持久卷 / test 55432 破坏性）；验收服务常驻 3210/3211（库已清空待用户注册）；vibehub:1.2 为唯一交付镜像（1.0/1.1 带 R69 漏洞已删）
-- **代码基线**：安全修复（SSE scope 绕过，R69）后全绿：119 单测/MCP/HTTP 用例（含 context-store 4 项）+ 四场景 30/30（stdio + SSE 双传输均验）+ README/07/00/AGENTS.md 四层文档同步至当前事实
+- **当前子任务**：R76 人工会话完成 git 基线 + 评审四项 P0 修复（附件签名链接 / 刷新令牌竞态 / MCP 密钥即时吊销 / MCP 项目解析）+ 测试基建两处修复；下一步卡片 51
+- **环境状态**：双库容器在跑（dev 55433 持久卷 / test 55432 破坏性，起库脚本可拉起已停止容器）；常驻服务未启动（R76 开局时 Docker 未运行、服务已停）；vibehub:1.2 为唯一交付镜像（未含 R76 修复，发版前需重建）
+- **代码基线**：R76 后全绿：vitest 161/161 + web 单测 12/12 + acceptance.sh 14/14 + 四场景 stdio 30/30 / SSE 30/30 + 双端 tsc 0 错误 + next build 通过；git：main（R75 基线）→ fix/p0-review（6 个修复提交）
 
 ## 2. 看板（工程进度）
 
@@ -272,23 +275,35 @@
 | R54 | **R50 §4「Toast 无 CSS」观察项为误报**：样式实写在 toast.tsx 的 `<style jsx global>`，styled-jsx 在 App Router 客户端组件中生效；R50 仅 grep globals.css 未见定义即定罪，未做运行期验证。教训：样式/行为类「缺陷」必须 computed style 或浏览器实测后才能登记 §4 | 更正本条观察项为无缺陷；方法论教训同步进 vibehub-build 技能（观察项登记前必须运行期实证） | docs/计划/PROGRESS.md §4 更正；vibehub-build SKILL.md |
 
 | R53 | notes 置顶排序测试 flakes：三条便签同毫秒创建（timestamp(3) 毫秒精度）导致 createdAt 相同、ORDER BY 不确定 | 测试创建间加 15ms 间隔确保时间戳可区分（非产品缺陷：排序契约在时间戳可区分时成立） | services/notes.test.ts |
+| R76 | 附件 public_url 双重失效：`/raw` 挂登录守卫而 `<img>` 带不了 Bearer（401）；且上传入口用落盘 ID 拼 publicUrl、createAttachment 另生成记录 ID（带令牌也 404）。R6 守卫核查只验「无令牌 401」，历次浏览器回归未断言图片真正加载 | 签名链接（序列化层按记录 ID 签发，12h 分桶）+ raw 拆出守卫「签名或 Bearer」+ 用户内容安全头；createAttachment 支持传入落盘 ID，存量错误 publicUrl 由序列化层纠正 | server/src/core/asset-sign.ts、serialize.ts、routes/attachments.ts、services/attachments.ts；AGENTS.md §2 |
+| R76 | 刷新令牌「已轮换即重放」与前端无单飞/无跨标签同步叠加：并发 401 或多标签在 access 过期后各自刷新 → 后到者触发整族吊销 → 周期性掉线；刷新遇网络错误亦直接登出；启动恢复流程二次刷新 | 服务端 10s 宽限（令牌族存活才放行）+ 登出吊销整族；前端 lib/token-refresh.ts 协调器（单飞/采用/Web Locks/15s 超时），删除 api.refresh 直调入口 | server/src/services/auth.ts、web/src/lib/{token-refresh,api,auth}；AGENTS.md §3/§6 |
+| R76 | AGENTS.md「撤销即时生效」对 SSE 长连接不成立（握手后上下文缓存，含轮换宽限到期）；移除成员后其密钥 createdBy 置空仍有效 | guard 对 store 上下文每次按 ID 复核（含创建人状态，禁用可逆）；removeUser 同事务吊销其密钥 | server/src/mcp/context.ts、guard.ts、services/users.ts；AGENTS.md §5 |
+| R76 | resolveProject 按 MCP 服务进程 cwd 猜项目 + 回落最近更新项目：容器/SSE 下必然猜错，AI 写入静默落错项目；README「自动按当前工作目录匹配」在交付形态下不成立 | 仅唯一进行中项目自动选择，否则 VALIDATION_ERROR 列出可选 slug；工具描述与 README 同步 | server/src/services/projects.ts、mcp/server.ts、README；AGENTS.md §5 |
+| R76 | 测试基建两处陈旧：final-acceptance.mjs 子进程 cwd 用 URL.pathname（中文路径被百分号编码 → spawn ENOENT，且指向 scripts/ 而非 server/）；test-db.sh / dev-db.sh 对「已存在但停止」的容器走 docker run 重名失败（Docker 重启后门禁第 1 步必挂） | fileURLToPath 解码并指向 server/；起库脚本增加 docker start 分支、名称精确匹配 | server/scripts/final-acceptance.mjs、test-db.sh、dev-db.sh |
+| R76 | 评审其余发现未立项（待用户决策优先级）：拖拽等非文本修改也同步调 DashScope 且无超时；每个 SSE 标签页独占一条 PG 连接、`?token=` 进访问日志；API Key rate_limit 只存不执行、登录无防暴力；AGENTS/README 用例数与工具数漂移；无 ESLint/E2E | 仅登记不施工；用户确认后再入 §2 待办 | 见本条 |
 
 ---
 
 ## 5. 给下一次运行的起点指令（最重要，结束时必须更新）
 
 ```
-状态：三期「UX 与人性化改造」进行中（R64 完成卡片 40 双库分离；卡片 39 评审待确认，6/7+1 卡交付）
-下一步：**等待用户确认卡片 39 方案**（docs/计划/39-全局截图入口方案.md §6 三个决策点：
-      ① 扩展方案 A vs 托盘方案 B ② 默认快捷键 Alt+Shift+V ③ 是否需要项目选择）
-      用户确认后按下列施工（未确认则卡片留进行中，不得开工）：
-  1. vibehub/extension/：manifest.json（MV3：commands/Alt+Shift+V、storage、clipboardRead、notifications；
-     host_permissions 仅 options 配置的服务器地址）+ popup.html/js/css（剪贴板读取+缩略图+标题+⌘Enter）
-     + options.html/js（服务器地址+密钥，chrome.storage.sync）+ background.js（命令唤起 popup）
-  2. 上报走既有 API：POST /api/upload（multipart files）→ POST /api/bugs（attachment_ids、Bearer 密钥）
-  3. README 增「加载已解压扩展」图文引导；密钥需 bug:write scope
-  4. 验收：真实 Chrome 加载 or Playwright --load-extension 冒烟（配置→命令→合成粘贴→发送→看板出缺陷）
-前置：双库容器在跑（test 55432 破坏性 / dev 55433 持久，服务连 dev 库——R64 起可放心跑全量门禁）；用户未确认前禁止写扩展代码
+状态：三期「UX 与人性化改造」进行中（R76 人工会话：git 基线 + 评审四项 P0 修复已提交至分支 fix/p0-review；卡片 49、50 的浏览器回归仍待补验）
+下一步：执行卡片 51：看板表格视图（⌘⇧V）
+前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76 修复，待用户合并）——每轮结束按 AGENTS.md §10 提交；
+      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据（勿 TRUNCATE）；
+      起库脚本可自动拉起已停止的容器（R76）；IAB 浏览器环境仍不稳定（R74/R75 连续两轮浏览器回归失败），本轮如再遇水合失败，
+      可验证项（tsc/build/vitest）跑全后浏览器回归如实标注跳过，不得阻塞卡片推进、不得冒充通过
+加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/07 §7.1（⌘⇧V 列表视图规格）+ docs/规范/00
+动作：
+  1. 读 components/bugs/BugBoard.tsx 与 hooks/use-vibehub.ts 现有看板数据面；SavedView service 已就绪（entity=board）
+  2. BugBoard 增 table 模式：⌘⇧V 切换（board/page.tsx 的 useHotkeys 加 combo 'mod+shift+v'）；
+     表格列：标题（双击内联编辑，Enter 保存 Esc 取消）/ 状态（单元格下拉直改，复用 moveBug）/
+     严重度 / 负责人 / 附件数 / 更新时间；列显隐配置存 SavedView 或 localStorage（二选一，§4 说明）
+  3. 视图切换按钮放筛选条右侧（与 AI 活动按钮同级）；动效只动 transform/opacity；≤300 行/文件（必要时拆 BugTable.tsx）
+  4. 验证：tsc + next build + 浏览器回归（⌘⇧V 切换/内联编辑/状态下拉改状态/列显存刷新保持）
+边界：只做卡片 51；不碰拖拽看板模式（两模式并存）；不引新依赖
+R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
+      MCP 工具多项目时必须传 project_slug；浏览器回归顺带确认看板缩略图/详情大图可见（R76 前一直 401）
 ```
 
 ## 6. 防跑偏规则（每次运行遵守）
@@ -340,3 +355,4 @@
 | R74 | 卡片 49（用户实测反馈「bug 要能指定负责人」）：后端 assignee 关系+FK+include+序列化（TDD 红绿）；**抓到并修复双库事故**——migrate dev 误 DROP pgvector 列（Prisma 不感知 raw SQL 追加列），按 R2 模式迁移末尾补 raw SQL + 两库手工修复 + 校验和更正；旧测试假用户 ID 撞 FK 改真实用户；vitest 136/136 + acceptance 14/14；前端创建下拉/详情改派/卡片头像三处接线 + tsc + build 通过；**浏览器回归因 IAB 工具连续取消，用户指示跳过**（未冒充通过，留待补验） | vitest 136/136 + acceptance.sh 14/14 + tsc 0 错误 + next build 通过；浏览器回归 0/3（工具取消，用户指示跳过） | 卡片 50（Excel 式速录）。**技能治理**：① 「Prisma 关系迁移会 DROP raw-SQL 列」值得固化（两库+校验和修复流程）——已入 vibehub-build；② 技能已更新；③ 无新契约（assignee 语义 04 文档既有，本轮补齐实现） |
 | R75 | 卡片 50（用户实测反馈「录入没有 Excel 便利」）部分交付 + 卡片 48 归档：轻量默认字段（BugFormExtras 折叠）+ TSV 批量导入（解析器 TDD 6/6 + 预览面板 + 粘贴分流 + 成败汇总）；表格视图拆出卡片 51；**浏览器回归因 IAB 环境故障（水合多轮不完成，换 token/新标签无效）连续第二轮跳过，不冒充通过** | 解析器 6/6 + tsc 0 错误 + next build 通过；浏览器回归 0 项（环境跳过） | 卡片 51（看板表格视图）。**技能治理**：① 「web 侧纯函数经 --root ../web 跑 vitest」为一次性小套路，不固化；② 技能无需更新；③ 无新契约 |
 
+| R76 | 人工会话（用户指示按项目评审去做）：① git init + 基线提交（main），修复在分支 fix/p0-review；② 评审四项 P0——附件签名链接（修 <img> 401 与落盘/记录 ID 不一致致 404，raw 加 nosniff/CSP sandbox/白名单 inline）、刷新令牌竞态（服务端 10s 宽限 + 登出吊销整族；前端 token-refresh 协调器）、MCP 密钥 SSE 逐次复核 + 成员禁用停用/移除吊销、项目解析去 cwd 猜测与静默回落；③ 测试基建：final-acceptance 子进程 cwd、起库脚本拉起已停止容器；④ **开局自校验修正**：§5 仍为 R64「等待卡片 39」与顶部 R75「卡片 51」矛盾，按最近日志统一为卡片 51 | vitest 161/161（+25）+ web 单测 12/12 + acceptance.sh 14/14（每个修复提交前各跑一次）+ 四场景 stdio 30/30 / SSE 30/30（测试库）+ web tsc 0 错误 / next build 通过 + IAB：签名链接 <img> 免令牌加载 480×200、未签名链接加载失败 | 卡片 51（按原计划）；建议用户先人工确认看板缩略图显示与多标签不掉线，并决定评审其余发现（§4 R76 末条）。**技能治理**：① 「lsof -ti 会列出客户端连接（含 Claude 浏览器进程），结束服务须 -sTCP:LISTEN」「URL.pathname 中文路径须 fileURLToPath」值得固化——已入 vibehub-build；② 技能已更新；③ AGENTS.md 补 6 处 R76 契约 |

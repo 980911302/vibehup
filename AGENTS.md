@@ -29,6 +29,7 @@
 - **AI 活动流契约（R60）**：`GET /api/activity/recent` 全员可读（刻意不挂 requireRole——让非管理员感知「AI 读了什么」是特性目的）；数据经 service 层 select 脱敏（仅 key_name/key_prefix/工具名/耗时，禁 keyHash/salt/明文）；管理员完整用量仍在密钥页 keyUsage。
 - **计量契约**：所有 UsageEvent / 审计写入必须 `await`（logEvent 内部已 try-catch 不抛）；禁 `void logEvent(...)` 即发即弃——会导致紧随的用量查询漏账（R11 竞态教训）。
 - **SSE 鉴权契约**：浏览器 `EventSource` 不支持自定义头，`/api/events` 免全局守卫，路由内校验 `?token=<access_token>`；无/错 token 401。
+- **附件原文件访问契约（R76）**：`<img>`/新标签页同样带不了 Authorization 头——`/api/attachments/:id/raw` 免全局守卫，路由内「签名链接（`exp`+`sig`，HMAC 以 `asset:` 前缀与 JWT 共用密钥）或 Bearer」二选一；`public_url` 一律由 `serializeAttachment` 按**记录 ID** 签发（12h 分桶，轮询不闪烁），前端禁止自拼未签名 raw 地址；建附件时记录 ID = 落盘 ID（`createAttachment({ id })`，历史上二者不一致致 public_url 404），存量错误 publicUrl 由序列化层纠正。下发必带 `X-Content-Type-Options: nosniff` + `CSP: default-src 'none'; sandbox`，仅图片白名单与 text/plain 可 inline，html/svg 等强制 `attachment`——上传方 MIME 不可信，防止在应用同源执行脚本读走 localStorage 令牌。
 - **静态导出契约（output: 'export'）**：① 页面禁止用 `next/navigation` 的 `redirect()/notFound()`——预渲染期抛错会产出 `__next_error__` 页；根路径跳转用客户端 `window.location.replace` + `<meta refresh>`；② Fastify 托管 out/ 必须 `extensions: ['html']`，否则 `/login`、`/board` 这类干净 URL 回退 index.html 造成重定向死循环。
 
 ## 3. API 契约
@@ -38,6 +39,7 @@
 - 错误码枚举（不得随意新增）：`VALIDATION_ERROR / NOT_FOUND / UNAUTHORIZED / FORBIDDEN / EMAIL_TAKEN / INVALID_CREDENTIALS / ACCOUNT_DISABLED / TOKEN_REUSED / LAST_OWNER / INVALID_TRANSITION / PAYLOAD_TOO_LARGE / INTERNAL_ERROR`。新增须经本文件登记。
 - 写操作返回更新后实体；分页 `{items,total,page,page_size}`；MCP 分页 `has_more + next_cursor`。
 - **认证响应结构契约**：`/auth/me` 返回 `{ user, stats }` 嵌套（扁平 user 字段 + stats 是反模式，曾致前端恢复登录态把 undefined 当 user）；`/auth/login|register` 返回 `{ user, access_token, refresh_token, expires_in }`。
+- **刷新令牌契约（R76）**：一次性轮换 + 重放整族吊销不变；但同一旧令牌在 10s 宽限期内重复提交且令牌族仍存活 = 并发竞态，照常签发不吊销（多请求/多标签同时刷新曾致用户每 15 分钟随机掉线）；登出吊销**整个令牌族**（否则宽限期内并发签出的同族令牌可让已登出会话复活）。
 - 状态码：200/201/204/400/401/403/404/409/413/429。
 - **multipart 上传顺序无关契约（R53）**：`/api/upload` 的文件 part 与 project_id 等字段到达顺序客户端不保证，路由必须两段式（遍历落盘收集 → 字段齐后建记录），禁止「文件先到就抛缺少字段」（容器 curl 实测抓到，已有回归用例）。
 
@@ -61,7 +63,9 @@
 - Token 经济学：列表默认 20 条 + has_more；长文本字段 500 字符截断并提示；图片默认降采样 1080；base64 需显式声明且 ≤4MB。
 - 双传输：stdio（`VIBEHUB_API_KEY` 可选，无密钥=本地全权）+ SSE（`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=xxx`，Bearer 必需，session 即凭据；容器部署形态）。
 - scope 枚举：`context:read / attachment:read / attachment:write / bug:write / note:write / task:read / task:write / admin`；新建密钥默认仅 `context:read`。
-- **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。
+- **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效（SSE 长连接由 guard 每次调用按 ID 复核密钥状态与 scope，R76）；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。
+- **成员与密钥联动（R76）**：密钥校验连带检查创建人状态——账号禁用则其密钥随之停用（可逆，恢复账号即恢复）；移除成员在同一事务内先吊销其创建的全部密钥再删用户（`createdBy` 为 SetNull，否则离职人员密钥继续有效）。
+- **项目解析契约（R76）**：工具未传 `project_slug` 时，仅当只有一个进行中（未归档）项目才自动选择，否则 `VALIDATION_ERROR` 并列出可选 slug；**禁止**按 MCP 服务进程 cwd 猜项目或静默回落到最近更新的项目（容器内 cwd=/app、stdio 为 vibehub/server，均与 IDE 工作区无关，会把 AI 写入落进别的项目）。
 
 ## 6. 前端契约
 
@@ -74,6 +78,7 @@
 - **图标宪法（R58）**：全站图标一律使用 `lucide-react` 组件，禁 emoji（空态/营销位/计数徽章）与 CSS `content` 字符图标（AI 徽章、星尘标识）——后者已全部上移为 JSX 组件（`Sparkles` 等），`globals.css` 不再出现 `content: '字符'` 图标规则。新增图标从 lucide 选型（PascalCase），尺寸/描边用 props，颜色走 token。
 - **认证后导航用硬导航（R59）**：登录/注册成功后必须 `window.location.replace(target)`——`router.replace` 与 setUser 同刻提交会被 React 批处理吞掉（R50/R59 二次复现，表现为 token 已写但停在中转页）；静态导出生效下硬导航即普通跳转。
 - **路由守卫竞态防护（R54）**：`(app)/layout` 守卫踢回登录页前必须确认 localStorage 无 token——登录成功后的 `router.replace` 可能在 React 提交新上下文前触发导航，守卫读到旧上下文（user=null）会把用户踢回，与 setUser 赛跑；有 token = 刚登录/恢复中，应等待而非踢回（失效 token 由启动流程清理后自然踢回，不会卡死）。
+- **令牌刷新协调契约（R76）**：401 刷新一律经 `lib/token-refresh.ts`（同标签单飞 + localStorage 采用 + Web Locks 跨标签互斥 + 15s 超时），**禁止**任何地方直调 `/auth/refresh`（启动恢复流程亦然）；令牌读取 localStorage 优先、`storage` 事件跨标签同步；只有刷新被拒（401/403）才登出，网络抖动/服务重启不踢人。前端纯函数测试：`cd server && npx vitest run --root ../web`。
 
 ## 7. 容器化契约
 
