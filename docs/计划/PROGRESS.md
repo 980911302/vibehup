@@ -1,21 +1,15 @@
 # VibeHub 构建驾驶舱（PROGRESS）```
-状态：三期「UX 与人性化改造」进行中（R76 人工会话：git 基线 + 评审四项 P0 修复已提交至分支 fix/p0-review；卡片 49、50 的浏览器回归仍待补验）
-下一步：执行卡片 51：看板表格视图（⌘⇧V）
-前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76 修复，待用户合并）——每轮结束按 AGENTS.md §10 提交；
-      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据（勿 TRUNCATE）；
-      起库脚本可自动拉起已停止的容器（R76）；IAB 浏览器环境仍不稳定（R74/R75 连续两轮浏览器回归失败），本轮如再遇水合失败，
-      可验证项（tsc/build/vitest）跑全后浏览器回归如实标注跳过，不得阻塞卡片推进、不得冒充通过
-加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/07 §7.1（⌘⇧V 列表视图规格）+ docs/规范/00
-动作：
-  1. 读 components/bugs/BugBoard.tsx 与 hooks/use-vibehub.ts 现有看板数据面；SavedView service 已就绪（entity=board）
-  2. BugBoard 增 table 模式：⌘⇧V 切换（board/page.tsx 的 useHotkeys 加 combo 'mod+shift+v'）；
-     表格列：标题（双击内联编辑，Enter 保存 Esc 取消）/ 状态（单元格下拉直改，复用 moveBug）/
-     严重度 / 负责人 / 附件数 / 更新时间；列显隐配置存 SavedView 或 localStorage（二选一，§4 说明）
-  3. 视图切换按钮放筛选条右侧（与 AI 活动按钮同级）；动效只动 transform/opacity；≤300 行/文件（必要时拆 BugTable.tsx）
-  4. 验证：tsc + next build + 浏览器回归（⌘⇧V 切换/内联编辑/状态下拉改状态/列显存刷新保持）
-边界：只做卡片 51；不碰拖拽看板模式（两模式并存）；不引新依赖
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）：新功能冻结（卡片 51 冻结、卡片 39 已砍）；R76/R77 在分支 fix/p0-review 待用户合并
+下一步：先查 F0（验收库 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项（当前为 F1 补验）
+前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76/R77，待用户合并）——每轮结束按 AGENTS.md §10 提交；
+      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据与试用数据（勿 TRUNCATE、勿写测试数据）；
+      起库脚本可自动拉起已停止的容器；IAB 浏览器环境仍不稳定，浏览器回归如遇水合失败如实标注跳过，不得冒充通过
+加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/09（冻结范围）→ 对应卡片的归属文档
+F0 查询（只读）：docker exec vibehub-dev-db psql -U vibehub -d vibehub -c
+      "SELECT id, title, status FROM bugs WHERE 'trial' = ANY(labels) AND status IN ('open','in_progress') ORDER BY created_at"
+边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
-      MCP 工具多项目时必须传 project_slug；浏览器回归顺带确认看板缩略图/详情大图可见（R76 前一直 401）
+      MCP 工具多项目时必须传 project_slug
 ```
 
 
@@ -26,26 +20,42 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 
 ## 1. 当前状态（每次运行结束更新）
 
-- **当前步骤**：✅ **发布态候选**——42 张卡片全部关闭（主体 25 + 二期 27-30 + 修复 31/40/41 + 交付 42-47）；唯一未闭环项为卡片 39（全局截图即录入口，**阻塞等用户三决策**：扩展/托盘路线、快捷键、项目选择）
-- **当前子任务**：R76 人工会话完成 git 基线 + 评审四项 P0 修复（附件签名链接 / 刷新令牌竞态 / MCP 密钥即时吊销 / MCP 项目解析）+ 测试基建两处修复；下一步卡片 51
+- **当前步骤**：🧊 **试用冻结期（R77 起）**——新功能冻结（卡片 51 冻结、卡片 39 已砍），按 `docs/计划/09` 真实试用 10 个工作日；期间只做 §2 冻结期清单（试用反馈 / 验证 / 加固）
+- **当前子任务**：R77 范围收拢决策（卡片 39 砍 / 51 冻结 / 试用计划 09 + 只读指标脚本 `server/scripts/trial-metrics.sh`）；**试用起始日：待用户开始实际使用时填写**
 - **环境状态**：双库容器在跑（dev 55433 持久卷 / test 55432 破坏性，起库脚本可拉起已停止容器）；常驻服务未启动（R76 开局时 Docker 未运行、服务已停）；vibehub:1.2 为唯一交付镜像（未含 R76 修复，发版前需重建）
 - **代码基线**：R76 后全绿：vitest 161/161 + web 单测 12/12 + acceptance.sh 14/14 + 四场景 stdio 30/30 / SSE 30/30 + 双端 tsc 0 错误 + next build 通过；git：main（R75 基线）→ fix/p0-review（6 个修复提交）
 
 ## 2. 看板（工程进度）
 
-### 待办（按步骤顺序，括号内为验收标准出处）
+### 待办（R77 起为「试用冻结期」清单：只做验证 / 加固 / 试用反馈，禁止新功能；按序取，F0 常驻最高优先）
 
 | # | 卡片 | 归属 | 验收 |
 | --- | --- | :-: | :-: |
-| 51 | 看板表格视图（⌘⇧V，卡片 50 剩余部分）：BugBoard 列表模式——表格列显隐/内联改标题/状态单元格下拉，配置存 SavedView | 07 | 浏览器回归：视图切换/列显存/内联编辑/状态下拉 + tsc + build |
+| F0 | 试用反馈缺陷（常驻）：验收库中带 `trial` 标签且未关闭的缺陷，按录入先后处理（查询见 §5；修复后在 VibeHub 回填状态） | 09 | 复现用例 TDD + acceptance.sh |
+| F1 | 补验：卡片 49/50 浏览器回归 + R76 看板缩略图/详情大图可见（断言 `img.naturalWidth > 0`） | 07 | 浏览器实测记录（IAB 仍不可用则如实标注，由 F3 自动化覆盖） |
+| F2 | 语义索引写路径：仅标题/步骤/期望/实际变化时重算向量 + DashScope 请求超时（拖拽改状态不再等外网） | 04 | TDD：改状态不触发 embed；超时不阻断主流程 |
+| F3 | 核心闭环 E2E 自动化（Playwright headless）：截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷新，接入 acceptance.sh | 05/08 | 门禁新增 E2E 步骤通过；新 devDependency 登记 §4 |
+| F4 | 登录防暴力：`/auth/login` 按 IP+邮箱限流（429 + 人话提示），新错误码登记 AGENTS.md §3 | 02 | TDD + acceptance.sh |
+| F5 | SSE 推送改为进程内共享一条 LISTEN 连接分发 + 访问日志脱敏 `?token=` | 02 | TDD（多订阅者单连接）+ 日志无令牌 |
+| F6 | 交付镜像 vibehub:1.3（含 R76 起全部修复）重建 + 容器冒烟 + 四场景 SSE 30/30 | 03 | 容器验收记录；1.2 标注「不含 R76 修复」 |
+| F7 | 备份与恢复演练：pg_dump + 附件卷打包脚本，演练「备份 → 清库 → 恢复 → 核对」 | 03 | 演练记录（数据一致） |
+| F8 | 文档数字漂移清理（AGENTS/README 用例数、工具数、PG 版本表述） | — | grep 核对一致 |
 
-（其余已关闭：主体 25 + 二期 27-30 + 修复 31-32）
+### 冻结区（试用结束评审前不施工，解冻规则见 09 §5）
+
+| # | 卡片 | 归属 | 冻结原因 |
+| --- | --- | :-: | --- |
+| 51 | 看板表格视图（⌘⇧V，卡片 50 剩余部分）：BugBoard 列表模式——表格列显隐/内联改标题/状态单元格下拉，配置存 SavedView | 07 | R77 范围冻结：需求未经真实使用验证 |
+
+### 已砍
+
+| # | 卡片 | 决策 |
+| --- | --- | --- |
+| 39 | 全局截图即录入口（浏览器扩展） | R77 砍：方案前提「MCP 密钥可调 REST、零后端改动」不成立（实测 401），收益未经验证；重开条件见 `docs/计划/39` §7 |
 
 ### 进行中
 
-| # | 卡片 | 归属 | 备注 |
-| --- | --- | :-: | --- |
-| 39 | 全局截图即录入口（产品灵魂）：浏览器扩展 commands 全局快捷键（截图后唤起轻量录入浮层直发）——**先出方案评审记录再施工**，新组件需登记 §4 | 06+新组件 | 方案评审记录 + 最小可用扩展（安装后全局快捷键唤起浮层并成功建缺陷） | | **方案评审已产出待用户确认**（docs/计划/39-全局截图入口方案.md；三个决策点见文档 §6） |
+（无）
 
 
 ### 已完成
@@ -281,29 +291,25 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 | R76 | resolveProject 按 MCP 服务进程 cwd 猜项目 + 回落最近更新项目：容器/SSE 下必然猜错，AI 写入静默落错项目；README「自动按当前工作目录匹配」在交付形态下不成立 | 仅唯一进行中项目自动选择，否则 VALIDATION_ERROR 列出可选 slug；工具描述与 README 同步 | server/src/services/projects.ts、mcp/server.ts、README；AGENTS.md §5 |
 | R76 | 测试基建两处陈旧：final-acceptance.mjs 子进程 cwd 用 URL.pathname（中文路径被百分号编码 → spawn ENOENT，且指向 scripts/ 而非 server/）；test-db.sh / dev-db.sh 对「已存在但停止」的容器走 docker run 重名失败（Docker 重启后门禁第 1 步必挂） | fileURLToPath 解码并指向 server/；起库脚本增加 docker start 分支、名称精确匹配 | server/scripts/final-acceptance.mjs、test-db.sh、dev-db.sh |
 | R76 | 评审其余发现未立项（待用户决策优先级）：拖拽等非文本修改也同步调 DashScope 且无超时；每个 SSE 标签页独占一条 PG 连接、`?token=` 进访问日志；API Key rate_limit 只存不执行、登录无防暴力；AGENTS/README 用例数与工具数漂移；无 ESLint/E2E | 仅登记不施工；用户确认后再入 §2 待办 | 见本条 |
+| R77 | 卡片 39 方案（R63）称扩展「复用 MCP 密钥、只消费现有 REST、零后端改动」；实测 REST 守卫只认登录 JWT（`vhk_` 调 `/api/bugs`、`/api/upload` 均 401 INVALID_TOKEN） | 卡片 39 砍；重开需满足试用摩擦数据条件并先评审 REST 鉴权方案（39 文档 §7） | docs/计划/39；§2 看板 |
+| R77 | 新功能持续堆叠而核心闭环未经真实使用（R76 两个 P0 潜伏约 70 轮；验收库 0 缺陷、0 次 MCP 调用） | 范围冻结 + 10 个工作日真实试用（docs/计划/09，含可量化达标标准与解冻规则）；卡片 51 冻结；§2 改为冻结期清单 F0–F8；§6 增第 13 条 | 全部后续施工轮；AGENTS.md §0 当前阶段 |
 
 ---
 
 ## 5. 给下一次运行的起点指令（最重要，结束时必须更新）
 
 ```
-状态：三期「UX 与人性化改造」进行中（R76 人工会话：git 基线 + 评审四项 P0 修复已提交至分支 fix/p0-review；卡片 49、50 的浏览器回归仍待补验）
-下一步：执行卡片 51：看板表格视图（⌘⇧V）
-前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76 修复，待用户合并）——每轮结束按 AGENTS.md §10 提交；
-      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据（勿 TRUNCATE）；
-      起库脚本可自动拉起已停止的容器（R76）；IAB 浏览器环境仍不稳定（R74/R75 连续两轮浏览器回归失败），本轮如再遇水合失败，
-      可验证项（tsc/build/vitest）跑全后浏览器回归如实标注跳过，不得阻塞卡片推进、不得冒充通过
-加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/07 §7.1（⌘⇧V 列表视图规格）+ docs/规范/00
-动作：
-  1. 读 components/bugs/BugBoard.tsx 与 hooks/use-vibehub.ts 现有看板数据面；SavedView service 已就绪（entity=board）
-  2. BugBoard 增 table 模式：⌘⇧V 切换（board/page.tsx 的 useHotkeys 加 combo 'mod+shift+v'）；
-     表格列：标题（双击内联编辑，Enter 保存 Esc 取消）/ 状态（单元格下拉直改，复用 moveBug）/
-     严重度 / 负责人 / 附件数 / 更新时间；列显隐配置存 SavedView 或 localStorage（二选一，§4 说明）
-  3. 视图切换按钮放筛选条右侧（与 AI 活动按钮同级）；动效只动 transform/opacity；≤300 行/文件（必要时拆 BugTable.tsx）
-  4. 验证：tsc + next build + 浏览器回归（⌘⇧V 切换/内联编辑/状态下拉改状态/列显存刷新保持）
-边界：只做卡片 51；不碰拖拽看板模式（两模式并存）；不引新依赖
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）：新功能冻结（卡片 51 冻结、卡片 39 已砍）；R76/R77 在分支 fix/p0-review 待用户合并
+下一步：先查 F0（验收库 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项（当前为 F1 补验）
+前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76/R77，待用户合并）——每轮结束按 AGENTS.md §10 提交；
+      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据与试用数据（勿 TRUNCATE、勿写测试数据）；
+      起库脚本可自动拉起已停止的容器；IAB 浏览器环境仍不稳定，浏览器回归如遇水合失败如实标注跳过，不得冒充通过
+加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/09（冻结范围）→ 对应卡片的归属文档
+F0 查询（只读）：docker exec vibehub-dev-db psql -U vibehub -d vibehub -c
+      "SELECT id, title, status FROM bugs WHERE 'trial' = ANY(labels) AND status IN ('open','in_progress') ORDER BY created_at"
+边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
-      MCP 工具多项目时必须传 project_slug；浏览器回归顺带确认看板缩略图/详情大图可见（R76 前一直 401）
+      MCP 工具多项目时必须传 project_slug
 ```
 
 ## 6. 防跑偏规则（每次运行遵守）
@@ -320,6 +326,7 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 10. **卡片可续做**：一张卡片可以跨多轮完成；每轮日志写清本轮做到哪一半，下一轮从一半处继续，不推倒重来。
 11. **技能治理（每轮必做）**：收尾时三问——本轮是否出现值得做成技能的重复工作流？已有技能是否与现实不符需更新？是否产生新契约需进 AGENTS.md？结论写入 §3 日志行末。技能放 `~/.zcode/skills/<name>/`，必须与文档保持一致（双轨制禁止）。
 12. **加载顺序固定**：每轮开始 = 读本文件 → 按需加载技能（vibehub-build 默认；TDD/verification/debugging 按场景）→ 读 AGENTS.md 契约 → 读当前步骤文档 → 动手。
+13. **冻结期规则（R77 起，`docs/计划/09` 生效期间）**：禁止新功能卡（新增用户可见功能/入口/配置项即算）；每轮先查验收库 `trial` 标签未关闭缺陷（F0），有则优先；新想法只登记 §4「试用后评审」；试用指标用 `bash server/scripts/trial-metrics.sh <起始日期>`（只读）。
 | R71 | 规范/00 的组件动效规格止于 §2.9（v1 组件），二/三期新组件（首启向导/AI 活动面板/上传进度条/更多折叠）无动效契约，前端合入自查缺依据 | 追加 §2.10-2.13 四节（到帧规格：箭头旋转/滑出 transform/进度 scaleX/锁定态 opacity）+ §7 自查补「禁 emoji」项；属规范修订，留痕于此 | docs/规范/00；后续前端轮次自查依据 |
 
 | R70 | 07 规格文档止于 7.10（v1 六页），二/三期页面（随手记/首启向导/AI 活动/上传进度/角色导航）无规格契约，后续轮次"按计划施工"失去依据 | 07 追加 §7.11-7.15 五节 as-built 规格（布局/交互/契约要点，均标注实现轮次）；属计划文档修订，留痕于此 | docs/计划/07；后续页面迭代以 7.11+ 为契约 |
@@ -356,3 +363,4 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 | R75 | 卡片 50（用户实测反馈「录入没有 Excel 便利」）部分交付 + 卡片 48 归档：轻量默认字段（BugFormExtras 折叠）+ TSV 批量导入（解析器 TDD 6/6 + 预览面板 + 粘贴分流 + 成败汇总）；表格视图拆出卡片 51；**浏览器回归因 IAB 环境故障（水合多轮不完成，换 token/新标签无效）连续第二轮跳过，不冒充通过** | 解析器 6/6 + tsc 0 错误 + next build 通过；浏览器回归 0 项（环境跳过） | 卡片 51（看板表格视图）。**技能治理**：① 「web 侧纯函数经 --root ../web 跑 vitest」为一次性小套路，不固化；② 技能无需更新；③ 无新契约 |
 
 | R76 | 人工会话（用户指示按项目评审去做）：① git init + 基线提交（main），修复在分支 fix/p0-review；② 评审四项 P0——附件签名链接（修 <img> 401 与落盘/记录 ID 不一致致 404，raw 加 nosniff/CSP sandbox/白名单 inline）、刷新令牌竞态（服务端 10s 宽限 + 登出吊销整族；前端 token-refresh 协调器）、MCP 密钥 SSE 逐次复核 + 成员禁用停用/移除吊销、项目解析去 cwd 猜测与静默回落；③ 测试基建：final-acceptance 子进程 cwd、起库脚本拉起已停止容器；④ **开局自校验修正**：§5 仍为 R64「等待卡片 39」与顶部 R75「卡片 51」矛盾，按最近日志统一为卡片 51 | vitest 161/161（+25）+ web 单测 12/12 + acceptance.sh 14/14（每个修复提交前各跑一次）+ 四场景 stdio 30/30 / SSE 30/30（测试库）+ web tsc 0 错误 / next build 通过 + IAB：签名链接 <img> 免令牌加载 480×200、未签名链接加载失败 | 卡片 51（按原计划）；建议用户先人工确认看板缩略图显示与多标签不掉线，并决定评审其余发现（§4 R76 末条）。**技能治理**：① 「lsof -ti 会列出客户端连接（含 Claude 浏览器进程），结束服务须 -sTCP:LISTEN」「URL.pathname 中文路径须 fileURLToPath」值得固化——已入 vibehub-build；② 技能已更新；③ AGENTS.md 补 6 处 R76 契约 |
+| R77 | 用户授权代为决策「收拢范围」：卡片 39 **砍**（inject 探针实测 MCP 密钥调 REST 录入接口 401 INVALID_TOKEN，方案「零后端改动」前提不成立；收益未经数据验证）；卡片 51 **冻结**；新建 `docs/计划/09`（10 个工作日真实试用、可量化达标标准、结束评审解冻规则）；新增只读 `server/scripts/trial-metrics.sh`；§2 看板改为冻结期清单 F0–F8；§6 增冻结期规则 | 指标脚本以四场景总验收数据校验口径（总验收 30/30 后：AI resolved 1 / 人工新建 2 = 50%，MCP 成功 7 / 失败 1，与剧本一致；补录带图缺陷后截图计数 0→1；起始日期过滤生效）；测试库已清空。**附带实证**：只读核对验收库 `auth.token_reused` 共 4 条＝2 组同毫秒成对（并发刷新指纹，UTC 00:24 / 04:36，均早于 R76 刷新修复 11:51 UTC）——P0-2 在用户环境真实发生过 2 次；故试用指标必须以修复后的日期为起点 | F0 / F1（冻结期清单）。**技能治理**：① 无新重复工作流；② vibehub-build 补「冻结期协议」；③ AGENTS.md §0 补当前阶段、§1 文档索引补 09 |

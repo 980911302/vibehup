@@ -232,6 +232,7 @@ cd server && bash scripts/acceptance.sh         # 提交门禁：tsc + vitest + 
 
 - **阶段一（当前版本，已交付）**：SQLite → PostgreSQL 16 + pgvector 单容器、完整账户体系（RBAC/密钥/审计）、15 工具 MCP（stdio + SSE）、双主题前端、随手记/语义检索/AI 活动可见流/实时的 PG NOTIFY 通道
 - **阶段二（已交付）**：Redis Pub/Sub 的替代方案（PG LISTEN/NOTIFY，单容器零新组件）、语义检索（DashScope embedding，可配）、SSE 集中式 MCP 节点——均已在当前版本落地
-- **未立项（候选）**：MinIO/S3 存储抽象、托盘级全局快捷键（截图即录的「真全局」形态，方案评审见 docs/计划/39）、多机部署（Redis）
+- **当前阶段（R77 起）**：试用冻结期——新功能冻结，先用 10 个工作日真实试用检验核心闭环（docs/计划/09；指标 `bash server/scripts/trial-metrics.sh <起始日期>`）
+- **未立项（候选）**：MinIO/S3 存储抽象、多机部署（Redis）；全局截图入口（浏览器扩展）R77 已砍，重开条件见 docs/计划/39 §7
 
 > 构建过程与工程契约见 `AGENTS.md`；进度驾驶舱见 `docs/计划/PROGRESS.md`。
