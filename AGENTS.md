@@ -28,7 +28,7 @@
 - 后端分层严格单向：`routes → services → core`；routes 禁止直连 Prisma；services 禁止 import Fastify 对象。
 - MCP 与 routes **平级**共用 services；MCP stdout 只走 JSON-RPC，日志一律 stderr。
 - 前端数据唯一入口 `lib/api.ts`；页面只消费 `hooks/use-vibehub.ts`；跨页状态用 Provider，URL 状态用 searchParams。
-- 事件：业务写成功后 `eventBus.publish`，负载扁平 `{type, projectId, entityId}`；**实时推送契约（R52 更新）**：publish 同时发 PG `pg_notify`（通道 `vibehub_events`，异步且失败隔离）——SSE 端点用独立 pg Client `LISTEN` 单通道推送，MCP stdio 等跨进程写入 <1s 可达（不再依赖轮询兜底）；失败隔离（NOTIFY/LISTEN 断只丢加速不炸进程，pg Client 必须挂 error 监听器）；前端 5s 轮询保留为双保险。
+- 事件：业务写成功后 `eventBus.publish`，负载扁平 `{type, projectId, entityId}`；**实时推送契约（R52 更新）**：publish 同时发 PG `pg_notify`（通道 `vibehub_events`，异步且失败隔离）——SSE 端点用独立 pg Client `LISTEN` 单通道推送，MCP stdio 等跨进程写入 <1s 可达（不再依赖轮询兜底）；失败隔离（NOTIFY/LISTEN 断只丢加速不炸进程，pg Client 必须挂 error 监听器）；前端 5s 轮询保留为**条件兜底**（R78：SSE 已连通且最近有活动则跳过本轮，避免每 5s 白拉一次整板；判定按「最近活动时间」而非布尔标记——EventSource 半开时 onerror 不一定触发，只看标记会永久停掉兜底）。
 - **AI 活动流契约（R60）**：`GET /api/activity/recent` 全员可读（刻意不挂 requireRole——让非管理员感知「AI 读了什么」是特性目的）；数据经 service 层 select 脱敏（仅 key_name/key_prefix/工具名/耗时，禁 keyHash/salt/明文）；管理员完整用量仍在密钥页 keyUsage。
 - **计量契约**：所有 UsageEvent / 审计写入必须 `await`（logEvent 内部已 try-catch 不抛）；禁 `void logEvent(...)` 即发即弃——会导致紧随的用量查询漏账（R11 竞态教训）。
 - **SSE 鉴权契约**：浏览器 `EventSource` 不支持自定义头，`/api/events` 免全局守卫，路由内校验 `?token=<access_token>`；无/错 token 401。

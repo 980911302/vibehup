@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
+import { shouldSkipPoll } from '@/lib/sse-poll';
 import { useAuth } from '@/lib/auth';
 import type {
   Attachment,
@@ -66,6 +67,9 @@ export function useVibeHub(): VibeHubStore {
   const [error, setError] = useState<string | null>(null);
   const projectIdRef = useRef<string | null>(null);
   projectIdRef.current = currentProjectId;
+  // SSE 有效性（R78）：用 ref 存「连通 + 最近活动」，供轮询判定读取，避免把轮询 effect 绑到 state 上
+  const sseConnectedRef = useRef(false);
+  const lastSseEventAtRef = useRef<number | null>(null);
 
   const currentProject = projects.find((p) => p.id === currentProjectId) ?? null;
 
@@ -140,9 +144,18 @@ export function useVibeHub(): VibeHubStore {
   useEffect(() => {
     if (!accessToken) return;
     const source = new EventSource(`/api/events?token=${encodeURIComponent(accessToken)}`);
-    source.onopen = () => setSseConnected(true);
-    source.onerror = () => setSseConnected(false);
+    source.onopen = () => {
+      sseConnectedRef.current = true;
+      lastSseEventAtRef.current = Date.now();
+      setSseConnected(true);
+    };
+    source.onerror = () => {
+      sseConnectedRef.current = false;
+      setSseConnected(false);
+    };
     source.onmessage = (event) => {
+      // 任何一帧（含心跳后的真实事件）都算「SSE 仍有效」，用于决定是否还需要轮询兜底
+      lastSseEventAtRef.current = Date.now();
       try {
         const data = JSON.parse(event.data) as { type: string };
         if (data.type.startsWith('bug.') || data.type.startsWith('task.')) void refreshBoard();
@@ -152,17 +165,27 @@ export function useVibeHub(): VibeHubStore {
         // 心跳
       }
     };
-    return () => source.close();
+    return () => {
+      source.close();
+      sseConnectedRef.current = false;
+    };
   }, [accessToken, refreshBoard, refreshNotes, refreshAttachments]);
 
-  // 轮询兜底：MCP 跨进程写入（stdio 传输无法走进程内事件总线）
+  // 轮询兜底：MCP 跨进程写入（stdio 传输无法走进程内事件总线）。
+  // R78：SSE 正在有效工作时（已连通且最近有活动）跳过本轮——避免每 5s 白拉一次整板；
+  // SSE 断开或静默超阈值即恢复轮询（事件源半开时 onerror 不一定触发，故按「最近活动」判定）。
   useEffect(() => {
     if (!accessToken) return;
     const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        void refreshBoard();
-        void refreshNotes();
-      }
+      if (document.visibilityState !== 'visible') return;
+      const skip = shouldSkipPoll({
+        sseConnected: sseConnectedRef.current,
+        lastEventAt: lastSseEventAtRef.current,
+        now: Date.now(),
+      });
+      if (skip) return;
+      void refreshBoard();
+      void refreshNotes();
     }, POLL_INTERVAL);
     return () => clearInterval(timer);
   }, [accessToken, refreshBoard, refreshNotes]);

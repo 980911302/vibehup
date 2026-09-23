@@ -4,7 +4,7 @@ import { ids, slugify } from '../core/ids.js';
 import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
-import { countAttachments } from './attachments.js';
+import { countAttachmentsFor } from './attachments.js';
 import { upsertEntityEmbedding, deleteEntityEmbedding } from './embedding.js';
 
 export const BUG_STATUSES = ['open', 'in_progress', 'resolved', 'verified', 'closed'] as const;
@@ -271,12 +271,12 @@ export async function listBugs(query: BugListQuery = {}): Promise<BugListResult>
 
   const total = items.length;
   const paged = items.slice((page - 1) * pageSize, page * pageSize);
-  const withCounts: BugWithMeta[] = await Promise.all(
-    paged.map(async (bug) => ({
-      ...bug,
-      attachmentCount: await countAttachments('bug', bug.id),
-    })),
-  );
+  // 附件计数批量取（R78）：一次 groupBy 代替逐条 count
+  const counts = await countAttachmentsFor('bug', paged.map((b) => b.id));
+  const withCounts: BugWithMeta[] = paged.map((bug) => ({
+    ...bug,
+    attachmentCount: counts.get(bug.id) ?? 0,
+  }));
 
   return { items: withCounts, total, page, pageSize };
 }
@@ -298,11 +298,6 @@ export async function getBugBoard(projectId: string, limitPerColumn = 100): Prom
     include: { assignee: { select: { id: true, name: true } } },
   });
 
-  const toMeta = async (bug: Bug): Promise<BugWithMeta> => ({
-    ...bug,
-    attachmentCount: await countAttachments('bug', bug.id),
-  });
-
   const groups: Record<string, Bug[]> = {
     open: [],
     in_progress: [],
@@ -314,9 +309,19 @@ export async function getBugBoard(projectId: string, limitPerColumn = 100): Prom
     if (groups[bug.status]) groups[bug.status].push(bug);
   }
 
-  const board: BugBoard = { open: [], in_progress: [], resolved: [], verified: [], closed: [] };
+  // 先按列截断收集（暂无 attachmentCount），再批量取计数一次回填——避免逐条 count（原 500 条 = 500 次查询）
+  const listed: Bug[] = [];
+  const picked: Partial<Record<BugStatus, Bug[]>> = {};
   for (const status of Object.keys(groups) as BugStatus[]) {
-    board[status] = await Promise.all(groups[status].slice(0, limitPerColumn).map(toMeta));
+    const column = groups[status].slice(0, limitPerColumn);
+    picked[status] = column;
+    listed.push(...column);
+  }
+
+  const counts = await countAttachmentsFor('bug', listed.map((b) => b.id));
+  const board: BugBoard = { open: [], in_progress: [], resolved: [], verified: [], closed: [] };
+  for (const status of Object.keys(board) as BugStatus[]) {
+    board[status] = (picked[status] ?? []).map((bug) => ({ ...bug, attachmentCount: counts.get(bug.id) ?? 0 }));
   }
   return board;
 }

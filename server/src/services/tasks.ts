@@ -4,7 +4,7 @@ import { ids } from '../core/ids.js';
 import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
-import { countAttachments } from './attachments.js';
+import { countAttachmentsFor } from './attachments.js';
 
 export const TASK_STATUSES = ['todo', 'doing', 'done'] as const;
 export const TASK_PRIORITIES = ['low', 'medium', 'high'] as const;
@@ -98,9 +98,9 @@ export async function listTasks(query: {
       matchIndex(q, buildSearchIndex(t.title, t.description ?? '')),
     );
   }
-  return Promise.all(
-    items.map(async (t) => ({ ...t, attachmentCount: await countAttachments('task', t.id) })),
-  );
+  // 附件计数批量取（R78）：一次 groupBy 代替逐条 count
+  const counts = await countAttachmentsFor('task', items.map((t) => t.id));
+  return items.map((t) => ({ ...t, attachmentCount: counts.get(t.id) ?? 0 }));
 }
 
 export async function getTask(taskId: string): Promise<Task> {

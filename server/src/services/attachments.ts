@@ -105,6 +105,30 @@ export async function countAttachments(entityType: string, entityId: string): Pr
   return prisma.attachment.count({ where: { entityType, entityId } });
 }
 
+/**
+ * 批量附件计数（R78 性能加固）：列表页原本对每条实体各发一次 count（N 条 = N 次往返），
+ * 改为**一次查询只取 entityId 列**再在内存归并。返回 Map，缺失的实体按 0 处理。
+ * 注意：空列表不发查询（列表为空时列表页也无需计数）。
+ * 不用 groupBy：当前 Prisma client 未暴露该方法（生成版本差异），单列查询同样是一次往返。
+ */
+export async function countAttachmentsFor(
+  entityType: string,
+  entityIds: string[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (entityIds.length === 0) return map;
+
+  const rows = await prisma.attachment.findMany({
+    where: { entityType, entityId: { in: entityIds } },
+    select: { entityId: true },
+  });
+  for (const row of rows) {
+    if (!row.entityId) continue;
+    map.set(row.entityId, (map.get(row.entityId) ?? 0) + 1);
+  }
+  return map;
+}
+
 /** 将附件关联到实体（如上传后回填 bug_id） */
 export async function linkAttachment(
   attachmentId: string,

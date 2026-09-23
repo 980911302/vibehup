@@ -4,7 +4,7 @@ import { ids } from '../core/ids.js';
 import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError } from '../core/errors.js';
-import { countAttachments } from './attachments.js';
+import { countAttachmentsFor } from './attachments.js';
 import { upsertEntityEmbedding, deleteEntityEmbedding } from './embedding.js';
 
 /**
@@ -111,13 +111,14 @@ export async function listNotes(query: {
     const q = query.q.trim();
     items = items.filter((n) => matchIndex(q, buildSearchIndex(n.content.slice(0, 40), n.content)));
   }
-  return Promise.all(
-    items.slice(0, query.limit ?? 100).map(async (n) => ({
-      ...n,
-      tagList: parseTags(n.tags),
-      attachmentCount: await countAttachments('note', n.id),
-    })),
-  );
+  const listed = items.slice(0, query.limit ?? 100);
+  // 附件计数批量取（R78）：一次 groupBy 代替逐条 count
+  const counts = await countAttachmentsFor('note', listed.map((n) => n.id));
+  return listed.map((n) => ({
+    ...n,
+    tagList: parseTags(n.tags),
+    attachmentCount: counts.get(n.id) ?? 0,
+  }));
 }
 
 /** 标签聚合：便签墙底部标签过滤器数据源 */
