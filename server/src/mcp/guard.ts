@@ -1,5 +1,5 @@
 import type { McpContext } from './context.js';
-import { resolveMcpContext, ctxHas } from './context.js';
+import { resolveMcpContext, refreshKeyedContext, ctxHas } from './context.js';
 import { mcpStore } from './context-store.js';
 import { recordToolCall } from './usage.js';
 import { enforceSizeBudget } from './token-budget.js';
@@ -33,8 +33,10 @@ export function guarded(toolName: string, scope: Scope, fn: ToolFn) {
   return async (args: Record<string, unknown>): Promise<ToolSuccess> => {
     let ctx: McpContext;
     try {
-      // 优先取 SSE 连接上下文（mcpStore）；stdio 进程无 store，回落 env 解析
-      ctx = mcpStore.get() ?? (await resolveMcpContext());
+      // 优先取 SSE 连接上下文（mcpStore），且每次调用复核密钥状态（R76：撤销即时生效）；
+      // stdio 进程无 store，回落 env 解析（每次调用本就按明文密钥重查）
+      const sessionCtx = mcpStore.get();
+      ctx = sessionCtx ? await refreshKeyedContext(sessionCtx) : await resolveMcpContext();
     } catch (err) {
       return toolError(err instanceof Error ? err.message : String(err));
     }

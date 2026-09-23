@@ -171,8 +171,16 @@ export async function removeUser(operatorId: string, targetId: string): Promise<
     const others = await countOwners(targetId);
     if (others === 0) throw new errors.LastOwnerError();
   }
-  await prisma.user.delete({ where: { id: targetId } });
-  await logEvent({ userId: operatorId, eventType: 'user.removed', metadata: { target: targetId } });
+  // 先吊销其创建的 MCP 密钥（R76）：删除用户后 createdBy 会被置空，密钥否则继续有效
+  const [revokedKeys] = await prisma.$transaction([
+    prisma.apiKey.updateMany({ where: { createdBy: targetId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    prisma.user.delete({ where: { id: targetId } }),
+  ]);
+  await logEvent({
+    userId: operatorId,
+    eventType: 'user.removed',
+    metadata: { target: targetId, revoked_keys: revokedKeys.count },
+  });
 }
 
 /** Owner 转让：双方角色互换（原 Owner 降为 Admin） */
