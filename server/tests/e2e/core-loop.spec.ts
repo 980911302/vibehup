@@ -1,7 +1,8 @@
-import { test, expect, request as pwRequest } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createOwnerWithProject, gotoBoardWithSession, openCreateDialog } from './fixtures.js';
 
 /**
  * 核心闭环 E2E（卡片 F3）：截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷新。
@@ -74,51 +75,24 @@ async function connectMcp(apiKey: string): Promise<McpClient> {
 }
 
 test('截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷新', async ({ page }) => {
-  const stamp = Date.now();
-  const email = `e2e_${stamp}@vibehub.local`;
-  const password = 'abcd1234';
-  const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE ?? 'http://127.0.0.1:3457' });
-
-  // ── 准备：注册 Owner + 建项目（不依赖 UI 向导，聚焦闭环）──
-  const reg = await api.post('/api/auth/register', { data: { email, password, name: 'E2E 用户' } });
-  expect(reg.status()).toBe(201);
-  const { access_token: token } = await reg.json();
-  const projectNo = await api.post('/api/projects', {
-    headers: { authorization: `Bearer ${token}` },
-    data: { name: `E2E 项目 ${stamp}` },
-  });
-  expect(projectNo.status()).toBe(201);
-  const project = await projectNo.json();
-
-  // 浏览器带入登录态（跳过登录页交互，闭环不在此）
-  await page.addInitScript(
-    ([t, r]) => {
-      localStorage.setItem('vibehub_token', t);
-      localStorage.setItem('vibehub_refresh', r);
-      localStorage.setItem('vibehub_onboarded', '1'); // 首启向导不挡闭环
-    },
-    [token, ''],
-  );
+  const session = await createOwnerWithProject(`E2E 闭环项目 ${Date.now()}`);
+  const { api, token, project } = session;
+  await gotoBoardWithSession(page, session);
 
   // ── 1/5 截图录入：合成粘贴事件（与真实 Ctrl+V 同路径，卡片 37 起支持上传进度）──
-  await page.goto('/board');
-  await expect(page.getByPlaceholder('搜索缺陷')).toBeVisible();
-  await page.getByRole('button', { name: /录缺陷/ }).first().click();
-  await expect(page.getByPlaceholder('缺陷标题（两句核心描述即可，其他都能省）')).toBeVisible();
+  await openCreateDialog(page);
   await page.evaluate((b64) => {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const dt = new DataTransfer();
     dt.items.add(new File([bytes], 'clip.png', { type: 'image/png' }));
-    const titleInput = document.querySelector<HTMLInputElement>(
-      'input[placeholder="缺陷标题（两句核心描述即可，其他都能省）"]',
-    );
-    const target = titleInput?.closest('form')?.querySelector('div.space-y-3') ?? document.body;
+    const target = document.querySelector('[data-testid="bug-paste-area"]') ?? document.body;
     target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
   }, PNG_BASE64);
-  // 上传完成的两个信号：预览缩略图出现 + 进度条消失
-  await expect(page.getByAltText('clip.png')).toBeVisible({ timeout: 30_000 });
+  // 上传完成的两个信号：对话框内预览缩略图出现 + 进度条消失
+  // （用 last()：看板卡片可能存在同名文件，alt 会命中两个元素——本轮实测踩到 strict mode）
+  await expect(page.getByAltText('clip.png').last()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText('上传中…')).toHaveCount(0);
   await page.getByPlaceholder('缺陷标题（两句核心描述即可，其他都能省）').fill(TITLE);
   await page.getByTestId('bug-submit').click();

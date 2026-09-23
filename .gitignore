@@ -34,4 +34,5 @@ server/backups/
 server/backups-drill/
 server/test-results/
 server/playwright-report/
+server/tests/e2e/.test-owner.json
 coverage/

@@ -184,7 +184,7 @@ export function CreateBugDialog({
         {inImportMode ? (
           <TsvImportPanel rows={importRows} importing={importing} onConfirm={() => void runImport()} onCancel={() => setImportRows([])} />
         ) : (
-        <div className="space-y-3" onPaste={(e) => {
+        <div className="space-y-3" data-testid="bug-paste-area" onPaste={(e) => {
           const files = Array.from(e.clipboardData.files);
           if (files.length) {
             e.preventDefault();

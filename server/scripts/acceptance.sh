@@ -110,6 +110,7 @@ E2E_BASE="http://127.0.0.1:${E2E_PORT}"
 # E2E 用全新库：残留 owner 会让新注册用户降级为 member，建项目 403（首用户才自动 Owner）
 docker exec vibehub-test-db psql -U postgres -q -c \
   'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings" RESTART IDENTITY CASCADE' > /dev/null 2>&1
+rm -f tests/e2e/.test-owner.json   # 夹具的 Owner 凭据缓存（随库清空一起失效）
 
 # 静态产物新鲜度：缺 out/index.html 或关键页面早于源码则重建（不每次全量 build，门禁要快）
 if [ ! -f ../web/out/index.html ] || [ -n "$(find ../web/src ../web/next.config.ts -newer ../web/out/index.html -print -quit 2>/dev/null)" ]; then
@@ -123,7 +124,8 @@ E2E_PID=""
 cleanup_e2e() { [ -n "${E2E_PID}" ] && kill "${E2E_PID}" 2>/dev/null; }
 trap 'cleanup; cleanup_e2e' EXIT
 
-DATABASE_URL="${TEST_DATABASE_URL}" DATA_DIR=./acceptance-e2e-data PORT=${E2E_PORT} EMBEDDING_PROVIDER=none npx tsx src/index.ts > /tmp/vh-e2e-server.log 2>&1 &
+# LOGIN_MAX_ATTEMPTS 放宽：E2E 多用例复用同一 owner 登录，默认 5 次阈值会误伤门禁
+DATABASE_URL="${TEST_DATABASE_URL}" DATA_DIR=./acceptance-e2e-data PORT=${E2E_PORT} EMBEDDING_PROVIDER=none LOGIN_MAX_ATTEMPTS=100 npx tsx src/index.ts > /tmp/vh-e2e-server.log 2>&1 &
 E2E_PID=$!
 E2E_READY=0
 for _ in $(seq 1 40); do
