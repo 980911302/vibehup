@@ -71,6 +71,14 @@ describe('注册登录全链路', () => {
     const { refresh_token } = reg.json();
     const refreshed = await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refresh_token } });
     expect(refreshed.statusCode).toBe(200);
+    // 宽限期内重复提交（多请求/多标签同时刷新）→ 仍 200，不整族吊销（R76）
+    const concurrent = await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refresh_token } });
+    expect(concurrent.statusCode).toBe(200);
+    // 宽限期过后再提交 → 重放
+    await prisma.refreshToken.updateMany({
+      where: { revokedAt: { not: null } },
+      data: { revokedAt: new Date(Date.now() - 60_000) },
+    });
     const replay = await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refresh_token } });
     expect(replay.statusCode).toBe(401);
     expect(replay.json().error.code).toBe('TOKEN_REUSED');

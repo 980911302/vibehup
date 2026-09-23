@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../core/prisma.js';
 import { resetDb } from '../test-helpers.js';
+import { hashToken } from '../core/tokens.js';
 import * as authService from './auth.js';
 
 /** 认证服务单测（步骤 05：14 例） */
@@ -85,20 +86,49 @@ describe('login', () => {
   });
 });
 
+/** 把某个已轮换令牌的撤销时间拨回过去（模拟宽限期已过） */
+async function ageRevocation(refreshToken: string, secondsAgo: number): Promise<void> {
+  await prisma.refreshToken.update({
+    where: { tokenHash: hashToken(refreshToken) },
+    data: { revokedAt: new Date(Date.now() - secondsAgo * 1000) },
+  });
+}
+
 describe('refresh 轮换与重放', () => {
   it('正常轮换：旧令牌作废，新令牌可用', async () => {
     const r = await authService.register({ email: 'a@t.com', password: 'abcd1234', name: '甲' });
     const refreshed = await authService.refresh(r.refresh_token);
     expect(refreshed.refresh_token).not.toBe(r.refresh_token);
-    // 旧令牌再次使用 → 重放
+    // 宽限期过后旧令牌再次使用 → 重放
+    await ageRevocation(r.refresh_token, 60);
     await expect(authService.refresh(r.refresh_token)).rejects.toMatchObject({ code: 'TOKEN_REUSED' });
   });
 
   it('重放吊销整个 family：新令牌也失效', async () => {
     const r = await authService.register({ email: 'a@t.com', password: 'abcd1234', name: '甲' });
     const refreshed = await authService.refresh(r.refresh_token);
+    await ageRevocation(r.refresh_token, 60);
     await expect(authService.refresh(r.refresh_token)).rejects.toMatchObject({ code: 'TOKEN_REUSED' });
     await expect(authService.refresh(refreshed.refresh_token)).rejects.toMatchObject({ code: 'TOKEN_REUSED' });
+  });
+
+  it('并发刷新（R76）：同一令牌在宽限期内再次提交 → 照常签发，令牌族不被吊销', async () => {
+    const r = await authService.register({ email: 'a@t.com', password: 'abcd1234', name: '甲' });
+    const first = await authService.refresh(r.refresh_token);
+    const second = await authService.refresh(r.refresh_token);
+    expect(second.access_token).toBeTruthy();
+    // 两个请求拿到的新令牌都还能继续用（先到的那个标签不会被连坐踢下线）
+    await expect(authService.refresh(first.refresh_token)).resolves.toHaveProperty('access_token');
+    await expect(authService.refresh(second.refresh_token)).resolves.toHaveProperty('access_token');
+  });
+
+  it('登出吊销整个令牌族：已登出的令牌不能借宽限期复活', async () => {
+    const r = await authService.register({ email: 'a@t.com', password: 'abcd1234', name: '甲' });
+    const first = await authService.refresh(r.refresh_token);
+    const second = await authService.refresh(r.refresh_token);
+    await authService.logout(second.refresh_token);
+    await expect(authService.refresh(second.refresh_token)).rejects.toMatchObject({ statusCode: 401 });
+    await expect(authService.refresh(first.refresh_token)).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it('伪造令牌 401', async () => {

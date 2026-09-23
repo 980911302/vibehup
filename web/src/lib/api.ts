@@ -17,10 +17,11 @@ import type {
   TextSlice,
   UserWithStats,
 } from './api-types';
+import { createTokenRefresher, webLock } from './token-refresh';
 
 /**
  * VibeHub API 客户端（AGENTS.md 前端契约：唯一数据入口）。
- * - 自动带 Authorization；401 → 静默 refresh 一次重放 → 失败清态回登录页
+ * - 自动带 Authorization；401 → 经刷新协调器换新令牌重放一次（单飞 + 跨标签，见 token-refresh.ts）
  * - 与 Fastify 同源部署（生产）；开发环境由 next rewrites 代理到 :3210
  */
 
@@ -34,10 +35,28 @@ interface TokenAccessors {
 }
 
 let tokenAccessors: TokenAccessors | null = null;
+let refreshAccess: ((failedAccess: string | null) => Promise<string | null>) | null = null;
 
 /** 由 AuthProvider 注入（避免循环依赖） */
 export function setTokenAccessors(accessors: TokenAccessors): void {
   tokenAccessors = accessors;
+  refreshAccess = createTokenRefresher({
+    readTokens: () => ({ access: accessors.getAccessToken(), refresh: accessors.getRefreshToken() }),
+    callRefresh: (refreshToken) =>
+      rawRequest<{ access_token: string; refresh_token: string }>(
+        '/auth/refresh',
+        {
+          method: 'POST',
+          body: JSON.stringify({ refresh_token: refreshToken }),
+          // 持有跨标签锁期间不能无限挂起
+          signal: AbortSignal.timeout(15_000),
+        },
+        null,
+      ),
+    saveTokens: accessors.onTokens,
+    isAuthRejection: (err) => err instanceof ApiError && (err.status === 401 || err.status === 403),
+    withLock: webLock,
+  });
 }
 
 export class ApiError extends Error {
@@ -78,31 +97,20 @@ async function rawRequest<T>(path: string, init: RequestInit, token: string | nu
   return (await res.json()) as T;
 }
 
-/** 统一请求：401 自动刷新重放一次 */
+/** 统一请求：401 → 换新令牌重放一次；只有刷新被拒才登出，网络抖动/服务重启不踢人（R76） */
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = tokenAccessors?.getAccessToken() ?? null;
   try {
     return await rawRequest<T>(path, init, token);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 401 && tokenAccessors) {
-      const refresh = tokenAccessors.getRefreshToken();
-      if (refresh) {
-        try {
-          const r = await rawRequest<{ access_token: string; refresh_token: string }>(
-            '/auth/refresh',
-            { method: 'POST', body: JSON.stringify({ refresh_token: refresh }) },
-            null,
-          );
-          tokenAccessors.onTokens(r.access_token, r.refresh_token);
-          return await rawRequest<T>(path, init, r.access_token);
-        } catch {
-          tokenAccessors.onAuthFail();
-          throw err;
-        }
-      }
+    if (!(err instanceof ApiError && err.status === 401 && tokenAccessors && refreshAccess)) throw err;
+    const fresh = await refreshAccess(token).catch(() => undefined);
+    if (fresh === undefined) throw err;
+    if (fresh === null) {
       tokenAccessors.onAuthFail();
+      throw err;
     }
-    throw err;
+    return rawRequest<T>(path, init, fresh);
   }
 }
 
@@ -125,12 +133,6 @@ export const api = {
     rawRequest<AuthResult>('/auth/register', { method: 'POST', body: JSON.stringify({ email, password, name }) }, null),
   login: (email: string, password: string) =>
     rawRequest<AuthResult>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }, null),
-  refresh: (refreshToken: string) =>
-    rawRequest<{ access_token: string; refresh_token: string; expires_in: number }>(
-      '/auth/refresh',
-      { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) },
-      null,
-    ),
   logout: (refreshToken: string) =>
     rawRequest<void>('/auth/logout', { method: 'POST', body: JSON.stringify({ refresh_token: refreshToken }) }, null),
   me: () => request<MeResult>('/auth/me'),

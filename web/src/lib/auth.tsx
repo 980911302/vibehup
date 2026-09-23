@@ -61,11 +61,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const accessTokenRef = useRef<string | null>(null);
   const refreshTokenRef = useRef<string | null>(null);
 
-  // 供 api.ts 读取当前 token（避免循环依赖）；只注册一次
+  // 供 api.ts 读取当前 token（避免循环依赖）；只注册一次。
+  // localStorage 优先（R76）：别的标签刷新后本标签立刻用上新令牌，不会再提交已轮换的旧令牌
   useEffect(() => {
     setTokenAccessors({
-      getAccessToken: () => accessTokenRef.current,
-      getRefreshToken: () => refreshTokenRef.current,
+      getAccessToken: () => readStorage(TOKEN_KEY) ?? accessTokenRef.current,
+      getRefreshToken: () => readStorage(REFRESH_KEY) ?? refreshTokenRef.current,
       onTokens: (access, refresh) => {
         accessTokenRef.current = access;
         refreshTokenRef.current = refresh;
@@ -84,38 +85,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  // 跨标签同步（R76）：别的标签刷新/登出后，本标签的内存令牌与 SSE 连接随之更新
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== TOKEN_KEY && e.key !== REFRESH_KEY) return;
+      const access = readStorage(TOKEN_KEY);
+      accessTokenRef.current = access;
+      refreshTokenRef.current = readStorage(REFRESH_KEY);
+      setAccessToken(access);
+      if (!access) setUser(null);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // 启动：本地恢复 + 校验
   useEffect(() => {
     (async () => {
       const token = readStorage(TOKEN_KEY);
-      const refresh = readStorage(REFRESH_KEY);
-      refreshTokenRef.current = refresh;
+      refreshTokenRef.current = readStorage(REFRESH_KEY);
       if (token) {
         accessTokenRef.current = token; // 同步 ref，确保 api.me() 带得上令牌
         setAccessToken(token);
         try {
+          // 令牌过期时 api 层会经刷新协调器换新并重放；此处不再另行刷新——
+          // 同一旧令牌提交两次会被服务端判为重放、整族吊销（R76）
           const me = await api.me();
           setUser(me.user);
-        } catch (e) {
-          // token 失效：尝试刷新
-          if (refresh) {
-            try {
-              const r = await api.refresh(refresh);
-              // 必须同步 ref：api 层 getter 读 ref，否则下一步 me() 仍带旧 null 令牌
-              accessTokenRef.current = r.access_token;
-              refreshTokenRef.current = r.refresh_token;
-              setAccessToken(r.access_token);
-              writeStorage(TOKEN_KEY, r.access_token);
-              writeStorage(REFRESH_KEY, r.refresh_token);
-              const me = await api.me();
-              setUser(me.user);
-            } catch (e2) {
-              writeStorage(TOKEN_KEY, null);
-              writeStorage(REFRESH_KEY, null);
-            }
-          } else {
-            writeStorage(TOKEN_KEY, null);
-          }
+        } catch {
+          writeStorage(TOKEN_KEY, null);
+          writeStorage(REFRESH_KEY, null);
         }
       }
       setReady(true);
@@ -143,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    const refresh = refreshTokenRef.current;
+    const refresh = readStorage(REFRESH_KEY) ?? refreshTokenRef.current;
     if (refresh) await api.logout(refresh).catch(() => undefined);
     accessTokenRef.current = null;
     refreshTokenRef.current = null;

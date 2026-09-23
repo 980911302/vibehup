@@ -19,6 +19,8 @@ import { isRegistrationOpen } from './system.js';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REFRESH_TTL_MS = config.refreshTokenTtlDays * 24 * 60 * 60 * 1000;
 const ACCESS_TTL_SEC = config.accessTokenTtlSec;
+/** 刷新令牌重复提交宽限期（R76）：多请求/多标签同时刷新时，后到者提交的是刚被轮换掉的旧令牌 */
+const REUSE_GRACE_MS = 10_000;
 
 export interface AuthResult {
   user: PublicUser;
@@ -109,7 +111,7 @@ export async function refresh(refreshToken: string): Promise<{ access_token: str
   if (!stored || stored.expiresAt.getTime() < Date.now()) {
     throw new errors.UnauthorizedError('登录态已过期，请重新登录', 'INVALID_TOKEN');
   }
-  if (stored.revokedAt) {
+  if (stored.revokedAt && !(await isConcurrentRotation(stored))) {
     // 重放：吊销该 family 下所有未撤销令牌
     await prisma.refreshToken.updateMany({
       where: { familyId: stored.familyId, revokedAt: null },
@@ -123,16 +125,32 @@ export async function refresh(refreshToken: string): Promise<{ access_token: str
   if (!user) throw new errors.UnauthorizedError('登录态已过期，请重新登录', 'INVALID_TOKEN');
   assertActive(user);
 
-  // 轮换：旧令牌撤销，同 family 发新令牌
-  await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+  // 轮换：旧令牌撤销（并发竞态时已被先到者撤销，保留原撤销时间），同 family 发新令牌
+  if (!stored.revokedAt) {
+    await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+  }
   const tokens = await issueTokens(user, stored.familyId);
   return { ...tokens, expires_in: ACCESS_TTL_SEC };
 }
 
+/**
+ * 旧令牌刚被轮换（宽限期内）且令牌族仍有有效令牌 = 并发刷新竞态，不是盗用重放（R76）。
+ * 登出 / 改密 / 重放吊销都会让整族失效，因此不会被误判放行。
+ */
+async function isConcurrentRotation(stored: { familyId: string; revokedAt: Date | null }): Promise<boolean> {
+  if (!stored.revokedAt || Date.now() - stored.revokedAt.getTime() > REUSE_GRACE_MS) return false;
+  const alive = await prisma.refreshToken.count({
+    where: { familyId: stored.familyId, revokedAt: null, expiresAt: { gt: new Date() } },
+  });
+  return alive > 0;
+}
+
+/** 登出：吊销整个令牌族（R76：否则宽限期内并发签出的同族令牌仍可续命） */
 export async function logout(refreshToken: string): Promise<void> {
-  const tokenHash = hashToken(refreshToken);
+  const stored = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(refreshToken) } });
+  if (!stored) return;
   await prisma.refreshToken.updateMany({
-    where: { tokenHash, revokedAt: null },
+    where: { familyId: stored.familyId, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 }
