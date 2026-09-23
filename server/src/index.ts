@@ -11,7 +11,7 @@ import { projectRoutes } from './routes/projects.js';
 import { bugRoutes } from './routes/bugs.js';
 import { taskRoutes } from './routes/tasks.js';
 import { noteRoutes } from './routes/notes.js';
-import { attachmentRoutes, uploadRoutes } from './routes/attachments.js';
+import { attachmentRoutes, attachmentRawRoutes, uploadRoutes } from './routes/attachments.js';
 import { eventRoutes } from './routes/events.js';
 import { activityRoutes } from './routes/activity.js';
 import { searchRoutes } from './routes/search.js';
@@ -101,6 +101,8 @@ export async function buildServer() {
   }
   // SSE：EventSource 不能带 Authorization 头，路由内自行校验 query.token（见 routes/events.ts）
   await app.register(eventRoutes, { prefix: '/api' });
+  // 附件原文件：<img> 同样带不了 Authorization 头，路由内「签名链接或 Bearer」二选一（R76）
+  await app.register(attachmentRawRoutes, { prefix: '/api/attachments' });
   await app.register(activityRoutes, { prefix: '/api/activity' });
   // MCP SSE 传输：API Key（Bearer）鉴权，不经 HTTP 用户守卫（容器化部署形态）
   await app.register(mcpSseRoutes, { prefix: '/mcp' });

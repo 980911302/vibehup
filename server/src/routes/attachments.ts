@@ -10,6 +10,7 @@ import { serializeAttachment } from '../core/serialize.js';
 import { storage } from '../services/storage.js';
 import { isTextFile, readTextSlice, inspectImageAsset } from '../services/assets.js';
 import { ValidationError, PayloadTooLargeError } from '../core/errors.js';
+import { verifyAssetSignature } from '../core/asset-sign.js';
 import { config } from '../config.js';
 
 export const attachmentRoutes: FastifyPluginAsync = async (fastify) => {
@@ -35,21 +36,7 @@ export const attachmentRoutes: FastifyPluginAsync = async (fastify) => {
     return serializeAttachment(attachment);
   });
 
-  /**
-   * GET /api/attachments/:attachmentId/raw
-   * 本地文件直读（Local FS 静态代理，规避防盗链）。
-   */
-  fastify.get('/:attachmentId/raw', async (request, reply) => {
-    const { attachmentId } = request.params as { attachmentId: string };
-    const { attachment, filePath } = await attachmentsService.resolveLocalAttachment(attachmentId);
-    const fileName = encodeURIComponent(attachment.fileName);
-    return reply
-      .header('Content-Type', attachment.fileType)
-      .header('Content-Length', String(attachment.fileSize))
-      .header('Content-Disposition', `inline; filename="${fileName}"`)
-      .header('Cache-Control', 'private, max-age=31536000, immutable')
-      .send(await fsp.readFile(filePath));
-  });
+  // GET /:attachmentId/raw 见下方 attachmentRawRoutes（不挂登录守卫，签名或 Bearer 二选一）
 
   /**
    * GET /api/attachments/:attachmentId/text?offset_line=&limit_lines=&grep_keyword=
@@ -134,6 +121,57 @@ export const attachmentRoutes: FastifyPluginAsync = async (fastify) => {
   });
 };
 
+/** 仅这些类型允许在浏览器内 inline 展示；其余（html/svg/xml/js/pdf…）一律强制下载 */
+const INLINE_SAFE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'image/avif',
+  'image/bmp',
+  'text/plain',
+]);
+
+/** 用户上传内容的 CSP：禁一切子资源 + sandbox（不透明源、禁脚本），即使被直接打开也碰不到应用同源 */
+const USER_CONTENT_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
+/** RFC 6266/5987：ASCII 兜底名 + UTF-8 编码名（中文文件名下载不乱码） */
+function contentDisposition(type: 'inline' | 'attachment', fileName: string): string {
+  const ascii = fileName.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${type}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
+ * GET /api/attachments/:attachmentId/raw —— 原文件下发（R76）。
+ * 不挂全局登录守卫：<img>、新标签页带不了 Authorization 头，改为「签名链接 或 Bearer」二选一
+ * （public_url 由 serialize 签发 exp+sig，见 core/asset-sign.ts）。
+ * 上传方提供的 MIME 不可信：统一 nosniff + CSP sandbox，仅白名单类型 inline，
+ * 防止 .html/.svg 在应用同源执行脚本、读走 localStorage 里的令牌。
+ */
+export const attachmentRawRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get('/:attachmentId/raw', async (request, reply) => {
+    const { attachmentId } = request.params as { attachmentId: string };
+    const { exp, sig } = request.query as { exp?: string; sig?: string };
+    if (!verifyAssetSignature(attachmentId, exp, sig)) {
+      await fastify.authenticate(request, reply);
+    }
+    const { attachment, filePath } = await attachmentsService.resolveLocalAttachment(attachmentId);
+    const disposition = INLINE_SAFE_TYPES.has(attachment.fileType) ? 'inline' : 'attachment';
+    return reply
+      .header('Content-Type', attachment.fileType)
+      .header('Content-Length', String(attachment.fileSize))
+      .header('Content-Disposition', contentDisposition(disposition, attachment.fileName))
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Security-Policy', USER_CONTENT_CSP)
+      .header('Cache-Control', 'private, max-age=31536000, immutable')
+      .send(await fsp.readFile(filePath));
+  });
+};
+
 /** 上传路由：挂载于 /api/upload（设计文档第 5 节 Web 端交互流程） */
 export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
   /**
@@ -215,6 +253,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
     const created = [];
     for (const p of pending) {
       const attachment = await attachmentsService.createAttachment({
+        id: p.attId,
         projectId,
         entityType,
         entityId,
@@ -272,6 +311,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const attachment = await attachmentsService.createAttachment({
+      id: attId,
       projectId: body.project_id,
       entityType: body.entity_type ?? 'general',
       entityId: body.entity_id ?? null,

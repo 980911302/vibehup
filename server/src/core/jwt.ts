@@ -10,7 +10,8 @@ function base64url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url');
 }
 
-function getSecret(): string {
+/** 签名密钥（access token 与附件签名链接共用，后者以 `asset:` 前缀做域隔离） */
+export function getSecret(): string {
   // 优先环境变量；缺省时生成随机密钥（重启后全部失效，适合单机首次启动）
   if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
   if (!(globalThis as { __jwtSecret?: string }).__jwtSecret) {

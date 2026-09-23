@@ -1,4 +1,5 @@
 import type { Attachment, Bug, Note, Project, Task } from '@prisma/client';
+import { signAssetUrl } from './asset-sign.js';
 
 /**
  * API 序列化：统一输出 snake_case（与设计文档 SQL 字段风格一致），
@@ -81,6 +82,15 @@ export function serializeNote(n: Note & { tagList?: string[]; attachmentCount?: 
   };
 }
 
+/**
+ * 本地代理地址签名（R76）：<img> 带不了令牌，签名链接无需 Authorization 即可取回。
+ * 本地存储一律按记录 ID 生成——存量行的 publicUrl 曾指向落盘 ID（≠ 记录 ID），不可信。
+ */
+function signedPublicUrl(a: Attachment): string | null {
+  if (a.storageType === 'local') return signAssetUrl(`/api/attachments/${a.id}/raw`, a.id);
+  return a.publicUrl;
+}
+
 export function serializeAttachment(a: Attachment) {
   return {
     id: a.id,
@@ -92,7 +102,7 @@ export function serializeAttachment(a: Attachment) {
     file_size: a.fileSize,
     storage_type: a.storageType,
     uploaded_by: a.uploadedBy,
-    public_url: a.publicUrl,
+    public_url: signedPublicUrl(a),
     width: a.width,
     height: a.height,
     created_at: a.createdAt.toISOString(),

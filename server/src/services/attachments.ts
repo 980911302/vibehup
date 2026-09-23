@@ -11,6 +11,8 @@ import { buildSearchIndex, matchIndex } from '../core/search.js';
 export const ENTITY_TYPES = ['bug', 'task', 'note', 'general'] as const;
 
 export interface CreateAttachmentInput {
+  /** 落盘时已生成的附件 ID（传入则记录 ID = 文件名 ID = publicUrl 中的 ID） */
+  id?: string;
   projectId: string;
   entityType: string;
   entityId?: string | null;
@@ -30,7 +32,7 @@ export async function createAttachment(input: CreateAttachmentInput): Promise<At
   if (!ENTITY_TYPES.includes(input.entityType as never)) {
     throw new ValidationError(`entity_type 必须是 ${ENTITY_TYPES.join(' | ')} 之一`);
   }
-  const id = ids.attachment();
+  const id = input.id ?? ids.attachment();
   const attachment = await prisma.attachment.create({
     data: {
       id,
@@ -163,6 +165,7 @@ export async function uploadFromBuffer(input: {
   }
 
   return createAttachment({
+    id: attId,
     projectId: input.projectId,
     entityType: input.entityType ?? 'general',
     entityId: input.entityId ?? null,
