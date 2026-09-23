@@ -1,0 +1,186 @@
+import { test, expect, request as pwRequest } from '@playwright/test';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * 核心闭环 E2E（卡片 F3）：截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷新。
+ * 断言点对应 docs/计划/09 的成功标准（验收库指标由 trial-metrics.sh 长期核对，此处锁行为）。
+ * 前置：**空测试库**（首注册用户才是 Owner，否则建项目 403）——acceptance.sh 已在启动 E2E 服务前清库。
+ */
+
+const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const API_KEY_NAME = 'e2e-mcp-key';
+const TITLE = 'E2E 闭环缺陷：登录按钮点了没反应';
+
+// MCP 子进程必须与 HTTP 服务同库：父进程缺 DATABASE_URL 时会继承 server/.env 的 dev 库，
+// 查不到测试库里的密钥 → 子进程 exit 1 → initialize 超时（本轮实测踩到）。
+// acceptance.sh 已显式传入；这里做快速失败护栏，避免以「超时」这种模糊形态暴露。
+if (!process.env.DATABASE_URL) {
+  throw new Error('E2E 需要 DATABASE_URL（与 E2E 服务同库）；请经 bash scripts/acceptance.sh 运行，或显式设置 DATABASE_URL');
+}
+
+/** 1x1 透明 PNG（真实图片字节，供 <img> 解码） */
+const PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+interface McpClient {
+  call: (name: string, args?: Record<string, unknown>) => Promise<any>;
+  close: () => void;
+}
+
+/** MCP stdio 子进程客户端（与 IDE 同款传输；DATABASE_URL 必须与 HTTP 服务同库） */
+async function connectMcp(apiKey: string): Promise<McpClient> {
+  const child = spawn('npx', ['tsx', 'src/mcp-entry.ts'], {
+    cwd: SERVER_DIR,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, VIBEHUB_API_KEY: apiKey },
+  });
+  let buf = '';
+  let nextId = 1;
+  const pending = new Map<number, (v: any) => void>();
+  child.stdout.on('data', (chunk) => {
+    buf += chunk.toString();
+    let idx: number;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.id !== undefined && pending.has(msg.id)) {
+          pending.get(msg.id)?.(msg);
+          pending.delete(msg.id);
+        }
+      } catch {
+        /* 非 JSON 行忽略（stdout 只应有 JSON-RPC） */
+      }
+    }
+  });
+  child.stderr.on('data', () => {});
+  const send = (method: string, params?: unknown) =>
+    new Promise<any>((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, resolve);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+      setTimeout(() => reject(new Error(`MCP ${method} 超时`)), 25_000);
+    });
+  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'e2e', version: '1' } });
+  child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+  return {
+    call: (name, args = {}) => send('tools/call', { name, arguments: args }),
+    close: () => child.kill(),
+  };
+}
+
+test('截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷新', async ({ page }) => {
+  const stamp = Date.now();
+  const email = `e2e_${stamp}@vibehub.local`;
+  const password = 'abcd1234';
+  const api = await pwRequest.newContext({ baseURL: process.env.E2E_BASE ?? 'http://127.0.0.1:3457' });
+
+  // ── 准备：注册 Owner + 建项目（不依赖 UI 向导，聚焦闭环）──
+  const reg = await api.post('/api/auth/register', { data: { email, password, name: 'E2E 用户' } });
+  expect(reg.status()).toBe(201);
+  const { access_token: token } = await reg.json();
+  const projectNo = await api.post('/api/projects', {
+    headers: { authorization: `Bearer ${token}` },
+    data: { name: `E2E 项目 ${stamp}` },
+  });
+  expect(projectNo.status()).toBe(201);
+  const project = await projectNo.json();
+
+  // 浏览器带入登录态（跳过登录页交互，闭环不在此）
+  await page.addInitScript(
+    ([t, r]) => {
+      localStorage.setItem('vibehub_token', t);
+      localStorage.setItem('vibehub_refresh', r);
+      localStorage.setItem('vibehub_onboarded', '1'); // 首启向导不挡闭环
+    },
+    [token, ''],
+  );
+
+  // ── 1/5 截图录入：合成粘贴事件（与真实 Ctrl+V 同路径，卡片 37 起支持上传进度）──
+  await page.goto('/board');
+  await expect(page.getByPlaceholder('搜索缺陷')).toBeVisible();
+  await page.getByRole('button', { name: /录缺陷/ }).first().click();
+  await expect(page.getByPlaceholder('缺陷标题（两句核心描述即可，其他都能省）')).toBeVisible();
+  await page.evaluate((b64) => {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const dt = new DataTransfer();
+    dt.items.add(new File([bytes], 'clip.png', { type: 'image/png' }));
+    const titleInput = document.querySelector<HTMLInputElement>(
+      'input[placeholder="缺陷标题（两句核心描述即可，其他都能省）"]',
+    );
+    const target = titleInput?.closest('form')?.querySelector('div.space-y-3') ?? document.body;
+    target.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, PNG_BASE64);
+  // 上传完成的两个信号：预览缩略图出现 + 进度条消失
+  await expect(page.getByAltText('clip.png')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('上传中…')).toHaveCount(0);
+  await page.getByPlaceholder('缺陷标题（两句核心描述即可，其他都能省）').fill(TITLE);
+  await page.getByTestId('bug-submit').click();
+
+  // ── 2/5 看板刷新 + 缩略图真正解码（naturalWidth > 0，R76 回归核心断言）──
+  const card = page.getByTestId('bug-card').filter({ hasText: TITLE });
+  await expect(card).toBeVisible();
+  await expect
+    .poll(async () => card.locator('img').first().evaluate((el) => (el as HTMLImageElement).naturalWidth), {
+      message: '看板缩略图应真实解码（签名 public_url 未被 401/404）',
+    })
+    .toBeGreaterThan(0);
+
+  // ── 3/5 MCP 读取：真实 stdio 子进程，与 IDE 同款传输 ──
+  const keyRes = await api.post('/api/api-keys', {
+    headers: { authorization: `Bearer ${token}` },
+    data: { name: API_KEY_NAME, scopes: ['context:read', 'bug:write', 'attachment:read'] },
+  });
+  expect(keyRes.status()).toBe(201);
+  const { key } = await keyRes.json();
+  const mcp = await connectMcp(key);
+  try {
+    const list = await mcp.call('list_bugs', { project_slug: project.slug });
+    expect(JSON.stringify(list)).toContain(TITLE);
+    const bugId = await api
+      .get(`/api/bugs?project_id=${project.id}`, { headers: { authorization: `Bearer ${token}` } })
+      .then(async (r) => (await r.json()).items.find((b: any) => b.title === TITLE).id);
+    const detail = await mcp.call('get_bug_detail', { bug_id: bugId });
+    expect(JSON.stringify(detail)).toContain(TITLE);
+    expect(JSON.stringify(detail)).toContain('clip.png');
+
+    // ── 4/5 回填：AI 写评论 + 按状态机推进（open→in_progress→resolved；不允许跨级跳）──
+    const commented = await mcp.call('add_bug_comment', { bug_id: bugId, content: 'E2E：AI 已复现并修复' });
+    expect(commented.result?.isError ?? commented.isError ?? false, JSON.stringify(commented).slice(0, 300)).toBe(false);
+    const started = await mcp.call('update_bug_status', { bug_id: bugId, status: 'in_progress' });
+    expect(started.result?.isError ?? started.isError ?? false, JSON.stringify(started).slice(0, 300)).toBe(false);
+    const resolved = await mcp.call('update_bug_status', {
+      bug_id: bugId,
+      status: 'resolved',
+      resolution_notes: 'E2E 回填：修复登录按钮事件绑定',
+      commit_hash: 'e2e0000',
+    });
+    expect(resolved.result?.isError ?? resolved.isError ?? false, JSON.stringify(resolved).slice(0, 300)).toBe(false);
+  } finally {
+    mcp.close();
+  }
+
+  // ── 5/5 看板刷新：卡片从「待处理」列移动到「已解决」列（SSE 推送 / 轮询兜底）──
+  const resolvedColumn = page.getByTestId('board-column-resolved');
+  await expect
+    .poll(async () => resolvedColumn.getByText(TITLE).count(), {
+      message: '看板应在状态回填后把卡片渲染进「已解决」列',
+      timeout: 20_000,
+    })
+    .toBeGreaterThan(0);
+  expect(await page.getByTestId('board-column-open').getByText(TITLE).count()).toBe(0);
+
+  const boardAfter = await api.get(`/api/bugs/board/${project.id}`, { headers: { authorization: `Bearer ${token}` } });
+  const boardJson = await boardAfter.json();
+  const resolvedBug = boardJson.resolved.find((b: any) => b.title === TITLE);
+  expect(resolvedBug).toBeTruthy();
+  expect(resolvedBug.git_commit_hash).toBe('e2e0000');
+
+  await api.dispose();
+});

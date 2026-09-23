@@ -27,5 +27,11 @@ Thumbs.db
 
 # 测试与验收产物
 server/test-data/
+server/test-data-drill/
 server/acceptance-data/
+server/acceptance-e2e-data/
+server/backups/
+server/backups-drill/
+server/test-results/
+server/playwright-report/
 coverage/

@@ -9,6 +9,7 @@ cd server 2>/dev/null || true
 
 PORT=3456
 BASE="http://127.0.0.1:${PORT}"
+E2E_PORT=3457
 FAIL=0
 PASS=0
 
@@ -24,21 +25,21 @@ expect_contains() {
   if echo "$out" | grep -q "$3"; then ok "$1"; else bad "$1（输出: $(echo "$out" | head -c 120)）"; fi
 }
 
-step "1/5 测试数据库（pgvector 容器）"
+step "1/6 测试数据库（pgvector 容器）"
 TEST_DATABASE_URL=$(bash scripts/test-db.sh 2>/dev/null)
 if [ -n "${TEST_DATABASE_URL}" ]; then ok "测试库就绪 ${TEST_DATABASE_URL}"; else bad "测试库启动失败（Docker 是否在运行）"; exit 1; fi
 
-step "2/5 TypeScript 类型检查"
+step "2/6 TypeScript 类型检查"
 if npx tsc --noEmit > /tmp/vh-tsc.log 2>&1; then ok "tsc --noEmit"; else bad "tsc 编译错误"; tail -5 /tmp/vh-tsc.log; fi
 
-step "3/5 vitest 全量测试"
+step "3/6 vitest 全量测试"
 if TEST_DATABASE_URL="${TEST_DATABASE_URL}" npx vitest run > /tmp/vh-vitest.log 2>&1; then
   ok "$(grep -oE 'Tests +[0-9]+ passed' /tmp/vh-vitest.log | tail -1)"
 else
   bad "vitest 失败"; grep -E "×|FAIL" /tmp/vh-vitest.log | head -10
 fi
 
-step "4/5 HTTP 冒烟（:${PORT}）"
+step "4/6 HTTP 冒烟（:${PORT}）"
 SERVER_PID=""
 cleanup() { [ -n "${SERVER_PID}" ] && kill "${SERVER_PID}" 2>/dev/null; }
 trap cleanup EXIT
@@ -103,8 +104,50 @@ docker exec vibehub-test-db psql -U postgres -c \
   'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users" RESTART IDENTITY CASCADE' > /dev/null 2>&1 \
   && ok "冒烟数据已清理" || bad "冒烟数据清理失败"
 
-step "5/5 汇总"
+step "5/6 核心闭环 E2E（Playwright + MCP stdio，:${E2E_PORT}）"
+E2E_BASE="http://127.0.0.1:${E2E_PORT}"
+
+# E2E 用全新库：残留 owner 会让新注册用户降级为 member，建项目 403（首用户才自动 Owner）
+docker exec vibehub-test-db psql -U postgres -q -c \
+  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings" RESTART IDENTITY CASCADE' > /dev/null 2>&1
+
+# 静态产物新鲜度：缺 out/index.html 或关键页面早于源码则重建（不每次全量 build，门禁要快）
+if [ ! -f ../web/out/index.html ] || [ -n "$(find ../web/src ../web/next.config.ts -newer ../web/out/index.html -print -quit 2>/dev/null)" ]; then
+  echo "  · web/out 缺失或落后于源码，重建静态产物…"
+  if (cd ../web && npx next build > /tmp/vh-web-build.log 2>&1); then ok "web 静态产物已重建"; else bad "next build 失败"; tail -5 /tmp/vh-web-build.log; fi
+else
+  ok "web 静态产物为最新（跳过 build）"
+fi
+
+E2E_PID=""
+cleanup_e2e() { [ -n "${E2E_PID}" ] && kill "${E2E_PID}" 2>/dev/null; }
+trap 'cleanup; cleanup_e2e' EXIT
+
+DATABASE_URL="${TEST_DATABASE_URL}" DATA_DIR=./acceptance-e2e-data PORT=${E2E_PORT} EMBEDDING_PROVIDER=none npx tsx src/index.ts > /tmp/vh-e2e-server.log 2>&1 &
+E2E_PID=$!
+E2E_READY=0
+for _ in $(seq 1 40); do
+  if curl -sf "${E2E_BASE}/api/health" > /dev/null 2>&1; then E2E_READY=1; break; fi
+  sleep 0.5
+done
+if [ "${E2E_READY}" = "1" ]; then ok "E2E 服务就绪"; else bad "E2E 服务未就绪"; tail -10 /tmp/vh-e2e-server.log; fi
+
+if [ "${E2E_READY}" = "1" ]; then
+  # DATABASE_URL 必须传给 Playwright：MCP stdio 子进程与 HTTP 服务须同库，否则子进程落 dev 库查不到密钥
+  if DATABASE_URL="${TEST_DATABASE_URL}" E2E_BASE="${E2E_BASE}" npx playwright test -c playwright.config.ts > /tmp/vh-e2e.log 2>&1; then
+    ok "E2E $(grep -oE '[0-9]+ passed' /tmp/vh-e2e.log | tail -1)"
+  else
+    bad "E2E 失败"; tail -20 /tmp/vh-e2e.log
+  fi
+fi
+
+cleanup_e2e
+E2E_PID=""
+docker exec vibehub-test-db psql -U postgres -c \
+  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings" RESTART IDENTITY CASCADE' > /dev/null 2>&1
+
+step "6/6 汇总"
 echo "  PASS=${PASS}  FAIL=${FAIL}"
-rm -rf acceptance-data /tmp/vh-accept.txt
+rm -rf acceptance-data acceptance-e2e-data /tmp/vh-accept.txt
 [ "${FAIL}" -eq 0 ] && echo "✅ 验收通过" || echo "❌ 验收失败（${FAIL} 项）"
 exit $([ "${FAIL}" -eq 0 ] && echo 0 || echo 1)
