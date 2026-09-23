@@ -29,12 +29,24 @@ async function ensureDirs(): Promise<void> {
   fs.mkdirSync(paths.trash, { recursive: true });
 }
 
-export async function buildServer() {
+export async function buildServer(opts: { loggerStream?: NodeJS.WritableStream } = {}) {
   await ensureDirs();
 
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL ?? 'info',
+      ...(opts.loggerStream ? { stream: opts.loggerStream } : {}),
+      // F5：请求日志脱敏——/api/events?token=<JWT> 是唯一把 access token 放进 URL 的入口
+      // （EventSource 带不了 Authorization 头），原样打日志等于把可用令牌写进日志文件。
+      serializers: {
+        req: (req) => ({
+          method: req.method,
+          url: typeof req.url === 'string' ? req.url.replace(/([?&]token=)[^&#\s]*/gi, '$1[已脱敏]') : req.url,
+          host: req.headers?.host,
+          remoteAddress: req.ip,
+          remotePort: req.socket?.remotePort,
+        }),
+      },
     },
     bodyLimit: 20 * 1024 * 1024, // 20MB JSON body（base64 上传走单独路由）
   });

@@ -143,6 +143,18 @@ if [ "${E2E_READY}" = "1" ]; then
   fi
 fi
 
+# F5 实证：浏览器看板会连 /api/events，日志里必须能看到该请求但**不得出现令牌明文**
+if grep -q '/api/events?token=\[已脱敏\]' /tmp/vh-e2e-server.log; then
+  ok "访问日志已脱敏（/api/events token 不落明文）"
+else
+  bad "未见脱敏后的 /api/events 日志（F5 回归）"
+fi
+if grep -q 'eyJhbGciOiJIUzI1NiIs' /tmp/vh-e2e-server.log; then
+  bad "E2E 服务日志出现 JWT 明文（脱敏失败）"
+else
+  ok "E2E 服务日志无 JWT 明文"
+fi
+
 cleanup_e2e
 E2E_PID=""
 docker exec vibehub-test-db psql -U postgres -c \
