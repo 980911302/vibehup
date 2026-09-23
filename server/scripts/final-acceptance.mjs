@@ -10,6 +10,10 @@ const BASE = process.env.BASE_URL ?? 'http://127.0.0.1:3210';
 
 // MCP 子进程连接串：与 HTTP 服务同库（server/.env 的 DATABASE_URL）
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+// MCP 子进程工作目录 = server/（src/mcp-entry.ts 相对于此）。
+// 必须 fileURLToPath 解码：URL.pathname 会把中文路径百分号编码，目录不存在 → spawn ENOENT（R76 抓到）
+const SERVER_DIR = fileURLToPath(new URL('..', import.meta.url));
 function deriveDbUrl() {
   if (process.env.ACCEPTANCE_DATABASE_URL) return process.env.ACCEPTANCE_DATABASE_URL;
   try {
@@ -120,7 +124,7 @@ const TIMEOUT_MS = 20000;
 
 function stdioTransport(apiKey) {
   const server = spawn('npx', ['tsx', 'src/mcp-entry.ts'], {
-    cwd: new URL('.', import.meta.url).pathname,
+    cwd: SERVER_DIR,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, DATABASE_URL: DB_URL, VIBEHUB_API_KEY: apiKey },
   });
@@ -249,7 +253,7 @@ if (process.env.MCP_TRANSPORT === 'sse') {
   ok('C9 撤销密钥后 SSE 握手 401', r?.status === 401, 'status=' + (r?.status ?? 'ERR'));
 } else {
   const server2 = spawn('npx', ['tsx', 'src/mcp-entry.ts'], {
-    cwd: new URL('.', import.meta.url).pathname,
+    cwd: SERVER_DIR,
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, DATABASE_URL: DB_URL, VIBEHUB_API_KEY: keyRes.key },
   });
