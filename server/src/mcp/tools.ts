@@ -110,7 +110,6 @@ export async function getBugDetail(input: { bug_id: string }) {
     priority: bug.priority,
     labels: bug.labels,
     assignee_id: bug.assigneeId,
-    ...truncateText(bug.stepsToReproduce, DEFAULT_BUDGET.textFieldMax),
     steps_to_reproduce: truncateText(bug.stepsToReproduce, DEFAULT_BUDGET.textFieldMax).value,
     steps_to_reproduce_truncated: truncateText(bug.stepsToReproduce, DEFAULT_BUDGET.textFieldMax).truncated,
     expected_result: truncateText(bug.expectedResult, DEFAULT_BUDGET.textFieldMax).value,
