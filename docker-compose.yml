@@ -1,3 +1,5 @@
+# VibeHub 单容器编排（PG16+pgvector + Node22 + supervisord 双进程）
+# 用法：在同目录放好 .env（见 .env.example）后 `docker compose up -d --build`
 services:
   vibehub:
     build: .
@@ -7,7 +9,8 @@ services:
     ports:
       - "3210:3210"        # HTTP / SSE / MCP-SSE（5432 不对外）
     volumes:
-      - vibehub-db:/var/lib/postgresql/data   # PostgreSQL 数据
+      # 卷名保持与既有部署一致（vibehub-pg / vibehub-data），改卷名会挂到空卷、看起来像"数据丢了"
+      - vibehub-pg:/var/lib/postgresql/data   # PostgreSQL 数据
       - vibehub-data:/data                    # 附件 / 派生图 / 回收站
     environment:
       POSTGRES_USER: vibehub
@@ -16,7 +19,19 @@ services:
       DATABASE_URL: postgresql://vibehub:${POSTGRES_PASSWORD}@127.0.0.1:5432/vibehub?schema=public
       JWT_SECRET: ${JWT_SECRET:?请在 .env 设置 JWT_SECRET（openssl rand -hex 32）}
       REGISTRATION_OPEN: "true"
+      # 语义检索（可选）：none=纯关键词；dashscope=OpenAI 兼容模式
+      # 注意 Docker Compose 的 environment 本身就是默认值来源，与 .env 重复无妨；
+      # 写 ${VAR:-默认} 可让 .env 覆盖，未设置时退回默认。
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-none}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://dashscope.aliyuncs.com/compatible-mode/v1}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-v3}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-1024}
+      EMBEDDING_TOKEN_LIMIT: ${EMBEDDING_TOKEN_LIMIT:-8192}
+      EMBEDDING_SEND_DIM: ${EMBEDDING_SEND_DIM:-true}
+      EMBEDDING_USE_BASE64: ${EMBEDDING_USE_BASE64:-true}
+      EMBEDDING_TIMEOUT_MS: ${EMBEDDING_TIMEOUT_MS:-5000}
 
 volumes:
-  vibehub-db:
+  vibehub-pg:
   vibehub-data:
