@@ -36,3 +36,6 @@ server/test-results/
 server/playwright-report/
 server/tests/e2e/.test-owner.json
 coverage/
+
+# 本机 MCP 接入说明（含明文密钥，禁提交）
+.mcp-setup.md
