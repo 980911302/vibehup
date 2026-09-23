@@ -10,6 +10,8 @@ F0 查询（只读）：docker exec vibehub-dev-db psql -U vibehub -d vibehub -c
 边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
       MCP 工具多项目时必须传 project_slug；MCP stdio 子进程必须显式传 DATABASE_URL（否则继承 server/.env 的 dev 库）
+性能体检（只读，怀疑「点击慢」时先跑）：node server/scripts/perf-probe.mjs <BASE> <email> <password>
+      日常使用入口用 :3210（生产形态静态产物）；:3211 是 next dev，首次访问页面有按需编译延迟，不代表产品慢
 ```
 
 
@@ -23,7 +25,7 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 - **当前步骤**：🧊 **试用冻结期（R77 起）**——新功能冻结，按 `docs/计划/09` 真实试用 10 个工作日；R78 已把冻结期清单 F1–F8 全部做完，除 F0（试用反馈）外无待办
 - **当前子任务**：R78 完成（删卡片 39/51 + F1–F8 全部落地 + 交付镜像 1.3 重建 + 服务已起）；**试用起始日：待用户开始实际使用时填写**
 - **环境状态**：双库容器在跑（dev 55433 持久卷 / test 55432 破坏性）；**服务已启动**——后端 :3210（连验收库）+ 前端 dev :3211（/api 代理 3210）；`vibehub:1.3` 为唯一交付镜像（含 R76/R77/R78 全部修复，1.2 已删）
-- **代码基线**：R78 后全绿：vitest 180/180 + web 单测 12/12 + 冒烟 14/14 + E2E 3 用例 + 备份恢复演练 10/10 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**；git：main（R75 基线）→ fix/p0-review（R76/R77/R78 共 12 个提交，待用户合并）
+- **代码基线**：R78 后全绿：vitest 188/188 + web 单测 18/18 + 冒烟 14/14 + E2E 3 用例 + 备份恢复演练 10/10 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**；git：main（R75 基线）→ fix/p0-review（R76/R77/R78 共 12 个提交，待用户合并）
 
 ## 2. 看板（工程进度）
 
@@ -33,6 +35,8 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 | --- | --- | :-: | :-: |
 | F0 | 试用反馈缺陷（常驻）：验收库中带 `trial` 标签且未关闭的缺陷，按录入先后处理（查询见 §5；修复后在 VibeHub 回填状态） | 09 | 复现用例 TDD + acceptance.sh |
 > R78 已把 F1–F8 全部做完（详见「已完成」）；除 F0 外无待办。冻结期边界不变：新功能仍一律不施工。
+
+> **R78 追加：点击延迟排查与性能加固**（用户反馈「点击好像不快，是不是 SQL 慢」）。实测结论：**接口与 SQL 都不是瓶颈**——1000 缺陷 + 5000 附件下看板 12.9–19.3ms、改状态 14.3ms、首屏 264ms、点卡片 64–139ms、无长任务（帧间隔 p95 17.5ms）。真正的两处浪费：① 日常用的是 `next dev`（`:3211` /login 首字节 185ms vs 生产形态 3ms）——**日常改用 `http://127.0.0.1:3210`**（Fastify 托管已构建产物 + 同源 API）；② SSE 已连通却仍无条件 5s 轮询（12s 白打 12 个请求、每次 45KB 整板）。已加固：附件计数 N+1 → 一次批量查询（看板 200 条 20ms→**7.2ms**）、SSE 有效时跳过轮询（12s 请求数 12→**0**，SSE 送达仍 **43ms**）、便签标签统计只取 tags 列。体检脚本 `server/scripts/perf-probe.mjs`，用法见下。
 
 ### 已移除（R78 用户决定，不再重开、不再列入任何看板）
 
@@ -294,6 +298,8 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 | R78 | 用户决定卡片 51（看板表格视图）与卡片 39（全局截图入口）**彻底删除**，不留冻结/重开路径 | 删除 `docs/计划/39-全局截图入口方案.md`；§2 冻结区+已砍两份表合并为「已移除」；清理 AGENTS.md §0、`09` §2/§5、`07` §7.10 列表视图行、§2 顶部状态与 §5 起点指令；历史日志行保留原样（史实），仅新增本行登记 | AGENTS.md、docs/计划/{09,07,PROGRESS}.md；无代码变更 |
 | R78 | 浏览器回归长期挂账（R74/R75 因 IAB 环境故障连续跳过，卡片 49 指派与卡片 50 TSV 速录从未做过浏览器级验证） | 引入 `@playwright/test` 作为 devDependency 并接入门禁：核心闭环 1 条 + 补验 2 条（指派 / TSV 速录），全部 headless 实测通过；`acceptance.sh` 增 5/6 步（清测试库 → 产物新鲜度检查 → 起 E2E 服务 → 传 DATABASE_URL → 跑 Playwright）；F1/F3 卡片验收方式由「IAB 人工回归」改为「E2E 自动断言」 | server/tests/e2e/、playwright.config.ts、acceptance.sh、package.json；AGENTS.md §8 门禁表述 |
 | R78 | 新错误码与两条新契约需契约定居 | AGENTS.md §3 增「登录防暴力契约」+ 错误码枚举补 `RATE_LIMITED`；§5 工具数 14→15（与代码 TOOLS 一致）；§8 门禁去硬编码用例数（改为以脚本当次输出为准） | AGENTS.md；server/src/core/errors.ts、services/login-throttle.ts |
+| R78 | 用户反馈「点击反应慢，是不是接口/SQL 慢」——实测证伪：接口 20–30ms、SQL 执行计划 0.53ms、前端无长任务；真实原因是 **dev 编译延迟**（`:3211` /login 首字节 185ms vs 生产形态 3ms）与 **SSE 连通时仍无条件 5s 轮询**（12s 12 个请求 / 每次 45KB 整板），另有四处逐条附件计数（N+1） | ① 日常入口改 `:3210`（生产形态）；② 附件计数批量化为一次单列查询（`countAttachmentsFor`）；③ 前端 `sse-poll.ts` 按「SSE 最近活动时间」决定跳过轮询，静默 15s 或断开即恢复兜底；④ `listNoteTags` 只取 tags 列（原已实现，补测试防回退）。实测：看板 200 条 20ms→7.2ms、12s 轮询请求 12→0、SSE 送达仍 43ms | server/src/services/{attachments,bugs,notes,tasks}.ts、web/src/lib/sse-poll.ts、web/src/hooks/use-vibehub.ts；AGENTS.md §2 轮询表述 |
+| R78 | 实时推送契约原文「前端 5s 轮询保留为双保险」与「SSE 有效时跳过轮询」冲突 | 契约改为**条件兜底**：SSE 已连通且最近有活动则跳过本轮；判定必须按「最近活动时间」而非连通标记——EventSource 半开时 onerror 不触发，只看标记会永久停掉兜底（丢实时性的风险大于省下的请求） | AGENTS.md §2；web/src/lib/sse-poll.ts（纯函数 + 6 条单测锁定语义） |
 
 ---
 
@@ -311,6 +317,8 @@ F0 查询（只读）：docker exec vibehub-dev-db psql -U vibehub -d vibehub -c
 边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
       MCP 工具多项目时必须传 project_slug；MCP stdio 子进程必须显式传 DATABASE_URL（否则继承 server/.env 的 dev 库）
+性能体检（只读，怀疑「点击慢」时先跑）：node server/scripts/perf-probe.mjs <BASE> <email> <password>
+      日常使用入口用 :3210（生产形态静态产物）；:3211 是 next dev，首次访问页面有按需编译延迟，不代表产品慢
 ```
 
 ## 6. 防跑偏规则（每次运行遵守）
@@ -366,4 +374,4 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 
 | R76 | 人工会话（用户指示按项目评审去做）：① git init + 基线提交（main），修复在分支 fix/p0-review；② 评审四项 P0——附件签名链接（修 <img> 401 与落盘/记录 ID 不一致致 404，raw 加 nosniff/CSP sandbox/白名单 inline）、刷新令牌竞态（服务端 10s 宽限 + 登出吊销整族；前端 token-refresh 协调器）、MCP 密钥 SSE 逐次复核 + 成员禁用停用/移除吊销、项目解析去 cwd 猜测与静默回落；③ 测试基建：final-acceptance 子进程 cwd、起库脚本拉起已停止容器；④ **开局自校验修正**：§5 仍为 R64「等待卡片 39」与顶部 R75「卡片 51」矛盾，按最近日志统一为卡片 51 | vitest 161/161（+25）+ web 单测 12/12 + acceptance.sh 14/14（每个修复提交前各跑一次）+ 四场景 stdio 30/30 / SSE 30/30（测试库）+ web tsc 0 错误 / next build 通过 + IAB：签名链接 <img> 免令牌加载 480×200、未签名链接加载失败 | 卡片 51（按原计划）；建议用户先人工确认看板缩略图显示与多标签不掉线，并决定评审其余发现（§4 R76 末条）。**技能治理**：① 「lsof -ti 会列出客户端连接（含 Claude 浏览器进程），结束服务须 -sTCP:LISTEN」「URL.pathname 中文路径须 fileURLToPath」值得固化——已入 vibehub-build；② 技能已更新；③ AGENTS.md 补 6 处 R76 契约 |
 | R77 | 用户授权代为决策「收拢范围」：卡片 39 **砍**（inject 探针实测 MCP 密钥调 REST 录入接口 401 INVALID_TOKEN，方案「零后端改动」前提不成立；收益未经数据验证）；卡片 51 **冻结**；新建 `docs/计划/09`（10 个工作日真实试用、可量化达标标准、结束评审解冻规则）；新增只读 `server/scripts/trial-metrics.sh`；§2 看板改为冻结期清单 F0–F8；§6 增冻结期规则 | 指标脚本以四场景总验收数据校验口径（总验收 30/30 后：AI resolved 1 / 人工新建 2 = 50%，MCP 成功 7 / 失败 1，与剧本一致；补录带图缺陷后截图计数 0→1；起始日期过滤生效）；测试库已清空。**附带实证**：只读核对验收库 `auth.token_reused` 共 4 条＝2 组同毫秒成对（并发刷新指纹，UTC 00:24 / 04:36，均早于 R76 刷新修复 11:51 UTC）——P0-2 在用户环境真实发生过 2 次；故试用指标必须以修复后的日期为起点 | F0 / F1（冻结期清单）。**技能治理**：① 无新重复工作流；② vibehub-build 补「冻结期协议」；③ AGENTS.md §0 补当前阶段、§1 文档索引补 09 |
-| R78 | 用户指示：「卡片 51/39 都删除了不要了，然后其它没做完的就继续做，你先给我跑起来」——① 删除 39/51 全部计划痕迹；② 起服务并推进冻结期清单 F1–F8；③ 交付镜像刷新 | 删卡：删 `docs/计划/39-全局截图入口方案.md` + AGENTS.md/09/07/PROGRESS 全部引用（历史日志留原貌）。清单：F1/F3 引入 Playwright E2E（3 用例：闭环 + 指派 + TSV 速录）、F2 语义写路径超时与跳过、F4 登录限流、F5 SSE 单连接与日志脱敏、F6 镜像 1.3 容器冒烟、F7 备份恢复演练 10/10、F8 文档纠偏。**门禁**：`acceptance.sh` **PASS=19 FAIL=0**（tsc + vitest 180 + 冒烟 14 + E2E 3 passed + 日志脱敏 2 实证）。**实测抓到的四个坑**：MCP 子进程缺 DATABASE_URL 会静默落 dev 库（查无密钥 → initialize 超时）；状态机不允许 open→resolved 跨级（工具返回 isError，早期断言写错漏判）；`getByAltText` 在看板与对话框同名文件下命中两元素（strict mode）；非空库首注册用户是 member（建项目 403）→ 夹具共用同一 Owner。服务已起：后端 :3210（验收库）+ 前端 dev :3211 | 试用启动（F0 常驻）；R76/R77/R78 待合并到 main | **技能治理**：① 「E2E 前置清库 + 共用 Owner 夹具」为可复用模式，已随代码库沉淀（tests/e2e/fixtures.ts），不另立技能；② vibehub-build 补两条教训（MCP 子进程须显式传 DATABASE_URL；E2E 断言要检查工具返回的 isError）；③ AGENTS.md §3 补登录防暴力契约、§5 工具数订正 15、§8 门禁去硬编码 |
+| R78 | 用户指示：「卡片 51/39 都删除了不要了，然后其它没做完的就继续做，你先给我跑起来」——① 删除 39/51 全部计划痕迹；② 起服务并推进冻结期清单 F1–F8；③ 交付镜像刷新 | 删卡：删 `docs/计划/39-全局截图入口方案.md` + AGENTS.md/09/07/PROGRESS 全部引用（历史日志留原貌）。清单：F1/F3 引入 Playwright E2E（3 用例：闭环 + 指派 + TSV 速录）、F2 语义写路径超时与跳过、F4 登录限流、F5 SSE 单连接与日志脱敏、F6 镜像 1.3 容器冒烟、F7 备份恢复演练 10/10、F8 文档纠偏。**门禁**：`acceptance.sh` **PASS=19 FAIL=0**（tsc + vitest 188 + 冒烟 14 + E2E 3 passed + 日志脱敏 2 实证）。**实测抓到的四个坑**：MCP 子进程缺 DATABASE_URL 会静默落 dev 库（查无密钥 → initialize 超时）；状态机不允许 open→resolved 跨级（工具返回 isError，早期断言写错漏判）；`getByAltText` 在看板与对话框同名文件下命中两元素（strict mode）；非空库首注册用户是 member（建项目 403）→ 夹具共用同一 Owner。服务已起：后端 :3210（验收库）+ 前端 dev :3211 | 试用启动（F0 常驻）；R76/R77/R78 待合并到 main | **技能治理**：① 「E2E 前置清库 + 共用 Owner 夹具」为可复用模式，已随代码库沉淀（tests/e2e/fixtures.ts），不另立技能；② vibehub-build 补两条教训（MCP 子进程须显式传 DATABASE_URL；E2E 断言要检查工具返回的 isError）；③ AGENTS.md §3 补登录防暴力契约、§5 工具数订正 15、§8 门禁去硬编码 |
