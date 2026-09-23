@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# VibeHub 后端一键验收门禁（步骤 05 §5.4）。
+# 顺序：测试库 → tsc → vitest → 起服务 curl 冒烟 → 汇总退出码。
+# 用法：bash scripts/acceptance.sh
+set -uo pipefail
+
+cd "$(dirname "$0")/.."
+cd server 2>/dev/null || true
+
+PORT=3456
+BASE="http://127.0.0.1:${PORT}"
+FAIL=0
+PASS=0
+
+step() { echo; echo "── $1 ──"; }
+ok()   { echo "  PASS $1"; PASS=$((PASS+1)); }
+bad()  { echo "  FAIL $1"; FAIL=$((FAIL+1)); }
+
+# 断言：命令成功
+expect_ok() { if eval "$2" > /dev/null 2>&1; then ok "$1"; else bad "$1"; fi; }
+# 断言：输出包含
+expect_contains() {
+  local out; out=$(eval "$2" 2>/dev/null)
+  if echo "$out" | grep -q "$3"; then ok "$1"; else bad "$1（输出: $(echo "$out" | head -c 120)）"; fi
+}
+
+step "1/5 测试数据库（pgvector 容器）"
+TEST_DATABASE_URL=$(bash scripts/test-db.sh 2>/dev/null)
+if [ -n "${TEST_DATABASE_URL}" ]; then ok "测试库就绪 ${TEST_DATABASE_URL}"; else bad "测试库启动失败（Docker 是否在运行）"; exit 1; fi
+
+step "2/5 TypeScript 类型检查"
+if npx tsc --noEmit > /tmp/vh-tsc.log 2>&1; then ok "tsc --noEmit"; else bad "tsc 编译错误"; tail -5 /tmp/vh-tsc.log; fi
+
+step "3/5 vitest 全量测试"
+if TEST_DATABASE_URL="${TEST_DATABASE_URL}" npx vitest run > /tmp/vh-vitest.log 2>&1; then
+  ok "$(grep -oE 'Tests +[0-9]+ passed' /tmp/vh-vitest.log | tail -1)"
+else
+  bad "vitest 失败"; grep -E "×|FAIL" /tmp/vh-vitest.log | head -10
+fi
+
+step "4/5 HTTP 冒烟（:${PORT}）"
+SERVER_PID=""
+cleanup() { [ -n "${SERVER_PID}" ] && kill "${SERVER_PID}" 2>/dev/null; }
+trap cleanup EXIT
+
+# 卡片 28：冒烟服务显式关闭语义检索，门禁 hermetic（不打 DashScope 外网）
+DATABASE_URL="${TEST_DATABASE_URL}" DATA_DIR=./acceptance-data PORT=${PORT} EMBEDDING_PROVIDER=none npx tsx src/index.ts > /tmp/vh-server.log 2>&1 &
+SERVER_PID=$!
+
+# 等待健康检查
+READY=0
+for _ in $(seq 1 40); do
+  if curl -sf "${BASE}/api/health" > /dev/null 2>&1; then READY=1; break; fi
+  sleep 0.5
+done
+if [ "${READY}" = "1" ]; then ok "服务启动 + /api/health"; else bad "服务未就绪"; tail -10 /tmp/vh-server.log; fi
+
+# 4.1 无令牌 401
+expect_contains "无令牌访问业务路由 401" \
+  "curl -s ${BASE}/api/projects" '"UNAUTHORIZED"'
+
+# 4.2 注册第一个用户 = owner
+REG=$(curl -s -XPOST "${BASE}/api/auth/register" -H 'content-type: application/json' \
+  -d '{"email":"accept@vibehub.local","password":"abcd1234","name":"验收用户"}')
+TOKEN=$(echo "${REG}" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.access_token||'')}catch{}")
+expect_contains "注册首个用户返回 owner" "echo '${REG}'" '"role":"owner"'
+[ -n "${TOKEN}" ] && ok "拿到 access_token" || bad "未拿到 access_token"
+
+# 4.3 带令牌建项目
+PROJ=$(curl -s -XPOST "${BASE}/api/projects" -H "authorization: Bearer ${TOKEN}" -H 'content-type: application/json' \
+  -d '{"name":"验收项目"}')
+PID=$(echo "${PROJ}" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.id||'')}catch{}")
+[ -n "${PID}" ] && ok "建项目成功" || bad "建项目失败：${PROJ}"
+
+# 4.4 上传附件（multipart）
+UPLOAD=$(curl -s -XPOST "${BASE}/api/upload" -H "authorization: Bearer ${TOKEN}" \
+  -F "project_id=${PID}" -F "files=@/tmp/vh-accept.txt;type=text/plain" 2>/dev/null)
+echo "acceptance smoke" > /tmp/vh-accept.txt
+UPLOAD=$(curl -s -XPOST "${BASE}/api/upload" -H "authorization: Bearer ${TOKEN}" \
+  -F "project_id=${PID}" -F "files=@/tmp/vh-accept.txt;type=text/plain")
+expect_contains "上传附件带 uploaded_by" "echo '${UPLOAD}'" '"uploaded_by"'
+
+# 4.5 建缺陷 + 看板
+BUG=$(curl -s -XPOST "${BASE}/api/bugs" -H "authorization: Bearer ${TOKEN}" -H 'content-type: application/json' \
+  -d "{\"project_id\":\"${PID}\",\"title\":\"验收缺陷\",\"priority\":\"high\"}")
+expect_contains "建缺陷 priority=high" "echo '${BUG}'" '"priority":"high"'
+BID=$(echo "${BUG}" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.id||'')}catch{}")
+BOARD=$(curl -s "${BASE}/api/bugs/board/${PID}" -H "authorization: Bearer ${TOKEN}")
+expect_contains "看板含该缺陷" "echo '${BOARD}'" '"验收缺陷"'
+
+# 4.6 状态机：open → in_progress
+MOVED=$(curl -s -XPATCH "${BASE}/api/bugs/${BID}" -H "authorization: Bearer ${TOKEN}" -H 'content-type: application/json' \
+  -d '{"status":"in_progress"}')
+expect_contains "拖拽改状态 in_progress" "echo '${MOVED}'" '"status":"in_progress"'
+
+# 4.7 MCP SSE 端点：无密钥 401
+expect_contains "MCP SSE 无密钥 401" "curl -s ${BASE}/mcp/sse" '"UNAUTHORIZED"'
+
+# 4.8 清理冒烟数据（禁演示数据规则：验收写入仅存于测试库）
+cleanup
+SERVER_PID=""
+docker exec vibehub-test-db psql -U postgres -c \
+  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users" RESTART IDENTITY CASCADE' > /dev/null 2>&1 \
+  && ok "冒烟数据已清理" || bad "冒烟数据清理失败"
+
+step "5/5 汇总"
+echo "  PASS=${PASS}  FAIL=${FAIL}"
+rm -rf acceptance-data /tmp/vh-accept.txt
+[ "${FAIL}" -eq 0 ] && echo "✅ 验收通过" || echo "❌ 验收失败（${FAIL} 项）"
+exit $([ "${FAIL}" -eq 0 ] && echo 0 || echo 1)

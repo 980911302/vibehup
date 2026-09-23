@@ -1,0 +1,22 @@
+services:
+  vibehub:
+    build: .
+    image: vibehub:latest
+    container_name: vibehub
+    restart: unless-stopped
+    ports:
+      - "3210:3210"        # HTTP / SSE / MCP-SSE（5432 不对外）
+    volumes:
+      - vibehub-db:/var/lib/postgresql/data   # PostgreSQL 数据
+      - vibehub-data:/data                    # 附件 / 派生图 / 回收站
+    environment:
+      POSTGRES_USER: vibehub
+      POSTGRES_DB: vibehub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      DATABASE_URL: postgresql://vibehub:${POSTGRES_PASSWORD}@127.0.0.1:5432/vibehub?schema=public
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 设置 JWT_SECRET（openssl rand -hex 32）}
+      REGISTRATION_OPEN: "true"
+
+volumes:
+  vibehub-db:
+  vibehub-data:

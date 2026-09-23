@@ -1,0 +1,271 @@
+// VibeHub Prisma Schema —— 团队单机版（v2）
+// 数据库：PostgreSQL 16/17 + pgvector（单容器部署，见 docs/规范/03-容器化部署规范.md）
+// 契约：单机单团队不建 organizations 表；多态关联用 entity_type+entity_id 不建外键；
+//       禁演示数据；迁移只准 prisma migrate 生成（vector 列等 raw SQL 例外须注释）。
+
+generator client {
+  provider = "prisma-client-js"
+  // linux-arm64-openssl-3.0.x：Apple Silicon 上 pgvector 基底（arm64+OpenSSL3）的查询引擎目标。
+  // 不声明时生成的引擎可能与运行期平台/OpenSSL 大版本不符（R54 实测 openssl-1.1.x 跑不了）。
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// 项目表：slug 对应代码仓库名，供 AI 自动匹配（组织内唯一，单机即全局唯一）
+model Project {
+  id          String    @id
+  name        String
+  slug        String    @unique
+  description String?
+  archivedAt  DateTime? @map("archived_at") // 软归档：不显示但可恢复
+  createdBy   String?   @map("created_by")  // 创建者 user id
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  bugs        Bug[]
+  tasks       Task[]
+  notes       Note[]
+  attachments Attachment[]
+
+  @@index([slug])
+  @@map("projects")
+}
+
+/// 缺陷表（v2：指派/优先级/截止日/标签原生数组/重开计数）
+model Bug {
+  id               String    @id
+  projectId        String    @map("project_id")
+  title            String
+  stepsToReproduce String?   @map("steps_to_reproduce")
+  expectedResult   String?   @map("expected_result")
+  actualResult     String?   @map("actual_result")
+  severity         String    @default("normal") // low | normal | high | critical
+  status           String    @default("open")   // open | in_progress | resolved | verified | closed
+  gitCommitHash    String?   @map("git_commit_hash")
+  createdBy        String    @default("human") @map("created_by") // human | ai
+  resolutionNotes  String?   @map("resolution_notes")
+  // —— v2 扩展 ——
+  assigneeId    String?   @map("assignee_id") // 指派用户 id（空=未指派）
+  priority      String    @default("medium") // low | medium | high | urgent
+  dueDate       DateTime? @map("due_date")
+  labels        String[] // 原生数组：["ui","p0"]
+  reopenedCount Int       @default(0) @map("reopened_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User? @relation("BugAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([projectId, assigneeId])
+  @@index([projectId, priority])
+  @@map("bugs")
+}
+
+/// 任务表（v2：指派）
+model Task {
+  id          String   @id
+  projectId   String   @map("project_id")
+  title       String
+  description String?
+  priority    String   @default("medium") // low | medium | high
+  status      String   @default("todo")   // todo | doing | done
+  assigneeId  String?  @map("assignee_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+  @@map("tasks")
+}
+
+/// 随手记/灵感表：projectId 允许 NULL（全局便签）；tags 为原生数组
+model Note {
+  id         String    @id
+  projectId  String?   @map("project_id")
+  content    String
+  tags       String[]
+  isArchived Boolean   @default(false) @map("is_archived")
+  pinnedAt   DateTime? @map("pinned_at") // 置顶
+  createdBy  String?   @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("notes")
+}
+
+/// 附件元数据表
+/// 注意：entity_type + entity_id 为多态关联（设计文档第 3 节），
+/// 对应 bug/task/note，由应用层维护，不设数据库外键。
+model Attachment {
+  id           String   @id
+  projectId    String   @map("project_id")
+  entityType   String   @map("entity_type") // bug | task | note | general
+  entityId     String?  @map("entity_id")
+  fileName     String   @map("file_name")
+  fileType     String   @map("file_type") // MIME 类型
+  fileSize     Int      @map("file_size") // BIGINT
+  storageType  String   @default("local") @map("storage_type") // local | s3
+  storagePath  String   @map("storage_path") // 本地磁盘绝对路径或 S3 Key
+  publicUrl    String?  @map("public_url")
+  width        Int? // 图片宽（若为图片）
+  height       Int? // 图片高
+  uploadedBy   String?  @map("uploaded_by") // 上传用户/密钥 id（我的文件过滤）
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([entityType, entityId])
+  @@map("attachments")
+}
+
+/// 用户表（单机团队版：一次部署 = 一个团队，角色直接挂在用户上）
+model User {
+  id           String    @id
+  email        String    @unique
+  passwordHash String    @map("password_hash") // scrypt 哈希（含盐）
+  name         String
+  role         String    @default("member") // owner | admin | member | viewer
+  status       String    @default("active") // active | disabled
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  apiKeys       ApiKey[]
+  refreshTokens RefreshToken[]
+  usageEvents   UsageEvent[]
+  assignedBugs Bug[] @relation("BugAssignee")
+  @@index([email])
+  @@map("users")
+}
+
+/// 刷新令牌（一次性使用 + 轮换，重放检测即吊销全族）
+model RefreshToken {
+  id        String    @id
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash") // SHA-256(opaque token)
+  familyId  String    @map("family_id") // 令牌族，用于重放检测批量吊销
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+/// MCP API 密钥（商业产品计划 §4；scope 为原生数组）
+model ApiKey {
+  id         String    @id
+  name       String
+  keyPrefix  String    @map("key_prefix") // vhk_live_7Kd9（展示用）
+  keyHash    String    @map("key_hash") // SHA-256(salt + key)
+  salt       String
+  scopes     String[]  @default(["context:read"]) // 最小权限默认
+  rateLimit  Int       @default(300) @map("rate_limit") // 每分钟调用上限
+  lastUsedAt DateTime? @map("last_used_at")
+  expiresAt  DateTime? @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdBy  String?   @map("created_by")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  creator     User?        @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+  usageEvents UsageEvent[]
+
+  @@index([revokedAt])
+  @@map("api_keys")
+}
+
+/// 计量事件（出账与用量分析依据）
+model UsageEvent {
+  id        String   @id
+  apiKeyId  String?  @map("api_key_id")
+  userId    String?  @map("user_id")
+  eventType String   @map("event_type") // mcp.tool_call | auth.login ...
+  metadata  String? // JSON
+  createdAt DateTime @default(now()) @map("created_at")
+
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([apiKeyId, createdAt])
+  @@map("usage_events")
+}
+
+/// 缺陷评论 / 活动流：人与 AI 都能追加，形成对话闭环（状态变化自动写入）
+model BugComment {
+  id         String   @id
+  bugId      String   @map("bug_id")
+  authorType String   @map("author_type") // user | ai
+  authorId   String?  @map("author_id")   // user id 或 api_key id
+  content    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([bugId, createdAt])
+  @@map("bug_comments")
+}
+
+/// 缺陷模板：新团队默认三个模板（缺陷/需求/线上事故），可自定义
+model BugTemplate {
+  id            String   @id
+  name          String
+  titleTemplate String   @map("title_template") // 支持 {module} 占位
+  fields        String   // JSON：默认 severity/labels/steps 骨架
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("bug_templates")
+}
+
+/// 保存的视图：Excel 式「我的筛选」——筛选+排序+列显隐按用户持久化
+model SavedView {
+  id        String   @id
+  userId    String   @map("user_id")
+  entity    String   // bug | file | task
+  name      String
+  filters   String   // JSON
+  sort      String   // JSON
+  columns   String   // JSON：列显隐与顺序
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, entity, name])
+  @@map("saved_views")
+}
+
+/// 语义索引（pgvector）：bug/note 的 embedding，provider 默认 none 时本表闲置
+/// 注意：Prisma 无 vector 类型，向量列与 HNSW 索引由迁移文件末尾 raw SQL 追加
+/// （AGENTS.md 数据契约认可的例外；勿单独建 setup 脚本——migration 内的 raw SQL
+///   才会被 shadow DB 重放，避免 prisma migrate dev 漂移检测误报）
+model Embedding {
+  id         String   @id
+  entityType String   // bug | note
+  entityId   String
+  model      String   // text-embedding-3-small / bge-m3 / text-embedding-v3 等
+  dim        Int      @default(1024) // R51：1536 → 1024（text-embedding-v3 / EMBEDDING_DIM）
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@unique([entityType, entityId, model])
+  @@index([entityType])
+  @@map("embeddings")
+}
+
+/// 系统设置（键值对）：注册开关等运行时配置（管理员在 Web 端修改即时生效）
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_settings")
+}

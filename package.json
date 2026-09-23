@@ -1,0 +1,19 @@
+{
+  "name": "vibehub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VibeHub - AI Native 研发上下文总线（Web 看板 + MCP 服务）",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "npm run dev:server",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w server && npm run build -w web",
+    "start": "npm run start -w server",
+    "test": "npm run test -w server",
+    "prisma:migrate": "npm run prisma:migrate -w server"
+  }
+}

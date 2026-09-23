@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.next/
+out/
+data/
+test-data/
+*.db
+*.db-journal
+coverage/

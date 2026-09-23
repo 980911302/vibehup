@@ -1,0 +1,59 @@
+import type { McpContext } from './context.js';
+import { resolveMcpContext, ctxHas } from './context.js';
+import { mcpStore } from './context-store.js';
+import { recordToolCall } from './usage.js';
+import { enforceSizeBudget } from './token-budget.js';
+import { AppError } from '../core/errors.js';
+import type { Scope } from './scopes.js';
+
+/**
+ * MCP 工具统一包装（步骤 03 §3.4 契约）：
+ * scope 校验 → 执行 → Token 经济学校形 → 打点。错误一律转为 isError 结果，不穿协议层。
+ */
+
+export interface ToolSuccess {
+  content: { type: 'text'; text: string }[];
+  isError?: boolean;
+  /** MCP SDK 的工具回调返回类型要求索引签名 */
+  [key: string]: unknown;
+}
+
+export function toolResult(data: unknown): ToolSuccess {
+  return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+}
+
+export function toolError(message: string): ToolSuccess {
+  return { content: [{ type: 'text', text: `错误: ${message}` }], isError: true };
+}
+
+export type ToolFn = (ctx: McpContext, args: Record<string, unknown>) => Promise<unknown>;
+
+/** 注册一个带 scope 守卫与计量的工具处理器 */
+export function guarded(toolName: string, scope: Scope, fn: ToolFn) {
+  return async (args: Record<string, unknown>): Promise<ToolSuccess> => {
+    let ctx: McpContext;
+    try {
+      // 优先取 SSE 连接上下文（mcpStore）；stdio 进程无 store，回落 env 解析
+      ctx = mcpStore.get() ?? (await resolveMcpContext());
+    } catch (err) {
+      return toolError(err instanceof Error ? err.message : String(err));
+    }
+    if (!ctxHas(ctx, scope)) {
+      return toolError(`缺少 scope: ${scope}。请在 Web 端「密钥」页为该密钥授予权限后重试`);
+    }
+
+    const t0 = Date.now();
+    try {
+      const data = await fn(ctx, args);
+      const shaped = enforceSizeBudget(data as never);
+      const bytesOut = Buffer.byteLength(JSON.stringify(shaped));
+      await recordToolCall(ctx, { tool: toolName, latencyMs: Date.now() - t0, bytesOut, result: 'ok' });
+      return toolResult(shaped);
+    } catch (err) {
+      await recordToolCall(ctx, { tool: toolName, latencyMs: Date.now() - t0, bytesOut: 0, result: 'error' });
+      if (err instanceof AppError) return toolError(err.message);
+      console.error(`[vibehub-mcp] ${toolName} 未预期错误:`, err);
+      return toolError(`内部错误: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+}
