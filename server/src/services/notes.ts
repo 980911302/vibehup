@@ -60,7 +60,7 @@ export async function updateNote(
   noteId: string,
   patch: { content?: string; tags?: string[]; isArchived?: boolean; projectId?: string | null; pinned?: boolean },
 ): Promise<Note> {
-  await getNote(noteId);
+  const existing = await getNote(noteId);
   const data: Prisma.NoteUncheckedUpdateInput = {};
   if (patch.content !== undefined) data.content = patch.content;
   if (patch.tags !== undefined) data.tags = serializeTags(patch.tags);
@@ -71,7 +71,11 @@ export async function updateNote(
 
   const note = await prisma.note.update({ where: { id: noteId }, data });
   eventBus.publish({ type: 'note.updated', projectId: note.projectId, noteId: note.id });
-  await upsertEntityEmbedding('note', note.id, noteEmbeddingText(note));
+  // 语义文本（内容+标签）未变则跳过——仅置顶/归档不打 DashScope（卡片 F2）
+  const nextEmbeddingText = noteEmbeddingText(note);
+  if (nextEmbeddingText !== noteEmbeddingText(existing)) {
+    await upsertEntityEmbedding('note', note.id, nextEmbeddingText);
+  }
   return note;
 }
 

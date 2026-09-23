@@ -36,6 +36,8 @@ export async function embedText(text: string): Promise<number[]> {
       authorization: `Bearer ${c.apiKey}`,
     },
     body: JSON.stringify(body),
+    // 写路径 await 此调用：挂起必须中止，否则拖拽改状态等业务请求会被外网拖住（卡片 F2）
+    signal: AbortSignal.timeout(c.timeoutMs),
   });
   if (!res.ok) {
     throw new Error(`DashScope embedding 请求失败: HTTP ${res.status} ${await res.text()}`);

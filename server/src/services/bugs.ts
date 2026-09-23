@@ -215,7 +215,11 @@ export async function updateBug(
     bugId: bug.id,
     status: bug.status,
   });
-  await upsertEntityEmbedding('bug', bug.id, bugEmbeddingText(bug));
+  // 语义文本未变（改状态/严重度/优先级/指派等）则跳过——不打 DashScope，拖拽流转不再等外网（卡片 F2）
+  const nextEmbeddingText = bugEmbeddingText(bug);
+  if (nextEmbeddingText !== bugEmbeddingText(existing)) {
+    await upsertEntityEmbedding('bug', bug.id, nextEmbeddingText);
+  }
   return bug;
 }
 

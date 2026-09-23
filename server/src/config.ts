@@ -45,6 +45,8 @@ export interface EmbeddingSettings {
   sendDim: boolean;
   /** 请求/响应是否走 base64（DashScope encoding_format=base64） */
   useBase64: boolean;
+  /** 单次请求超时（毫秒）：写路径 await 此调用，挂起必须中止，避免拖住业务主流程（卡片 F2） */
+  timeoutMs: number;
 }
 
 function getEmbeddingSettings(): EmbeddingSettings {
@@ -57,6 +59,7 @@ function getEmbeddingSettings(): EmbeddingSettings {
     tokenLimit: Number(process.env.EMBEDDING_TOKEN_LIMIT ?? 8192),
     sendDim: (process.env.EMBEDDING_SEND_DIM ?? 'false') === 'true',
     useBase64: (process.env.EMBEDDING_USE_BASE64 ?? 'false') === 'true',
+    timeoutMs: Number(process.env.EMBEDDING_TIMEOUT_MS ?? 5000),
   };
 }
 
