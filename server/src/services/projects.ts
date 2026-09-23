@@ -1,5 +1,4 @@
 import type { Project, Prisma } from '@prisma/client';
-import path from 'node:path';
 import { prisma } from '../core/prisma.js';
 import { ids, slugify } from '../core/ids.js';
 import { buildSearchIndex, matchIndex } from '../core/search.js';
@@ -64,6 +63,9 @@ export async function getProjectBySlug(slug: string): Promise<Project> {
   return project;
 }
 
+/** 歧义报错时最多列出的候选项目数（Token 经济学） */
+const AMBIGUOUS_LIST_LIMIT = 20;
+
 /** 按 ID 或 slug 解析项目（MCP 侧常用） */
 export async function resolveProject(projectSlugOrId?: string): Promise<Project> {
   if (projectSlugOrId?.trim()) {
@@ -74,18 +76,28 @@ export async function resolveProject(projectSlugOrId?: string): Promise<Project>
     if (byId) return byId;
     throw new NotFoundError(`项目不存在: ${key}`);
   }
-  // 未指定时尝试用当前工作目录名匹配 slug（AI 自动匹配，设计文档第 3 节）
-  const cwdName = path.basename(process.cwd()).toLowerCase();
-  if (cwdName) {
-    const byCwd = await prisma.project.findFirst({
-      where: { slug: { startsWith: cwdName } },
-    });
-    if (byCwd) return byCwd;
+  // 未指定（R76）：仅当只有一个进行中的项目时自动选择。
+  // 不再按 cwd 猜、不再静默回落到最近更新的项目——这里的 cwd 是 MCP 服务进程自己的
+  // （容器内为 /app），与 IDE 工作区无关，猜错会让 AI 的写入悄悄落进别的项目。
+  const active = await prisma.project.findMany({
+    where: { archivedAt: null },
+    orderBy: { updatedAt: 'desc' },
+    take: AMBIGUOUS_LIST_LIMIT + 1,
+  });
+  if (active.length === 1) return active[0];
+  if (active.length === 0) {
+    throw new NotFoundError('系统中还没有进行中的项目，请先在 Web 端创建（或取消归档）');
   }
-  const fallback = await prisma.project.findFirst({ orderBy: { updatedAt: 'desc' } });
-  if (!fallback) throw new NotFoundError('系统中还没有任何项目，请先在 Web 端创建');
-  return fallback;
+  const options = active
+    .slice(0, AMBIGUOUS_LIST_LIMIT)
+    .map((p) => `${p.slug}（${p.name}）`)
+    .join('、');
+  const more = active.length > AMBIGUOUS_LIST_LIMIT ? ' 等' : '';
+  throw new ValidationError(
+    `未指定 project_slug，且有多个进行中的项目，无法确定要操作哪一个。请传 project_slug，可选：${options}${more}`,
+  );
 }
+
 
 /** 项目列表：支持中文/拼音模糊检索 */
 export async function listProjects(query: { q?: string } = {}): Promise<ProjectWithCounts[]> {

@@ -38,12 +38,15 @@ export const TOOL_NAMES = [
 const TOKEN_BUDGET_NOTE =
   '返回已按 Token 经济学校形：列表默认最多 20 条，has_more 为 true 时用分页参数继续；长文本自动截断到 500 字符，需要完整内容时用 read_attachment_text 分片读取。';
 
+/** 经 resolveProject 解析项目的工具共用（R76：不再按 MCP 服务进程 cwd 猜项目） */
+const PROJECT_SLUG_DESC = '项目 slug（Web 端「项目」页可复制）；多项目时必填，只有一个进行中项目时可省略';
+
 export function createMcpServer(): McpServer {
   const server = new McpServer(
     { name: 'vibehub', version: '0.2.0' },
     {
       instructions:
-        'VibeHub 研发上下文总线。先调用 get_project_context 了解项目活跃状态（未指定 project_slug 时自动匹配当前目录）。修复缺陷后用 update_bug_status 回填状态与 commit hash，修复过程可用 add_bug_comment 记录。',
+        'VibeHub 研发上下文总线。先调用 get_project_context 了解项目活跃状态——系统有多个项目时须传 project_slug（不传会报错并列出全部可选 slug，按项目名选与当前代码仓库对应的那个）。修复缺陷后用 update_bug_status 回填状态与 commit hash，修复过程可用 add_bug_comment 记录。',
     },
   );
 
@@ -53,9 +56,9 @@ export function createMcpServer(): McpServer {
     'get_project_context',
     {
       title: '获取项目上下文',
-      description: `获取项目当前活跃状态（冷启动用）：Open/In Progress 缺陷简报、待办任务、最新 5 条便签。未指定 project_slug 时自动按当前目录名匹配项目。${TOKEN_BUDGET_NOTE}`,
+      description: `获取项目当前活跃状态（冷启动用）：Open/In Progress 缺陷简报、待办任务、最新 5 条便签。只有一个进行中项目时可省略 project_slug；多项目时必须传（不传会报错并列出可选 slug）。${TOKEN_BUDGET_NOTE}`,
       inputSchema: {
-        project_slug: z.string().optional().describe('项目 slug（对应代码仓库名），选填'),
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -70,7 +73,7 @@ export function createMcpServer(): McpServer {
       title: '缺陷列表',
       description: `分页/按状态拉取缺陷列表，返回扁平元数据（ID、标题、严重度、附件数量）。${TOKEN_BUDGET_NOTE}`,
       inputSchema: {
-        project_slug: z.string().optional().describe('项目 slug，选填（默认当前目录匹配）'),
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
         status: z
           .enum(['open', 'in_progress', 'resolved', 'verified', 'closed'])
           .optional()
@@ -186,7 +189,7 @@ export function createMcpServer(): McpServer {
       title: '任务列表',
       description: `拉取项目任务，可按状态过滤。${TOKEN_BUDGET_NOTE}`,
       inputSchema: {
-        project_slug: z.string().optional().describe('项目 slug，选填'),
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
         status: z.enum(['todo', 'doing', 'done']).optional().describe('按状态过滤'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -229,7 +232,7 @@ export function createMcpServer(): McpServer {
       description:
         'AI 把自己发现的问题建成工单（可关联已通过 upload_attachment 上传的截图/日志）。自动写入 AI 活动流。',
       inputSchema: {
-        project_slug: z.string().optional().describe('项目 slug，选填（默认当前目录匹配）'),
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
         title: z.string().describe('缺陷标题'),
         severity: z.enum(['low', 'normal', 'high', 'critical']).optional(),
         steps_to_reproduce: z.string().optional(),
@@ -284,7 +287,7 @@ export function createMcpServer(): McpServer {
       description:
         'AI 把日志/截图贴回工单：base64 入，落盘并返回 attachment id 与访问 url（可被 create_bug 关联）。',
       inputSchema: {
-        project_slug: z.string().optional().describe('项目 slug，选填'),
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
         bug_id: z.string().optional().describe('关联到缺陷（缺省为 general）'),
         file_name: z.string().describe('文件名（如 stacktrace.log）'),
         file_type: z.string().describe('MIME 类型（如 text/plain、image/png）'),
