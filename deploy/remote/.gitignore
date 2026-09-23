@@ -1,0 +1,3 @@
+# 该目录的 compose 由生成脚本产出，内含真实 POSTGRES_PASSWORD / JWT_SECRET，禁提交。
+# 需要重建时：本地生成 → scp 到远端 ~/vibehub/docker-compose.yml（见 .remote-deploy.md）
+docker-compose.yml
