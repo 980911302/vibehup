@@ -77,6 +77,16 @@ export class PayloadTooLargeError extends AppError {
   }
 }
 
+/** 请求过于频繁（登录防暴力等）：429 + 人话提示，retryAfterSec 供 Retry-After 头 */
+export class RateLimitedError extends AppError {
+  constructor(
+    message: string,
+    readonly retryAfterSec = 60,
+  ) {
+    super(message, 429, 'RATE_LIMITED');
+  }
+}
+
 export function isAppError(err: unknown): err is AppError {
   return err instanceof AppError;
 }

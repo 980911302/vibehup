@@ -1,8 +1,17 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import * as authService from '../services/auth.js';
 import { serializeUser } from '../core/serialize-user.js';
-import { ValidationError } from '../core/errors.js';
+import { ValidationError, RateLimitedError } from '../core/errors.js';
 import { isRegistrationOpen } from '../services/system.js';
+import * as loginThrottle from '../services/login-throttle.js';
+
+/** 客户端 IP：X-Forwarded-For 首个地址优先（容器/反向代理），否则取直连地址 */
+function clientIp(request: FastifyRequest): string {
+  const fwd = request.headers['x-forwarded-for'];
+  const raw = Array.isArray(fwd) ? fwd[0] : fwd;
+  const first = raw?.split(',')[0]?.trim();
+  return first || request.ip || 'unknown';
+}
 
 /**
  * 认证路由（步骤 02 §2.3 契约）。
@@ -24,13 +33,30 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return result;
   });
 
-  // 登录
+  // 登录（防暴力：按邮箱+客户端 IP 滑动窗口限流，见 F4）
   app.post('/login', async (request) => {
     const body = request.body as { email?: string; password?: string };
     if (!body?.email || !body?.password) {
       throw new ValidationError('邮箱和密码为必填');
     }
-    return authService.login({ email: body.email, password: body.password });
+    const email = body.email.trim().toLowerCase();
+    const ip = clientIp(request);
+
+    const state = loginThrottle.checkBlocked(email, ip);
+    if (state.blocked) {
+      const minutes = Math.max(1, Math.ceil(state.retryAfterMs / 60000));
+      throw new RateLimitedError(`登录尝试次数过多，请 ${minutes} 分钟后再试`, Math.ceil(state.retryAfterMs / 1000));
+    }
+
+    try {
+      const result = await authService.login({ email, password: body.password });
+      loginThrottle.clear(email, ip);
+      return result;
+    } catch (err) {
+      // 仅失败计入（用户不存在/密码错/被禁用）；成功路径已 clear
+      loginThrottle.registerFailure(email, ip);
+      throw err;
+    }
   });
 
   // 刷新（一次性轮换 + 重放检测）

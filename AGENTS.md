@@ -39,12 +39,13 @@
 
 - REST + snake_case JSON；响应必须经 `core/serialize.ts` 序列化，**禁止裸出 Prisma 模型**（曾致前端崩溃）。
 - 错误体统一：`{ "error": { "code", "message" } }`，message 必须是人话并指出下一步。
-- 错误码枚举（不得随意新增）：`VALIDATION_ERROR / NOT_FOUND / UNAUTHORIZED / FORBIDDEN / EMAIL_TAKEN / INVALID_CREDENTIALS / ACCOUNT_DISABLED / TOKEN_REUSED / LAST_OWNER / INVALID_TRANSITION / PAYLOAD_TOO_LARGE / INTERNAL_ERROR`。新增须经本文件登记。
+- 错误码枚举（不得随意新增）：`VALIDATION_ERROR / NOT_FOUND / UNAUTHORIZED / FORBIDDEN / EMAIL_TAKEN / INVALID_CREDENTIALS / ACCOUNT_DISABLED / TOKEN_REUSED / LAST_OWNER / INVALID_TRANSITION / PAYLOAD_TOO_LARGE / RATE_LIMITED / INTERNAL_ERROR`。新增须经本文件登记。
 - 写操作返回更新后实体；分页 `{items,total,page,page_size}`；MCP 分页 `has_more + next_cursor`。
 - **认证响应结构契约**：`/auth/me` 返回 `{ user, stats }` 嵌套（扁平 user 字段 + stats 是反模式，曾致前端恢复登录态把 undefined 当 user）；`/auth/login|register` 返回 `{ user, access_token, refresh_token, expires_in }`。
 - **刷新令牌契约（R76）**：一次性轮换 + 重放整族吊销不变；但同一旧令牌在 10s 宽限期内重复提交且令牌族仍存活 = 并发竞态，照常签发不吊销（多请求/多标签同时刷新曾致用户每 15 分钟随机掉线）；登出吊销**整个令牌族**（否则宽限期内并发签出的同族令牌可让已登出会话复活）。
 - 状态码：200/201/204/400/401/403/404/409/413/429。
 - **multipart 上传顺序无关契约（R53）**：`/api/upload` 的文件 part 与 project_id 等字段到达顺序客户端不保证，路由必须两段式（遍历落盘收集 → 字段齐后建记录），禁止「文件先到就抛缺少字段」（容器 curl 实测抓到，已有回归用例）。
+- **登录防暴力契约（R78）**：`/auth/login` 按「邮箱 + 客户端 IP」滑动窗口计数**失败**尝试（成功即清零），达阈值返回 429 `RATE_LIMITED` + 人话提示 + `Retry-After` 头；阈值/窗口由 `LOGIN_MAX_ATTEMPTS`（默认 5）/`LOGIN_THROTTLE_WINDOW_MS`（默认 15 分钟）控制；实现为进程内 Map（单容器部署成立，多副本须换共享存储）；客户端 IP 取 `X-Forwarded-For` 首段、缺省直连地址。**不得**因限流把正确密码也永久拒绝（窗口过期自动放行，已有用例锁定）。
 
 ## 4. 数据契约（PostgreSQL + pgvector）
 
@@ -60,7 +61,7 @@
 
 ## 5. MCP 契约
 
-- 14 工具（读取 7 + 写入 7）契约见 `docs/计划/03`；工具签名不得随意变更，变更须登记 PROGRESS §4。
+- 15 工具（读取 7 + 写入 8）契约见 `docs/计划/03`；工具签名不得随意变更，变更须登记 PROGRESS §4。
 - 每个工具经 `guard(scope, fn)`：scope 校验 → 执行 → `recordToolCall` 打点 → Token 经济学校形。
 - **MCP 上下文传递契约（R69）**：上下文一律经 `mcpStore`（AsyncLocalStorage）传递——SSE 路由在握手 keyed ctx 内 `run()` 消息处理；`guard` 取 store 上下文、无 store 才回落 env 解析（stdio）。**禁止**在 HTTP 进程里对每次调用单独 `resolveMcpContext()`——无 VIBEHUB_API_KEY 环境变量会静默落到 local 全权：scope 校验被绕过（限权密钥可调写操作）+ 用量打点 api_key_id 为 NULL。
 - Token 经济学：列表默认 20 条 + has_more；长文本字段 500 字符截断并提示；图片默认降采样 1080；base64 需显式声明且 ≤4MB。
@@ -97,7 +98,7 @@
 
 - 测试库 = 一次性 pg 容器（`scripts/test-db.sh`，`TEST_DATABASE_URL` 指向 55432），与生产同引擎；禁 sqlite 分支。
 - 每个 bugfix 先写复现用例；services 行覆盖 ≥80%。
-- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc+vitest 88 用例+HTTP 冒烟 14 项）；该脚本是唯一权威门禁，个人判断不作为通过依据。
+- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R78 为 173），以脚本当次输出为准。
 - 声称"完成/通过"前必须当场跑验证命令并引用输出（verification-before-completion 技能同此要求）。
 
 ## 9. 技能治理契约（Skill Governance）

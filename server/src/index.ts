@@ -5,7 +5,7 @@ import fastifyStatic from '@fastify/static';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, paths } from './config.js';
-import { isAppError } from './core/errors.js';
+import { isAppError, RateLimitedError } from './core/errors.js';
 import { prisma } from './core/prisma.js';
 import { projectRoutes } from './routes/projects.js';
 import { bugRoutes } from './routes/bugs.js';
@@ -51,6 +51,8 @@ export async function buildServer() {
   // 统一错误处理
   app.setErrorHandler((err, _req, reply) => {
     if (isAppError(err)) {
+      // 429 附带 Retry-After（秒），客户端可据此提示「请 X 分钟后再试」（卡片 F4）
+      if (err instanceof RateLimitedError) reply.header('retry-after', String(err.retryAfterSec));
       return reply.code(err.statusCode).send({
         error: { code: err.code, message: err.message },
       });

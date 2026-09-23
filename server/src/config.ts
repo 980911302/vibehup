@@ -85,6 +85,13 @@ export const config = {
   refreshTokenTtlDays: 30,
   /** 语义检索（卡片 28）：DashScope embedding；none 时全功能关闭 */
   embedding: getEmbeddingSettings(),
+  /** 登录防暴力（卡片 F4）：按「邮箱+IP」滑动窗口计数失败尝试 */
+  loginThrottle: {
+    /** 窗口内允许的失败次数，超出即 429 */
+    maxAttempts: Number(process.env.LOGIN_MAX_ATTEMPTS ?? 5),
+    /** 计数窗口（毫秒），默认 15 分钟 */
+    windowMs: Number(process.env.LOGIN_THROTTLE_WINDOW_MS ?? 15 * 60 * 1000),
+  },
 };
 
 export const paths = {

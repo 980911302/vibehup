@@ -46,7 +46,7 @@
 
 ```bash
 docker run -d --name vibehub-db -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=vibehub \
-  -p 5432:5432 pgvector/pgvector:pg17
+  -p 5432:5432 pgvector/pgvector:pg16
 ```
 
 ```bash
@@ -68,7 +68,7 @@ npm run dev:web
 
 - 打开 <http://127.0.0.1:3211>（或生产形态 <http://127.0.0.1:3210>）。
 - 首个注册账号自动成为团队 Owner。
-- 一键质量门禁：`bash server/scripts/acceptance.sh`（tsc + 99 用例 + HTTP 冒烟）。
+- 一键质量门禁：`bash server/scripts/acceptance.sh`（tsc + 173 用例 + HTTP 冒烟 14 项）。
 
 ## 连接 IDE Agent（MCP）
 
@@ -221,8 +221,9 @@ vibehub/
 ## 测试
 
 ```bash
-npm test                                        # vitest：133 个用例（services / MCP / HTTP / TDD 回归）
+npm test                                        # vitest：173 个用例（services / MCP / HTTP / TDD 回归）
 node scripts/final-acceptance.mjs               # 四场景端到端总验收（30 项，需服务在跑）
+cd server && npx vitest run --root ../web       # 前端纯函数单测（12 个：令牌刷新协调 / TSV 解析）
 cd server && bash scripts/acceptance.sh         # 提交门禁：tsc + vitest + HTTP 冒烟
 ```
 
@@ -233,6 +234,6 @@ cd server && bash scripts/acceptance.sh         # 提交门禁：tsc + vitest + 
 - **阶段一（当前版本，已交付）**：SQLite → PostgreSQL 16 + pgvector 单容器、完整账户体系（RBAC/密钥/审计）、15 工具 MCP（stdio + SSE）、双主题前端、随手记/语义检索/AI 活动可见流/实时的 PG NOTIFY 通道
 - **阶段二（已交付）**：Redis Pub/Sub 的替代方案（PG LISTEN/NOTIFY，单容器零新组件）、语义检索（DashScope embedding，可配）、SSE 集中式 MCP 节点——均已在当前版本落地
 - **当前阶段（R77 起）**：试用冻结期——新功能冻结，先用 10 个工作日真实试用检验核心闭环（docs/计划/09；指标 `bash server/scripts/trial-metrics.sh <起始日期>`）
-- **未立项（候选）**：MinIO/S3 存储抽象、多机部署（Redis）；全局截图入口（浏览器扩展）R77 已砍，重开条件见 docs/计划/39 §7
+- **未立项（候选）**：MinIO/S3 存储抽象、多机部署（Redis）
 
 > 构建过程与工程契约见 `AGENTS.md`；进度驾驶舱见 `docs/计划/PROGRESS.md`。
