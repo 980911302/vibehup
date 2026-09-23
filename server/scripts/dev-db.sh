@@ -17,21 +17,26 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 
-if ! docker ps --filter "name=$CONTAINER" --format '{{.Names}}' | grep -q "$CONTAINER"; then
-  docker run -d --name "$CONTAINER" \
-    -e POSTGRES_USER="$USER" \
-    -e POSTGRES_PASSWORD="$PASSWORD" \
-    -e POSTGRES_DB="$DB" \
-    -p "$PORT:5432" \
-    -v "$VOLUME:/var/lib/postgresql/data" \
-    pgvector/pgvector:pg16 > /dev/null
+if ! docker ps --filter "name=^${CONTAINER}$" --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+  if docker ps -a --filter "name=^${CONTAINER}$" --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    # 容器已存在但未运行（Docker / 机器重启后的常态）：直接拉起，重名 docker run 会失败（R76）
+    docker start "$CONTAINER" > /dev/null
+  else
+    docker run -d --name "$CONTAINER" \
+      -e POSTGRES_USER="$USER" \
+      -e POSTGRES_PASSWORD="$PASSWORD" \
+      -e POSTGRES_DB="$DB" \
+      -p "$PORT:5432" \
+      -v "$VOLUME:/var/lib/postgresql/data" \
+      pgvector/pgvector:pg16 > /dev/null
+  fi
   # 等待就绪
   for _ in $(seq 1 30); do
     docker exec "$CONTAINER" pg_isready -U "$USER" > /dev/null 2>&1 && break
     sleep 1
   done
   # pgvector 扩展（幂等）
-  docker exec "$CONTAINER" psql -U "$USER" -d "$DB" -c "CREATE EXTENSION IF NOT EXISTS vector;" > /dev/null
+  docker exec "$CONTAINER" psql -U "$USER" -d "$DB" -c "SET client_min_messages TO warning; CREATE EXTENSION IF NOT EXISTS vector;" > /dev/null
 fi
 
 echo "postgresql://$USER:$PASSWORD@127.0.0.1:$PORT/$DB"

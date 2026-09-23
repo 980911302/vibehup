@@ -14,11 +14,16 @@ if ! docker info > /dev/null 2>&1; then
   exit 1
 fi
 
-if ! docker ps --filter "name=$CONTAINER" --format '{{.Names}}' | grep -q "$CONTAINER"; then
-  docker run -d --name "$CONTAINER" \
-    -e POSTGRES_PASSWORD="$PASSWORD" \
-    -p "$PORT:5432" \
-    pgvector/pgvector:pg16 > /dev/null
+if ! docker ps --filter "name=^${CONTAINER}$" --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+  if docker ps -a --filter "name=^${CONTAINER}$" --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+    # 容器已存在但未运行（Docker / 机器重启后的常态）：直接拉起，重名 docker run 会失败（R76）
+    docker start "$CONTAINER" > /dev/null
+  else
+    docker run -d --name "$CONTAINER" \
+      -e POSTGRES_PASSWORD="$PASSWORD" \
+      -p "$PORT:5432" \
+      pgvector/pgvector:pg16 > /dev/null
+  fi
   # 等待就绪
   for _ in $(seq 1 30); do
     docker exec "$CONTAINER" pg_isready -U postgres > /dev/null 2>&1 && break
