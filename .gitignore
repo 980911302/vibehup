@@ -39,3 +39,6 @@ coverage/
 
 # 本机 MCP 接入说明（含明文密钥，禁提交）
 .mcp-setup.md
+
+# 远端部署运维速查（含密钥，禁提交）
+.remote-deploy.md
