@@ -40,6 +40,7 @@ export const bugExtrasRoutes: FastifyPluginAsync = async (app) => {
             await bugsService.updateBug(id, {
               status: payload.status as string,
               reopenReason: payload.reopen_reason as string | undefined,
+              resolutionNotes: payload.resolution_notes as string | undefined,
               actor,
             });
             break;

@@ -44,7 +44,7 @@ describe('缺陷状态的中文文案', () => {
 
   it('状态名表与看板列名一致（verified = 已验证，不是「待验证」）', () => {
     expect(bugsService.BUG_STATUS_LABELS).toEqual({
-      open: '待处理', in_progress: '进行中', resolved: '已解决', verified: '已验证', closed: '已关闭',
+      open: '待处理', in_progress: '进行中', resolved: '已解决', verifying: '验证中', verified: '已验证', closed: '已关闭',
     });
   });
 });

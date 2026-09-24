@@ -65,7 +65,7 @@ describe('任务', () => {
     expect((await more.getTaskDetail(ctx, { task_id: t.id, full: true })).description).toHaveLength(800);
   });
 
-  it('update_task：五态逐级、打回写原因、改标签；list_tasks 可按标签过滤并带标签', async () => {
+  it('update_task：逐级流转、打回写原因、改标签；list_tasks 可按标签过滤并带标签', async () => {
     const p = await projectsService.createProject({ name: 'P', slug: 'p' });
     const t = await tasksService.createTask({ projectId: p.id, title: 'A' });
     await tasksService.createTask({ projectId: p.id, title: 'B', labels: ['前端'] });
@@ -74,7 +74,7 @@ describe('任务', () => {
     await ext.updateTask(ctx, { task_id: t.id, status: 'doing' });
     const r = await ext.updateTask(ctx, { task_id: t.id, status: 'review', labels: ['后端'] });
     expect(r.task).toMatchObject({ status: 'review', labels: ['后端'] });
-    expect(r.allowed_next_statuses).toEqual(['done', 'doing', 'cancelled']);
+    expect(r.allowed_next_statuses).toEqual(['verifying', 'doing', 'cancelled']);
     expect(r.next_step).toContain('验收');
 
     await expect(ext.updateTask(ctx, { task_id: t.id, status: 'doing' })).rejects.toThrow('reopen_reason');

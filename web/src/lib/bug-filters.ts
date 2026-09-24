@@ -1,4 +1,5 @@
 import type { Bug, BugBoard } from './api-types';
+import { BUG_STATUSES } from './bug-flow';
 
 /** 看板筛选：人员维度（全部 / 指派给我 / 我提的 / 未指派）+ 严重度 + 标签 + 关键字 */
 export type WhoFilter = 'all' | 'mine' | 'reported' | 'unassigned';
@@ -29,14 +30,8 @@ export function matchesBug(bug: Bug, f: BoardFilters, userId: string | null): bo
 }
 
 export function filterBoard(board: BugBoard, f: BoardFilters, userId: string | null): BugBoard {
-  const apply = (bugs: Bug[]) => bugs.filter((b) => matchesBug(b, f, userId));
-  return {
-    open: apply(board.open),
-    in_progress: apply(board.in_progress),
-    resolved: apply(board.resolved),
-    verified: apply(board.verified),
-    closed: apply(board.closed),
-  };
+  const apply = (bugs: Bug[] = []) => bugs.filter((b) => matchesBug(b, f, userId));
+  return Object.fromEntries(BUG_STATUSES.map((st) => [st, apply(board[st])])) as unknown as BugBoard;
 }
 
 /** 生效中的筛选条件个数（人员维度选「全部」不算） */

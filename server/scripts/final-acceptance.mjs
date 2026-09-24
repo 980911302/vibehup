@@ -97,7 +97,7 @@ ok('B5 状态机合法流转 resolved', legal.status === 200 && (await legal.jso
 
 const bug2 = await J(await fetch(`${BASE}/api/bugs`, { method: 'POST', headers: H(MT), body: JSON.stringify({ project_id: proj.id, title: '非法流转测试' }) }))
 const illegal = await fetch(`${BASE}/api/bugs/${bug2.id}`, { method: 'PATCH', headers: H(MT), body: JSON.stringify({ status: 'resolved' }) });
-ok('B6 open→resolved 非法被拒', illegal.status === 400 && (await illegal.json()).error.message.includes('不允许'));
+ok('B6 open→resolved 非法被拒', illegal.status === 400 && (await illegal.json()).error.message.includes('不能从'));
 
 // B7 重开需 reason
 const reopened = await fetch(`${BASE}/api/bugs/${bug.id}`, { method: 'PATCH', headers: H(MT), body: JSON.stringify({ status: 'open' }) });

@@ -8,6 +8,9 @@ import { guarded } from './guard.js';
 import { SERVER_INSTRUCTIONS } from './workflow.js';
 import { TOOL_SCOPES } from './tool-scopes.js';
 import { registerMoreTools } from './register-more.js';
+import { mcpActor } from './context.js';
+import { BUG_STATUSES } from '../services/bug-flow.js';
+import { TASK_STATUSES } from '../services/tasks.js';
 
 /**
  * VibeHub MCP Server（设计文档第 4 节 + 步骤 03 §3.2 工具矩阵）。
@@ -51,7 +54,7 @@ export const TOOL_NAMES = [
   'delete_skill',
 ] as const;
 
-const TASK_STATUS_ENUM = ['todo', 'doing', 'review', 'done', 'cancelled'] as const;
+const TASK_STATUS_ENUM = TASK_STATUSES;
 
 const TOKEN_BUDGET_NOTE =
   '返回已按 Token 经济学校形：列表默认最多 20 条，has_more 为 true 时用分页参数继续；长文本自动截断到 500 字符，需要完整内容时用 read_attachment_text 分片读取。';
@@ -73,7 +76,7 @@ export function createMcpServer(): McpServer {
     'get_project_context',
     {
       title: '获取项目上下文',
-      description: `获取项目当前活跃状态（冷启动用）：open/in_progress 缺陷、待验证/待关闭缺陷（awaiting_verification）、doing 与 todo 任务、最新 5 条便签，以及 reminders（该流转却还没流转的提醒，照做）。只有一个进行中项目时可省略 project_slug；多项目时必须传（不传会报错并列出可选 slug）。${TOKEN_BUDGET_NOTE}`,
+      description: `获取项目当前活跃状态（冷启动用）：open/in_progress 缺陷、待验证缺陷（awaiting_verification）、验证中的缺陷与任务（verifying_bugs / verifying_tasks，带 status_actor 谁在验、status_changed_at 从什么时候开始）、处理中停留过久的（stale_items）、doing/review/todo 任务、最新 5 条便签，以及 reminders（该流转却还没流转的提醒，照做）。只有一个进行中项目时可省略 project_slug；多项目时必须传（不传会报错并列出可选 slug）。${TOKEN_BUDGET_NOTE}`,
       inputSchema: {
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
       },
@@ -92,9 +95,9 @@ export function createMcpServer(): McpServer {
       inputSchema: {
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
         status: z
-          .enum(['open', 'in_progress', 'resolved', 'verified', 'closed'])
+          .enum(BUG_STATUSES)
           .optional()
-          .describe('按状态过滤'),
+          .describe('按状态过滤：open 待处理 / in_progress 进行中 / resolved 已解决（待验证）/ verifying 验证中 / verified 已验证 / closed 已关闭（不修复）'),
         page: z.number().int().min(1).optional().default(1),
         page_size: z.number().int().min(1).max(200).optional().default(20),
       },
@@ -207,7 +210,7 @@ export function createMcpServer(): McpServer {
       description: `拉取项目任务，可按状态、标签过滤；要看完整描述、附件和可走的下一步用 get_task_detail。${TOKEN_BUDGET_NOTE}`,
       inputSchema: {
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        status: z.enum(TASK_STATUS_ENUM).optional().describe('按状态过滤：todo 待办 / doing 进行中 / review 待验证 / done 已完成 / cancelled 已取消'),
+        status: z.enum(TASK_STATUS_ENUM).optional().describe('按状态过滤：todo 待办 / doing 进行中 / review 待验证 / verifying 验证中 / done 已完成 / cancelled 已取消'),
         label: z.string().optional().describe('按标签过滤'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -224,20 +227,21 @@ export function createMcpServer(): McpServer {
     {
       title: '更新缺陷状态',
       description:
-        '流转缺陷状态，经手就要调，不等人提醒。状态机 open → in_progress → resolved → verified → closed，不能跳级（一次只走一步，需要时连续调用）。' +
-        '开始修 → in_progress；修完且自测通过 → resolved（写 resolution_notes，有提交带 commit_hash）；验证通过 → verified；已在最终环境生效或无需发布 → closed；' +
-        '验证不通过 → open 并填 reopen_reason（从 resolved/verified/closed 回流都必须填）。返回 allowed_next_statuses 与 next_step。',
+        '流转缺陷状态，经手就要调，不等人提醒。状态机 open → in_progress → resolved → verifying → verified，不能跳级（一次只走一步，需要时连续调用），verified 是修复完成的终点。' +
+        '开始修 → in_progress；修完且自测通过 → resolved（写 resolution_notes，有提交带 commit_hash）；开始验证 → verifying（团队靠它看到有人在验）；验证通过 → verified；' +
+        '验证不通过 → in_progress 或 open 并填 reopen_reason（从 resolved/verifying/verified/closed 回流都必须填）；验不了交给别人 → resolved。' +
+        '重复/不修/无法复现 → closed，resolution_notes 必须写原因（只能从 open/in_progress/resolved 关）。返回 allowed_next_statuses 与 next_step。',
       inputSchema: {
         bug_id: z.string().describe('缺陷 ID'),
-        status: z.enum(['open', 'in_progress', 'resolved', 'verified', 'closed']).describe('目标状态（只能是当前状态的下一步，见 get_bug_detail 的 allowed_next_statuses）'),
-        resolution_notes: z.string().optional().describe('resolved 时必写：根因、改了什么、怎么自测的；verified 时写在哪个环境怎么验证的；不修/重复时写原因'),
+        status: z.enum(BUG_STATUSES).describe('目标状态（只能是当前状态的下一步，见 get_bug_detail 的 allowed_next_statuses）'),
+        resolution_notes: z.string().optional().describe('resolved 时必写：根因、改了什么、怎么自测的；verified 时写在哪个环境怎么验证的；closed 时必写不修复的原因（重复写上缺陷号）'),
         commit_hash: z.string().optional().describe('修复对应的 git commit hash（有提交才填）'),
-        reopen_reason: z.string().optional().describe('回流到 open/in_progress 时必填：验证没过的现象'),
+        reopen_reason: z.string().optional().describe('回流到 open/in_progress 时必填：验证没过的现象（从 verifying 打回会记为「验证不通过」）'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     guarded('update_bug_status', TOOL_SCOPES.update_bug_status, (ctx, args) =>
-      tools.updateBugStatus(args as Parameters<typeof tools.updateBugStatus>[0], { type: 'ai', id: ctx.apiKeyId }),
+      tools.updateBugStatus(args as Parameters<typeof tools.updateBugStatus>[0], mcpActor(ctx)),
     ),
   );
 
@@ -343,11 +347,11 @@ export function createMcpServer(): McpServer {
     {
       title: '更新任务',
       description:
-        '流转任务状态（也可改优先级、标题、描述、标签，只改传入的字段），经手就要调。流转不能跳级：todo → doing → review → done；开始做 → doing；做完并自测通过 → review（待验证）；验收通过 → done（自己做的不算验收）；验收不通过 → doing 并填 reopen_reason；不做了 → cancelled，重做 → todo。description 是整段替换，list_tasks 返回的是截断后的描述，要改先用 get_task_detail(full: true) 取全文。',
+        '流转任务状态（也可改优先级、标题、描述、标签，只改传入的字段），经手就要调。流转不能跳级：todo → doing → review → verifying → done；开始做 → doing；做完并自测通过 → review（待验证）；开始验收 → verifying（验证中，团队靠它看到有人在验）；验收通过 → done（自己做的不算验收）；验收不通过 → doing 并填 reopen_reason；验不了交给别人 → review；不做了 → cancelled，重做 → todo。description 是整段替换，list_tasks 返回的是截断后的描述，要改先用 get_task_detail(full: true) 取全文。',
       inputSchema: {
         task_id: z.string().describe('任务 ID'),
         status: z.enum(TASK_STATUS_ENUM).optional().describe('目标状态（只能是当前状态可走的下一步，见 get_task_detail 的 allowed_next_statuses）'),
-        reopen_reason: z.string().optional().describe('打回（review/done → doing）时必填：验收没过的现象'),
+        reopen_reason: z.string().optional().describe('打回（review/verifying/done → doing）时必填：验收没过的现象'),
         labels: z.array(z.string()).optional().describe('标签（整组替换）'),
         priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级'),
         title: z.string().optional().describe('新标题'),

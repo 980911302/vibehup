@@ -57,7 +57,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       status: body.status,
       assigneeId: body.assignee_id,
       labels: body.labels,
-    });
+    }, { type: 'user', id: request.user?.id });
     if (body.attachment_ids?.length) {
       await attachmentsService.linkMany(body.attachment_ids, 'task', task.id);
     }
@@ -85,7 +85,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       assigneeId: body.assignee_id,
       labels: body.labels,
       reopenReason: body.reopen_reason,
-    });
+    }, { type: 'user', id: request.user?.id });
     return present(task);
   });
 

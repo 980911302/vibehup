@@ -92,7 +92,7 @@ test('拖拽跳级给出提示，合法拖拽生效', async ({ page }) => {
 
   const bug = card(page, '导出 Excel 乱码');
   await bug.dragTo(page.getByTestId('board-column-resolved'));
-  await expect(page.getByText('「待处理」不能直接到「已解决」，只能改为：进行中')).toBeVisible();
+  await expect(page.getByText('「待处理」不能直接到「已解决」，只能改为：进行中 / 已关闭')).toBeVisible();
   await expect(page.getByTestId('board-column-open').getByTestId('bug-card').filter({ hasText: '导出 Excel 乱码' })).toBeVisible();
 
   await bug.dragTo(page.getByTestId('board-column-in_progress'));

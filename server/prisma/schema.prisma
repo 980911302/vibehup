@@ -4,7 +4,7 @@
 //       禁演示数据；迁移只准 prisma migrate 生成（vector 列等 raw SQL 例外须注释）。
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // linux-arm64-openssl-3.0.x：Apple Silicon 上 pgvector 基底（arm64+OpenSSL3）的查询引擎目标。
   // 不声明时生成的引擎可能与运行期平台/OpenSSL 大版本不符（R54 实测 openssl-1.1.x 跑不了）。
   binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
@@ -22,7 +22,7 @@ model Project {
   slug        String    @unique
   description String?
   archivedAt  DateTime? @map("archived_at") // 软归档：不显示但可恢复
-  createdBy   String?   @map("created_by")  // 创建者 user id
+  createdBy   String?   @map("created_by") // 创建者 user id
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -45,23 +45,27 @@ model Bug {
   expectedResult   String?   @map("expected_result")
   actualResult     String?   @map("actual_result")
   severity         String    @default("normal") // low | normal | high | critical
-  status           String    @default("open")   // open | in_progress | resolved | verified | closed
+  status           String    @default("open") // open | in_progress | resolved | verifying | verified | closed
   gitCommitHash    String?   @map("git_commit_hash")
   createdBy        String    @default("human") @map("created_by") // human | ai
   resolutionNotes  String?   @map("resolution_notes")
   // —— v2 扩展 ——
-  assigneeId    String?   @map("assignee_id") // 指派用户 id（空=未指派）
-  reporterId    String?   @map("reporter_id") // 提出人（网页录入=当前用户；MCP 建单=密钥创建人；空=历史数据或本地无密钥）
-  priority      String    @default("medium") // low | medium | high | urgent
-  dueDate       DateTime? @map("due_date")
-  labels        String[] // 原生数组：["ui","p0"]
-  reopenedCount Int       @default(0) @map("reopened_count")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  assigneeId       String?   @map("assignee_id") // 指派用户 id（空=未指派）
+  reporterId       String?   @map("reporter_id") // 提出人（网页录入=当前用户；MCP 建单=密钥创建人；空=历史数据或本地无密钥）
+  priority         String    @default("medium") // low | medium | high | urgent
+  dueDate          DateTime? @map("due_date")
+  labels           String[] // 原生数组：["ui","p0"]
+  reopenedCount    Int       @default(0) @map("reopened_count")
+  // 最近一次状态流转：谁（用户名 / AI 密钥名的快照）、什么时候——看板据此显示「谁在处理、停了多久」（R83）
+  statusChangedAt  DateTime? @map("status_changed_at")
+  statusActorType  String?   @map("status_actor_type") // user | ai
+  statusActorName  String?   @map("status_actor_name")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee User? @relation("BugAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  reporter User? @relation("BugReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User?   @relation("BugAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  reporter User?   @relation("BugReporter", fields: [reporterId], references: [id], onDelete: SetNull)
 
   @@index([projectId, status])
   @@index([projectId, assigneeId])
@@ -72,18 +76,22 @@ model Bug {
 
 /// 任务表（v2：指派）
 model Task {
-  id          String   @id
-  projectId   String   @map("project_id")
-  title       String
-  description String?
-  priority    String   @default("medium") // low | medium | high
-  status      String   @default("todo")   // todo | doing | review | done | cancelled
-  assigneeId  String?  @map("assignee_id")
-  labels      String[] @default([])
-  reopenReason  String? @map("reopen_reason") // 最近一次打回（待验证/已完成 → 进行中）的原因
-  reopenedCount Int     @default(0) @map("reopened_count")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id              String    @id
+  projectId       String    @map("project_id")
+  title           String
+  description     String?
+  priority        String    @default("medium") // low | medium | high
+  status          String    @default("todo") // todo | doing | review | verifying | done | cancelled
+  assigneeId      String?   @map("assignee_id")
+  labels          String[]  @default([])
+  reopenReason    String?   @map("reopen_reason") // 最近一次打回（待验证/已完成 → 进行中）的原因
+  reopenedCount   Int       @default(0) @map("reopened_count")
+  // 最近一次状态流转的操作人与时间（同缺陷，R83）
+  statusChangedAt DateTime? @map("status_changed_at")
+  statusActorType String?   @map("status_actor_type")
+  statusActorName String?   @map("status_actor_name")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -112,20 +120,20 @@ model Note {
 /// 注意：entity_type + entity_id 为多态关联（设计文档第 3 节），
 /// 对应 bug/task/note，由应用层维护，不设数据库外键。
 model Attachment {
-  id           String   @id
-  projectId    String   @map("project_id")
-  entityType   String   @map("entity_type") // bug | task | note | general
-  entityId     String?  @map("entity_id")
-  fileName     String   @map("file_name")
-  fileType     String   @map("file_type") // MIME 类型
-  fileSize     Int      @map("file_size") // BIGINT
-  storageType  String   @default("local") @map("storage_type") // local | s3
-  storagePath  String   @map("storage_path") // 本地磁盘绝对路径或 S3 Key
-  publicUrl    String?  @map("public_url")
-  width        Int? // 图片宽（若为图片）
-  height       Int? // 图片高
-  uploadedBy   String?  @map("uploaded_by") // 上传用户/密钥 id（我的文件过滤）
-  createdAt    DateTime @default(now()) @map("created_at")
+  id          String   @id
+  projectId   String   @map("project_id")
+  entityType  String   @map("entity_type") // bug | task | note | general
+  entityId    String?  @map("entity_id")
+  fileName    String   @map("file_name")
+  fileType    String   @map("file_type") // MIME 类型
+  fileSize    Int      @map("file_size") // BIGINT
+  storageType String   @default("local") @map("storage_type") // local | s3
+  storagePath String   @map("storage_path") // 本地磁盘绝对路径或 S3 Key
+  publicUrl   String?  @map("public_url")
+  width       Int? // 图片宽（若为图片）
+  height      Int? // 图片高
+  uploadedBy  String?  @map("uploaded_by") // 上传用户/密钥 id（我的文件过滤）
+  createdAt   DateTime @default(now()) @map("created_at")
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -149,8 +157,9 @@ model User {
   apiKeys       ApiKey[]
   refreshTokens RefreshToken[]
   usageEvents   UsageEvent[]
-  assignedBugs Bug[] @relation("BugAssignee")
-  reportedBugs Bug[] @relation("BugReporter")
+  assignedBugs  Bug[]          @relation("BugAssignee")
+  reportedBugs  Bug[]          @relation("BugReporter")
+
   @@index([email])
   @@map("users")
 }
@@ -215,7 +224,7 @@ model BugComment {
   id         String   @id
   bugId      String   @map("bug_id")
   authorType String   @map("author_type") // user | ai
-  authorId   String?  @map("author_id")   // user id 或 api_key id
+  authorId   String?  @map("author_id") // user id 或 api_key id
   content    String
   createdAt  DateTime @default(now()) @map("created_at")
 
@@ -228,7 +237,7 @@ model BugTemplate {
   id            String   @id
   name          String
   titleTemplate String   @map("title_template") // 支持 {module} 占位
-  fields        String   // JSON：默认 severity/labels/steps 骨架
+  fields        String // JSON：默认 severity/labels/steps 骨架
   createdBy     String?  @map("created_by")
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -239,11 +248,11 @@ model BugTemplate {
 model SavedView {
   id        String   @id
   userId    String   @map("user_id")
-  entity    String   // bug | file | task
+  entity    String // bug | file | task
   name      String
-  filters   String   // JSON
-  sort      String   // JSON
-  columns   String   // JSON：列显隐与顺序
+  filters   String // JSON
+  sort      String // JSON
+  columns   String // JSON：列显隐与顺序
   isDefault Boolean  @default(false) @map("is_default")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -257,9 +266,9 @@ model SavedView {
 ///   才会被 shadow DB 重放，避免 prisma migrate dev 漂移检测误报）
 model Embedding {
   id         String   @id
-  entityType String   // bug | note
+  entityType String // bug | note
   entityId   String
-  model      String   // text-embedding-3-small / bge-m3 / text-embedding-v3 等
+  model      String // text-embedding-3-small / bge-m3 / text-embedding-v3 等
   dim        Int      @default(1024) // R51：1536 → 1024（text-embedding-v3 / EMBEDDING_DIM）
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -282,9 +291,9 @@ model SystemSetting {
 model Skill {
   id          String   @id
   projectId   String?  @map("project_id")
-  name        String   // 取自 SKILL.md frontmatter，小写字母/数字/连字符
-  description String   // 取自 SKILL.md frontmatter
-  content     String   // SKILL.md 全文
+  name        String // 取自 SKILL.md frontmatter，小写字母/数字/连字符
+  description String // 取自 SKILL.md frontmatter
+  content     String // SKILL.md 全文
   source      String   @default("human") // human | ai（经 MCP 上传）
   uploadedBy  String?  @map("uploaded_by") // 用户 id 或 MCP 密钥 id
   createdAt   DateTime @default(now()) @map("created_at")

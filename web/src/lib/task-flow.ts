@@ -1,16 +1,18 @@
 /**
- * 任务五态（与 server/src/services/tasks.ts 的 TASK_TRANSITIONS 一致）：
- * 待办 → 进行中 → 待验证 → 已完成；待验证/已完成可打回进行中（要写原因）；未完成的可取消，取消后可重新打开回待办。
+ * 任务流转（与 server/src/services/tasks.ts 的 TASK_TRANSITIONS 一致）：
+ * 待办 → 进行中 → 待验证 → 验证中 → 已完成；待验证/验证中/已完成可打回进行中（要写原因）；
+ * 验证中可放回待验证（交给别的验证方）；未完成的可取消，取消后可重新打开回待办。
  * 服务端会在任务上返回 allowed_next_statuses，界面优先用它；这里的表只作兜底与列顺序。
  */
 
-export const TASK_STATUSES = ['todo', 'doing', 'review', 'done', 'cancelled'] as const;
+export const TASK_STATUSES = ['todo', 'doing', 'review', 'verifying', 'done', 'cancelled'] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   todo: '待办',
   doing: '进行中',
   review: '待验证',
+  verifying: '验证中',
   done: '已完成',
   cancelled: '已取消',
 };
@@ -18,7 +20,8 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 export const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   todo: ['doing', 'cancelled'],
   doing: ['review', 'todo', 'cancelled'],
-  review: ['done', 'doing', 'cancelled'],
+  review: ['verifying', 'doing', 'cancelled'],
+  verifying: ['done', 'doing', 'review', 'cancelled'],
   done: ['doing'],
   cancelled: ['todo'],
 };
@@ -29,14 +32,15 @@ export function transitionLabel(from: TaskStatus, to: TaskStatus): string {
   if (to === 'doing') return '打回进行中';
   if (to === 'todo' && from === 'cancelled') return '重新打开';
   if (to === 'todo') return '放回待办';
-  if (to === 'review') return '提交验证';
+  if (to === 'review') return from === 'verifying' ? '放回待验证' : '提交验证';
+  if (to === 'verifying') return '开始验证';
   if (to === 'done') return '验收通过';
   return '取消任务';
 }
 
-/** 打回（待验证/已完成 → 进行中）必须写原因 */
+/** 打回（待验证/验证中/已完成 → 进行中）必须写原因 */
 export function needsReopenReason(from: TaskStatus, to: TaskStatus): boolean {
-  return to === 'doing' && (from === 'review' || from === 'done');
+  return to === 'doing' && (from === 'review' || from === 'verifying' || from === 'done');
 }
 
 export function nextStatuses(task: { status: string; allowed_next_statuses?: string[] }): TaskStatus[] {

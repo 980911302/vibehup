@@ -2,6 +2,7 @@
 
 import { MessageCircle, Paperclip, RotateCcw, Sparkles } from 'lucide-react';
 import { isBugOverdue } from '@/lib/bug-flow';
+import { HandlingLine } from '@/components/activity/HandlingLine';
 import { cn } from '@/lib/utils';
 import { SEVERITY_LABELS, formatTime, type Bug } from '@/lib/api-types';
 
@@ -81,6 +82,8 @@ export function BugCard({
           className="mb-1.5 aspect-[4/3] w-full rounded-lg border border-[var(--border-subtle)] object-cover" />
       )}
 
+      <HandlingLine item={bug} />
+
       {bug.labels.length > 0 && (
         <div className="mb-1.5 flex flex-wrap gap-1">
           {bug.labels.slice(0, 3).map((l) => (
@@ -89,7 +92,7 @@ export function BugCard({
         </div>
       )}
 
-      <div className="flex items-center justify-between text-[11px] text-[var(--text-tertiary)]">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 whitespace-nowrap text-[11px] text-[var(--text-tertiary)]">
         <span className="flex items-center gap-2">
           <span className="flex items-center gap-1">
             <i className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY_DOT[bug.severity] }} />

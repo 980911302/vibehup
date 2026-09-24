@@ -143,14 +143,15 @@ describe('MCP 工具行为', () => {
     const bug = await bugsService.createBug({ projectId: p.id, title: '流转' });
     const ai = { type: 'ai' as const, id: 'key_f' };
 
-    expect((await mcpTools.getBugDetail({ bug_id: bug.id })).allowed_next_statuses).toEqual(['in_progress']);
+    expect((await mcpTools.getBugDetail({ bug_id: bug.id })).allowed_next_statuses).toEqual(['in_progress', 'closed']);
     await expect(mcpTools.updateBugStatus({ bug_id: bug.id, status: 'resolved' }, ai)).rejects.toThrow('不能从「待处理」直接改为「已解决」');
 
     const s1 = await mcpTools.updateBugStatus({ bug_id: bug.id, status: 'in_progress' }, ai);
     expect(s1.next_step).toContain('resolved');
     const s2 = await mcpTools.updateBugStatus({ bug_id: bug.id, status: 'resolved', resolution_notes: '根因 X，改了 Y，单测覆盖' }, ai);
-    expect(s2.allowed_next_statuses).toContain('verified');
-    expect(s2.next_step).toContain('验证');
+    expect(s2.allowed_next_statuses).toContain('verifying');
+    expect(s2.allowed_next_statuses).not.toContain('verified');
+    expect(s2.next_step).toContain('verifying');
 
     // 验证不通过：没填原因拒绝，填了才能回流（此前 MCP 不收 reopen_reason，AI 根本退不回去）
     await expect(mcpTools.updateBugStatus({ bug_id: bug.id, status: 'open' }, ai)).rejects.toThrow('reopen_reason');

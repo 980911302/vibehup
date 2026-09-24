@@ -11,6 +11,7 @@ const ACCENT: Record<TaskStatus, string> = {
   todo: 'var(--sev-normal)',
   doing: 'var(--sev-high)',
   review: 'var(--gold)',
+  verifying: 'var(--brand)',
   done: 'var(--ok)',
   cancelled: 'var(--text-tertiary)',
 };
@@ -29,7 +30,7 @@ function rejectReason(from: TaskStatus, to: TaskStatus): string {
   return `「${TASK_STATUS_LABELS[from]}」不能直接到「${TASK_STATUS_LABELS[to]}」，只能改为：${allowed}`;
 }
 
-/** 任务五列：拖拽只接受合法的下一步，拖动时高亮可放的列 */
+/** 任务看板（每个状态一列）：拖拽只接受合法的下一步，拖动时高亮可放的列 */
 export function TaskBoard({ tasks, canEdit, onOpen, onMove }: TaskBoardProps) {
   const toast = useToast();
   const draggingRef = useRef<Task | null>(null);
@@ -64,7 +65,7 @@ export function TaskBoard({ tasks, canEdit, onOpen, onMove }: TaskBoardProps) {
             key={status}
             data-testid={`task-column-${status}`}
             className={cn(
-              'flex min-h-32 min-w-[220px] flex-1 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-[opacity,border-color]',
+              'flex min-h-32 min-w-[150px] flex-1 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-[opacity,border-color]',
               dragging && !droppable && dragging.status !== status && 'opacity-50',
               overCol === status && droppable && 'border-[var(--gold)] bg-[var(--gold-bg)]',
             )}

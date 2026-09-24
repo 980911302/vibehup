@@ -5,7 +5,7 @@ import { resetDb } from '../test-helpers.js';
 import * as projectsService from './projects.js';
 import * as tasksService from './tasks.js';
 
-/** 任务域：五态流转（待办 → 进行中 → 待验证 → 已完成，+ 已取消）、标签、删除 */
+/** 任务域：流转（待办 → 进行中 → 待验证 → 验证中 → 已完成，+ 已取消）、标签、删除 */
 
 beforeEach(async () => {
   await resetDb();
@@ -17,11 +17,12 @@ async function newTask(extra: Partial<Parameters<typeof tasksService.createTask>
 }
 
 describe('任务状态机', () => {
-  it('主干逐级推进：todo → doing → review → done', async () => {
+  it('主干逐级推进：todo → doing → review → verifying → done', async () => {
     const t = await newTask();
     expect(t.status).toBe('todo');
     expect((await tasksService.updateTask(t.id, { status: 'doing' })).status).toBe('doing');
     expect((await tasksService.updateTask(t.id, { status: 'review' })).status).toBe('review');
+    expect((await tasksService.updateTask(t.id, { status: 'verifying' })).status).toBe('verifying');
     expect((await tasksService.updateTask(t.id, { status: 'done' })).status).toBe('done');
   });
 
@@ -44,6 +45,7 @@ describe('任务状态机', () => {
     expect(back).toMatchObject({ status: 'doing', reopenReason: '导出按钮在 Safari 不可点', reopenedCount: 1 });
 
     await tasksService.updateTask(t.id, { status: 'review' });
+    await tasksService.updateTask(t.id, { status: 'verifying' });
     await tasksService.updateTask(t.id, { status: 'done' });
     const rework = await tasksService.updateTask(t.id, { status: 'doing', reopenReason: '上线后发现漏了分页' });
     expect(rework.reopenedCount).toBe(2);
@@ -51,15 +53,17 @@ describe('任务状态机', () => {
   });
 
   it('未完成的任务可取消，取消后只能重新打开回待办；已完成不能取消', async () => {
-    for (const from of ['todo', 'doing', 'review'] as const) {
+    for (const from of ['todo', 'doing', 'review', 'verifying'] as const) {
       const t = await newTask({ status: from === 'todo' ? 'todo' : 'doing' });
-      if (from === 'review') await tasksService.updateTask(t.id, { status: 'review' });
+      if (from === 'review' || from === 'verifying') await tasksService.updateTask(t.id, { status: 'review' });
+      if (from === 'verifying') await tasksService.updateTask(t.id, { status: 'verifying' });
       expect((await tasksService.updateTask(t.id, { status: 'cancelled' })).status).toBe('cancelled');
       await expect(tasksService.updateTask(t.id, { status: 'doing' })).rejects.toThrow('可以改为：待办');
       expect((await tasksService.updateTask(t.id, { status: 'todo' })).status).toBe('todo');
     }
     const done = await newTask({ status: 'doing' });
     await tasksService.updateTask(done.id, { status: 'review' });
+    await tasksService.updateTask(done.id, { status: 'verifying' });
     await tasksService.updateTask(done.id, { status: 'done' });
     await expect(tasksService.updateTask(done.id, { status: 'cancelled' })).rejects.toThrow('不能从「已完成」直接改为「已取消」');
   });
@@ -79,7 +83,8 @@ describe('任务状态机', () => {
 
   it('taskTransitions 给出每个状态可走的下一步', () => {
     expect(tasksService.allowedNextTaskStatuses('todo')).toEqual(['doing', 'cancelled']);
-    expect(tasksService.allowedNextTaskStatuses('review')).toEqual(['done', 'doing', 'cancelled']);
+    expect(tasksService.allowedNextTaskStatuses('review')).toEqual(['verifying', 'doing', 'cancelled']);
+    expect(tasksService.allowedNextTaskStatuses('verifying')).toEqual(['done', 'doing', 'review', 'cancelled']);
     expect(tasksService.allowedNextTaskStatuses('done')).toEqual(['doing']);
     expect(tasksService.allowedNextTaskStatuses('cancelled')).toEqual(['todo']);
   });

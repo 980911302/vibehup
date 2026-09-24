@@ -27,7 +27,7 @@ function TaskUrlSync({ onOpen }: { onOpen: (taskId: string) => void }) {
   return null;
 }
 
-/** 任务页：五列流转（待办 → 进行中 → 待验证 → 已完成 / 已取消）、标签筛选、点卡片看详情 */
+/** 任务页：六列流转（待办 → 进行中 → 待验证 → 验证中 → 已完成 / 已取消）、标签筛选、点卡片看详情 */
 export default function TasksPage() {
   const store = useVibeHub();
   const toast = useToast();

@@ -6,23 +6,14 @@ import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
 import { countAttachmentsFor } from './attachments.js';
 import { upsertEntityEmbedding, deleteEntityEmbedding } from './embedding.js';
+import { BUG_STATUSES, assertTransition, bugStatusLabel as label, isBugReopen, reopenReasonLabel, type BugStatus } from './bug-flow.js';
+import { resolveStatusActor, type StatusActor } from './stale.js';
 
-export const BUG_STATUSES = ['open', 'in_progress', 'resolved', 'verified', 'closed'] as const;
+// 状态机迁到 bug-flow.ts（R83 加「验证中」后本文件超长），这里重导出保持既有引用不变
+export * from './bug-flow.js';
+
 export const BUG_SEVERITIES = ['low', 'normal', 'high', 'critical'] as const;
 export const BUG_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
-
-export type BugStatus = (typeof BUG_STATUSES)[number];
-
-/** 状态中文名（与看板列名一致；报错与活动流都用它，不直出英文枚举） */
-export const BUG_STATUS_LABELS: Record<BugStatus, string> = {
-  open: '待处理',
-  in_progress: '进行中',
-  resolved: '已解决',
-  verified: '已验证',
-  closed: '已关闭',
-};
-
-const label = (s: string): string => BUG_STATUS_LABELS[s as BugStatus] ?? s;
 
 /** 负责人与提出人（只取 id + 名字），看板/列表/详情统一带上 */
 const WITH_PEOPLE = {
@@ -31,36 +22,6 @@ const WITH_PEOPLE = {
 } as const;
 
 type Person = { id: string; name: string } | null;
-
-/**
- * 缺陷状态机（步骤 04 §4.2 唯一真理源）：
- * open → in_progress → resolved → verified → closed 为主干；
- * 后向回流（→ open/in_progress）必须带 reopen_reason；
- * closed 只可重开回 open。
- */
-export const BUG_TRANSITIONS: Record<BugStatus, BugStatus[]> = {
-  open: ['in_progress'],
-  in_progress: ['resolved', 'open'],
-  // 文档状态机图：resolved/verified 可回流 open/in_progress（需 reason）
-  resolved: ['verified', 'closed', 'open', 'in_progress'],
-  verified: ['closed', 'open', 'in_progress'],
-  closed: ['open'],
-};
-
-/** 需要填写重开原因的目标态 */
-const REOPEN_TARGETS: BugStatus[] = ['open', 'in_progress'];
-
-export function assertTransition(from: BugStatus, to: BugStatus, hasReason: boolean): void {
-  const allowed = BUG_TRANSITIONS[from];
-  if (!allowed.includes(to)) {
-    throw new ValidationError(
-      `不能从「${label(from)}」直接改为「${label(to)}」，可以改为：${allowed.map(label).join(' / ')}`,
-    );
-  }
-  if (REOPEN_TARGETS.includes(to) && from !== to && (from === 'resolved' || from === 'verified' || from === 'closed') && !hasReason) {
-    throw new ValidationError(`从「${label(from)}」重开到「${label(to)}」需要填写重开原因（reopen_reason）`);
-  }
-}
 
 export interface BugListQuery {
   projectId?: string;
@@ -97,6 +58,8 @@ export async function createBug(input: {
   /** 提出人（用户 id）：网页录入=当前用户，MCP 建单=密钥创建人 */
   reporterId?: string | null;
   attachmentIds?: string[];
+  /** 建单的操作人（记为初始状态的「谁」） */
+  actor?: StatusActor;
 }): Promise<Bug> {
   if (input.severity && !BUG_SEVERITIES.includes(input.severity as never)) {
     throw new ValidationError(`severity 必须是 ${BUG_SEVERITIES.join(' | ')} 之一`);
@@ -122,6 +85,8 @@ export async function createBug(input: {
       labels: input.labels ?? [],
       createdBy: input.createdBy ?? 'human',
       reporterId: input.reporterId ?? null,
+      statusChangedAt: new Date(),
+      ...(await resolveStatusActor(input.actor)),
     } as Prisma.BugUncheckedCreateInput,
     include: WITH_PEOPLE,
   });
@@ -164,8 +129,8 @@ export async function updateBug(
     createdBy?: string;
     /** 重开原因（回流到 open/in_progress 时必填） */
     reopenReason?: string;
-    /** 操作者：写活动流（user=人类, ai=MCP） */
-    actor?: { type: 'user' | 'ai'; id?: string | null };
+    /** 操作者：写活动流 + 记「谁在处理」（user=人类取名字, ai=MCP 取密钥名） */
+    actor?: StatusActor;
   },
 ): Promise<Bug> {
   const existing = await prisma.bug.findUnique({ where: { id: bugId } });
@@ -183,17 +148,13 @@ export async function updateBug(
   // 状态机校验（仅在实际变更状态时）
   const statusChanged = patch.status !== undefined && patch.status !== existing.status;
   if (statusChanged) {
-    assertTransition(
-      existing.status as BugStatus,
-      patch.status as BugStatus,
-      Boolean(patch.reopenReason?.trim()),
-    );
+    assertTransition(existing.status as BugStatus, patch.status as BugStatus, {
+      reopenReason: Boolean(patch.reopenReason?.trim()),
+      closeReason: Boolean(patch.resolutionNotes?.trim()),
+    });
   }
 
-  const isReopen =
-    statusChanged &&
-    REOPEN_TARGETS.includes(patch.status as BugStatus) &&
-    ['resolved', 'verified', 'closed'].includes(existing.status);
+  const isReopen = statusChanged && isBugReopen(existing.status, patch.status as string);
 
   const data: Prisma.BugUncheckedUpdateInput = {};
   if (patch.title !== undefined) data.title = patch.title;
@@ -210,14 +171,18 @@ export async function updateBug(
   if (patch.gitCommitHash !== undefined) data.gitCommitHash = patch.gitCommitHash;
   if (patch.createdBy !== undefined) data.createdBy = patch.createdBy;
   if (isReopen) data.reopenedCount = existing.reopenedCount + 1;
+  if (statusChanged) {
+    data.statusChangedAt = new Date();
+    Object.assign(data, await resolveStatusActor(patch.actor));
+  }
 
   const bug = await prisma.bug.update({ where: { id: bugId }, data, include: WITH_PEOPLE });
 
   // 状态变化自动写活动流（闭环①留痕）
   if (statusChanged) {
     const parts = [`状态变更：${label(existing.status)} → ${label(patch.status as string)}`];
-    if (isReopen && patch.reopenReason) parts.push(`重开原因：${patch.reopenReason.trim()}`);
-    if (patch.resolutionNotes) parts.push(`修复说明：${patch.resolutionNotes}`);
+    if (isReopen && patch.reopenReason) parts.push(`${reopenReasonLabel(existing.status)}：${patch.reopenReason.trim()}`);
+    if (patch.resolutionNotes) parts.push(`${patch.status === 'closed' ? '关闭原因' : '修复说明'}：${patch.resolutionNotes}`);
     if (patch.gitCommitHash) parts.push(`commit: ${patch.gitCommitHash}`);
     try {
       const { addComment } = await import('./bug-comments.js');
@@ -308,6 +273,7 @@ export interface BugBoard {
   open: BugWithMeta[];
   in_progress: BugWithMeta[];
   resolved: BugWithMeta[];
+  verifying: BugWithMeta[];
   verified: BugWithMeta[];
   closed: BugWithMeta[];
 }
@@ -317,17 +283,11 @@ export async function getBugBoard(projectId: string, limitPerColumn = 100): Prom
   const all = await prisma.bug.findMany({
     where: { projectId },
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
-    take: limitPerColumn * 5,
+    take: limitPerColumn * BUG_STATUSES.length,
     include: WITH_PEOPLE,
   });
 
-  const groups: Record<string, Bug[]> = {
-    open: [],
-    in_progress: [],
-    resolved: [],
-    verified: [],
-    closed: [],
-  };
+  const groups: Record<string, Bug[]> = Object.fromEntries(BUG_STATUSES.map((st) => [st, [] as Bug[]]));
   for (const bug of all) {
     if (groups[bug.status]) groups[bug.status].push(bug);
   }
@@ -342,7 +302,7 @@ export async function getBugBoard(projectId: string, limitPerColumn = 100): Prom
   }
 
   const counts = await countAttachmentsFor('bug', listed.map((b) => b.id));
-  const board: BugBoard = { open: [], in_progress: [], resolved: [], verified: [], closed: [] };
+  const board = Object.fromEntries(BUG_STATUSES.map((st) => [st, [] as BugWithMeta[]])) as unknown as BugBoard;
   for (const status of Object.keys(board) as BugStatus[]) {
     board[status] = (picked[status] ?? []).map((bug) => ({ ...bug, attachmentCount: counts.get(bug.id) ?? 0 }));
   }

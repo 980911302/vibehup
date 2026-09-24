@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { canDropTo, needsReopenReason, nextStatuses, transitionLabel } from './task-flow';
 import { pickInitialProject } from './current-project';
 
-describe('任务五态（前端）', () => {
+describe('任务流转（前端）', () => {
   it('优先用服务端给的下一步，缺省时按本地流转表', () => {
     expect(nextStatuses({ status: 'todo' })).toEqual(['doing', 'cancelled']);
     expect(nextStatuses({ status: 'review', allowed_next_statuses: ['done'] })).toEqual(['done']);
@@ -15,6 +15,11 @@ describe('任务五态（前端）', () => {
     expect(canDropTo('todo', 'review')).toBe(false);
     expect(canDropTo('review', 'doing')).toBe(false);
     expect(canDropTo('doing', 'doing')).toBe(false);
+    expect(canDropTo('review', 'verifying')).toBe(true);
+    expect(canDropTo('review', 'done')).toBe(false);
+    expect(canDropTo('verifying', 'done')).toBe(true);
+    expect(canDropTo('verifying', 'doing')).toBe(false);
+    expect(needsReopenReason('verifying', 'doing')).toBe(true);
   });
 
   it('按钮文案随来源状态变化', () => {
@@ -22,6 +27,9 @@ describe('任务五态（前端）', () => {
     expect(transitionLabel('review', 'doing')).toBe('打回进行中');
     expect(transitionLabel('cancelled', 'todo')).toBe('重新打开');
     expect(transitionLabel('doing', 'review')).toBe('提交验证');
+    expect(transitionLabel('review', 'verifying')).toBe('开始验证');
+    expect(transitionLabel('verifying', 'review')).toBe('放回待验证');
+    expect(transitionLabel('verifying', 'done')).toBe('验收通过');
   });
 });
 

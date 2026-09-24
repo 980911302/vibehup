@@ -190,14 +190,25 @@ console.log('\n【6/26】update_bug_status — 状态回填 + 状态机校验');
 {
   const ok1 = await call('update_bug_status', { bug_id: longBug.id, status: 'in_progress' });
   check('open → in_progress 通过', !ok1.isError, ok1.isError ? ok1.text.slice(0, 160) : '');
-  const bad = await call('update_bug_status', { bug_id: longBug.id, status: 'closed' });
-  check('非法跨级被拒（in_progress → closed）', bad.isError, bad.text.slice(0, 90).replace(/\s+/g, ' '));
+  const bad = await call('update_bug_status', { bug_id: longBug.id, status: 'verified' });
+  check('非法跨级被拒（in_progress → verified）', bad.isError && bad.text.includes('不能从'), bad.text.slice(0, 90).replace(/\s+/g, ' '));
+  const noCloseReason = await call('update_bug_status', { bug_id: longBug.id, status: 'closed' });
+  check('关闭不写原因被拒（closed 只用于不修复，要写 resolution_notes）', noCloseReason.isError && noCloseReason.text.includes('resolution_notes'));
   const ok2 = await call('update_bug_status', {
     bug_id: longBug.id, status: 'resolved', resolution_notes: '已修复', commit_hash: 'abc1234',
   });
   check('携带 commit_hash 回填 resolved 成功', !ok2.isError, ok2.isError ? ok2.text.slice(0, 160) : '');
   const detail = await call('get_bug_detail', { bug_id: longBug.id });
   check('回填内容已落库（commit abc1234）', detail.text.includes('abc1234'));
+  // R83：验证方先改 verifying，看板与 get_project_context 能看到谁在验；已验证是终点
+  const skipVerify = await call('update_bug_status', { bug_id: longBug.id, status: 'verified' });
+  check('resolved → verified 跳过验证中被拒', skipVerify.isError && skipVerify.text.includes('验证中'));
+  const vin = await call('update_bug_status', { bug_id: longBug.id, status: 'verifying' });
+  check('resolved → verifying 成功', !vin.isError && vin.json?.bug?.status === 'verifying');
+  const ctxV = await call('get_project_context', { project_slug: SLUG });
+  check('get_project_context 列出验证中并带操作人', ctxV.json?.verifying_bugs?.some((b) => b.id === longBug.id && b.status_actor));
+  const vok = await call('update_bug_status', { bug_id: longBug.id, status: 'verified', resolution_notes: '自测环境按步骤复验通过' });
+  check('verifying → verified 成功（终点）', !vok.isError && vok.json?.bug?.status === 'verified' && vok.json?.next_step?.includes('终点'));
   check('详情无多余字段（本轮修复：不再串入 value/truncated）', !detail.text.includes('"value"'), '回归断言');
 }
 
@@ -337,13 +348,17 @@ let flowTaskId = null;
 }
 
 /* ============ 18. 任务五态（经 update_task） ============ */
-console.log('\n【18/26】update_task 五态 — 不能跳级、打回要原因');
+console.log('\n【18/26】update_task 流转 — 不能跳级、验证中、打回要原因');
 {
   const skip = await call('update_task', { task_id: flowTaskId, status: 'review' });
   check('todo → review 跳级被拒', skip.isError && skip.text.includes('不能从'), skip.text.slice(0, 80).replace(/\s+/g, ' '));
   await call('update_task', { task_id: flowTaskId, status: 'doing' });
   const rv = await call('update_task', { task_id: flowTaskId, status: 'review' });
   check('doing → review 成功', !rv.isError && rv.json?.task?.status === 'review');
+  const skipDone = await call('update_task', { task_id: flowTaskId, status: 'done' });
+  check('review → done 跳过验证中被拒', skipDone.isError && skipDone.text.includes('验证中'));
+  const vt = await call('update_task', { task_id: flowTaskId, status: 'verifying' });
+  check('review → verifying 成功', !vt.isError && vt.json?.task?.status === 'verifying');
   const noReason = await call('update_task', { task_id: flowTaskId, status: 'doing' });
   check('打回不写原因被拒', noReason.isError && noReason.text.includes('reopen_reason'));
   const back = await call('update_task', { task_id: flowTaskId, status: 'doing', reopen_reason: '自检打回' });

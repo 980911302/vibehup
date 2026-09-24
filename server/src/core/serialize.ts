@@ -30,6 +30,14 @@ export function serializeProject(
 
 type PersonRef = { id: string; name: string } | null;
 
+/** 最近一次流转的「谁、什么时候」（R83）：历史数据没有记录时 status_actor 为 null */
+function statusActorFields(x: { statusChangedAt: Date | null; statusActorType: string | null; statusActorName: string | null }) {
+  return {
+    status_changed_at: x.statusChangedAt?.toISOString() ?? null,
+    status_actor: x.statusActorType ? { type: x.statusActorType as 'user' | 'ai', name: x.statusActorName ?? '' } : null,
+  };
+}
+
 export function serializeBug(b: Bug & { attachmentCount?: number; commentCount?: number; assignee?: PersonRef; reporter?: PersonRef }) {
   return {
     id: b.id,
@@ -48,6 +56,7 @@ export function serializeBug(b: Bug & { attachmentCount?: number; commentCount?:
     due_date: b.dueDate?.toISOString() ?? null,
     labels: b.labels,
     reopened_count: b.reopenedCount,
+    ...statusActorFields(b),
     git_commit_hash: b.gitCommitHash,
     created_by: b.createdBy,
     resolution_notes: b.resolutionNotes,
@@ -79,6 +88,7 @@ export function serializeTask(
     assignee: t.assigneeId && assigneeName ? { id: t.assigneeId, name: assigneeName } : null,
     reopen_reason: t.reopenReason,
     reopened_count: t.reopenedCount,
+    ...statusActorFields(t),
     allowed_next_statuses: extra.allowedNext,
     attachment_count: t.attachmentCount,
     created_at: t.createdAt.toISOString(),

@@ -24,17 +24,12 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
     return { ...result, items: result.items.map(serializeBug) };
   });
 
-  // GET /api/bugs/board/:projectId —— 看板视图（Open / In Progress / Resolved 分组）
+  // GET /api/bugs/board/:projectId —— 看板视图（按状态分组，列与状态机一一对应）
   fastify.get('/board/:projectId', async (request) => {
     const { projectId } = request.params as { projectId: string };
     const board = await bugsService.getBugBoard(projectId);
-    return {
-      open: board.open.map(serializeBug),
-      in_progress: board.in_progress.map(serializeBug),
-      resolved: board.resolved.map(serializeBug),
-      verified: board.verified.map(serializeBug),
-      closed: board.closed.map(serializeBug),
-    };
+    // 列名取自状态机，不再手写：R83 加「验证中」时手写列表会把新列静默丢掉
+    return Object.fromEntries(bugsService.BUG_STATUSES.map((st) => [st, board[st].map((b) => serializeBug(b))]));
   });
 
   // POST /api/bugs
@@ -81,6 +76,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
       labels: body.labels ?? (defaults.labels as string[]) ?? undefined,
       attachmentIds: body.attachment_ids,
       reporterId: request.user?.id ?? null,
+      actor: { type: 'user', id: request.user?.id },
     });
     reply.code(201);
     return serializeBug(bug);

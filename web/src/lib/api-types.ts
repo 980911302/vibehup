@@ -28,7 +28,7 @@ export interface Bug {
   expected_result: string | null;
   actual_result: string | null;
   severity: 'low' | 'normal' | 'high' | 'critical';
-  status: 'open' | 'in_progress' | 'resolved' | 'verified' | 'closed';
+  status: 'open' | 'in_progress' | 'resolved' | 'verifying' | 'verified' | 'closed';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   assignee_id: string | null;
   /** 指派负责人摘要（R74：后端 include + 序列化；未指派为 null） */
@@ -39,6 +39,9 @@ export interface Bug {
   due_date: string | null;
   labels: string[];
   reopened_count: number;
+  /** 最近一次流转的时间与操作人（R83：看板显示谁在处理、停了多久；历史数据为 null） */
+  status_changed_at: string | null;
+  status_actor: StatusActor | null;
   git_commit_hash: string | null;
   created_by: 'human' | 'ai';
   resolution_notes: string | null;
@@ -46,6 +49,12 @@ export interface Bug {
   comment_count: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface StatusActor {
+  type: 'user' | 'ai';
+  /** 用户名或 AI 的密钥名 */
+  name: string;
 }
 
 export interface BugDetail extends Bug {
@@ -68,14 +77,16 @@ export interface Task {
   title: string;
   description: string | null;
   priority: 'low' | 'medium' | 'high';
-  /** 待办 → 进行中 → 待验证 → 已完成，外加已取消（见 lib/task-flow.ts） */
-  status: 'todo' | 'doing' | 'review' | 'done' | 'cancelled';
+  /** 待办 → 进行中 → 待验证 → 验证中 → 已完成，外加已取消（见 lib/task-flow.ts） */
+  status: 'todo' | 'doing' | 'review' | 'verifying' | 'done' | 'cancelled';
   labels: string[];
   assignee_id: string | null;
   assignee: { id: string; name: string } | null;
   /** 最近一次打回的原因 */
   reopen_reason: string | null;
   reopened_count: number;
+  status_changed_at: string | null;
+  status_actor: StatusActor | null;
   /** 服务端状态机给出的可走下一步 */
   allowed_next_statuses?: Task['status'][];
   attachment_count?: number;
@@ -154,6 +165,7 @@ export interface BugBoard {
   open: Bug[];
   in_progress: Bug[];
   resolved: Bug[];
+  verifying: Bug[];
   verified: Bug[];
   closed: Bug[];
 }
@@ -244,6 +256,7 @@ export const BUG_STATUS_LABELS: Record<Bug['status'], string> = {
   open: '待处理',
   in_progress: '进行中',
   resolved: '已解决',
+  verifying: '验证中',
   verified: '已验证',
   closed: '已关闭',
 };
