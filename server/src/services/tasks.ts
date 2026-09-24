@@ -18,10 +18,14 @@ export async function createTask(input: {
   title: string;
   description?: string | null;
   priority?: string;
+  status?: string;
   assigneeId?: string | null;
 }): Promise<Task> {
   if (input.priority && !TASK_PRIORITIES.includes(input.priority as never)) {
     throw new ValidationError(`priority 必须是 ${TASK_PRIORITIES.join(' | ')} 之一`);
+  }
+  if (input.status && !TASK_STATUSES.includes(input.status as never)) {
+    throw new ValidationError(`status 必须是 ${TASK_STATUSES.join(' | ')} 之一`);
   }
   const project = await prisma.project.findUnique({ where: { id: input.projectId } });
   if (!project) throw new NotFoundError(`项目不存在: ${input.projectId}`);
@@ -33,6 +37,7 @@ export async function createTask(input: {
       title: input.title,
       description: input.description ?? null,
       priority: input.priority ?? 'medium',
+      status: input.status ?? 'todo',
       assigneeId: input.assigneeId ?? null,
     },
   });

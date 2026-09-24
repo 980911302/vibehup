@@ -9,6 +9,7 @@ import * as attachmentsService from '../services/attachments.js';
 import { readTextSlice, isTextFile, inspectImageAsset } from '../services/assets.js';
 import { resolveLocalAttachment } from '../services/attachments.js';
 import { paginate, truncateText, DEFAULT_BUDGET } from './token-budget.js';
+import { bugNextStep, contextReminders } from './workflow.js';
 
 /**
  * MCP Tools 业务实现（设计文档第 4 节）。
@@ -35,28 +36,41 @@ function briefBug(bug: bugsService.BugWithMeta) {
 /** 1. get_project_context —— 冷启动：项目活跃状态简报 */
 export async function getProjectContext(input: { project_slug?: string }) {
   const project = await projectsService.resolveProject(input.project_slug);
-  const [board, tasks, notes] = await Promise.all([
+  const [board, tasks, doingTasks, notes] = await Promise.all([
     bugsService.getBugBoard(project.id, 20),
     tasksService.listTasks({ projectId: project.id, status: 'todo' }),
+    tasksService.listTasks({ projectId: project.id, status: 'doing' }),
     notesService.listNotes({ projectId: project.id, limit: 5 }),
   ]);
 
   const openBugs = [...board.open, ...board.in_progress].map(briefBug);
+  // 已修待验证 / 已验证待关闭：不摆出来，验证方就看不到该收尾的单子
+  const awaitingVerification = [...board.resolved, ...board.verified].map(briefBug);
+  const briefTask = (t: { id: string; title: string; priority: string; status: string }) => ({
+    id: t.id,
+    title: t.title,
+    priority: t.priority,
+    status: t.status,
+  });
 
   return {
     project: { id: project.id, name: project.name, slug: project.slug },
     summary: {
       open_bugs: openBugs.length,
+      awaiting_verification: awaitingVerification.length,
       todo_tasks: tasks.length,
+      doing_tasks: doingTasks.length,
       recent_notes: notes.length,
     },
+    reminders: contextReminders({
+      inProgressBugs: board.in_progress.length,
+      awaitingVerification: awaitingVerification.length,
+      doingTasks: doingTasks.length,
+    }),
     open_bugs: openBugs.slice(0, DEFAULT_BUDGET.listLimit),
-    todo_tasks: tasks.slice(0, 20).map((t) => ({
-      id: t.id,
-      title: t.title,
-      priority: t.priority,
-      status: t.status,
-    })),
+    awaiting_verification: awaitingVerification.slice(0, DEFAULT_BUDGET.listLimit),
+    doing_tasks: doingTasks.slice(0, 20).map(briefTask),
+    todo_tasks: tasks.slice(0, 20).map(briefTask),
     recent_notes: notes.map((n) => ({
       id: n.id,
       ...truncateText(n.content, DEFAULT_BUDGET.noteMax),
@@ -118,6 +132,7 @@ export async function getBugDetail(input: { bug_id: string }) {
     actual_result_truncated: truncateText(bug.actualResult, DEFAULT_BUDGET.textFieldMax).truncated,
     severity: bug.severity,
     status: bug.status,
+    ...bugNextStep(bug.status),
     resolution_notes: bug.resolutionNotes,
     git_commit_hash: bug.gitCommitHash,
     created_by: bug.createdBy,
@@ -211,6 +226,7 @@ export async function updateBugStatus(
     status: string;
     resolution_notes?: string;
     commit_hash?: string;
+    reopen_reason?: string;
   },
   actor?: { type: 'ai'; id?: string | null },
 ) {
@@ -218,6 +234,7 @@ export async function updateBugStatus(
     status: input.status,
     resolutionNotes: input.resolution_notes,
     gitCommitHash: input.commit_hash,
+    reopenReason: input.reopen_reason,
     actor,
   });
   return {
@@ -231,6 +248,7 @@ export async function updateBugStatus(
       git_commit_hash: bug.gitCommitHash,
       updated_at: bug.updatedAt.toISOString(),
     },
+    ...bugNextStep(bug.status),
   };
 }
 

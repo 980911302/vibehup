@@ -8,13 +8,13 @@ import { cn } from '@/lib/utils';
 import type { ApiKeyView } from '@/lib/api-types';
 
 const SCOPE_TOOLS: Record<string, string[]> = {
-  'context:read': ['get_project_context', 'list_bugs', 'get_bug_detail', 'list_notes', 'search', 'list_tasks'],
+  'context:read': ['get_project_context', 'list_bugs', 'get_bug_detail', 'list_notes', 'search'],
   'attachment:read': ['read_attachment_text', 'inspect_image_asset'],
   'attachment:write': ['upload_attachment'],
   'bug:write': ['update_bug_status', 'create_bug', 'add_bug_comment'],
   'note:write': ['append_scratchpad'],
   'task:read': ['list_tasks'],
-  'task:write': ['update_task'],
+  'task:write': ['create_task', 'update_task'],
   admin: ['purge_trash'],
 };
 

@@ -37,7 +37,7 @@
 | 项目切换 | 顶栏切换工作区，支持**中文/拼音/首字母模糊检索**（`yhzx` → 用户中心） |
 | 角色化导航 | 日常五项平铺，密钥/成员/设置收进「更多」折叠；非管理员见锁定态；「简洁模式」可隐藏次要入口 |
 | 实时同步 | SSE 推送（Web）+ **PG LISTEN/NOTIFY 跨进程通道**（MCP stdio 写入 <1s 可达）；5s 轮询仅作双保险 |
-| MCP Tools | **15 个工具**（读取 7 + 写入 8）：见下方工具矩阵 |
+| MCP Tools | **16 个工具**（读取 7 + 写入 9）：见下方工具矩阵 |
 | 双主题 | Midnight 暗色（默认）/ Daylight 纸白，全快捷键驱动（? 查看）；全站 Lucide 图标 |
 
 ## 快速开始（本地开发）
@@ -104,12 +104,12 @@ VibeHub 支持两种传输，密钥均在 Web 端「MCP 密钥」页创建：
 
 > 密钥的 scope 决定可调用的工具（默认最小权限 `context:read`）；stdio 模式不配置密钥时为本地全权（单机信任模型）。`project_slug` 可在 Web 端「项目」页复制；系统只有一个进行中的项目时可省略，多项目时不传会报错并列出全部可选 slug（不会再按目录名猜测、写错项目）。
 
-### MCP Tools 一览（15 个）
+### MCP Tools 一览（16 个）
 
 | 类别 | 工具 |
 | --- | --- |
 | 读取 | `get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、`inspect_image_asset`、`list_notes`、`search`、`list_tasks` |
-| 写入 | `update_bug_status`、`create_bug`、`add_bug_comment`、`append_scratchpad`、`upload_attachment`、`update_task`、`purge_trash` |
+| 写入 | `update_bug_status`、`create_bug`、`add_bug_comment`、`append_scratchpad`、`upload_attachment`、`create_task`、`update_task`、`purge_trash` |
 
 Token 经济学：列表默认 20 条 + `has_more`；长文本字段 500 字符截断并提示用 `read_attachment_text` 分片；图片默认降采样至 1080px；`upload_attachment` 让 AI 把自己抓到的日志/截图贴回工单。
 
@@ -207,7 +207,7 @@ vibehub/
 │       ├── core/                  # prisma 单例 / 事件总线(PG NOTIFY) / ID / 拼音检索 / 序列化 / 错误
 │       ├── services/              # 领域服务（项目/缺陷/任务/便签/附件/存储/资产/语义检索/AI 活动）
 │       ├── routes/                # REST 路由
-│       └── mcp/                   # MCP Server 与 15 个 Tools
+│       └── mcp/                   # MCP Server 与 16 个 Tools
 ├── web/                           # Next.js (App Router) + Tailwind v4 + shadcn/ui
 │   └── src/
 │       ├── app/                   # 页面与全局样式
@@ -227,7 +227,7 @@ cd server && npx vitest run --root ../web       # 前端纯函数单测（12 个
 cd server && bash scripts/acceptance.sh         # 提交门禁：tsc + vitest + HTTP 冒烟
 ```
 
-覆盖：缺陷状态机与看板分组、便签置顶与标签编解码、文本分片与 grep、图片降采样、语义检索（请求形态/base64/阈值/排序）、实时通知（LISTEN 可达性）、AI 活动脱敏、上传顺序无关、15 个 MCP 工具、上传→建缺陷→拖拽→详情全链路、四场景（身份治理/人的闭环/AI 闭环/治理）30 项。
+覆盖：缺陷状态机与看板分组、便签置顶与标签编解码、文本分片与 grep、图片降采样、语义检索（请求形态/base64/阈值/排序）、实时通知（LISTEN 可达性）、AI 活动脱敏、上传顺序无关、16 个 MCP 工具、上传→建缺陷→拖拽→详情全链路、四场景（身份治理/人的闭环/AI 闭环/治理）30 项。
 
 ## 路线图（设计文档第 6 节）
 

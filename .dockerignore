@@ -1,0 +1,8 @@
+# 构建上下文瘦身：依赖在镜像内 npm ci 重装；密钥与测试产物不进上下文
+**/node_modules
+**/.env
+**/test-data
+**/acceptance-*data
+**/acceptance-e2e-data
+web/.next
+web/out

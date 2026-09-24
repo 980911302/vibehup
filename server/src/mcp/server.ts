@@ -5,6 +5,7 @@ import { AppError } from '../core/errors.js';
 import * as tools from './tools.js';
 import * as ext from './tools-extended.js';
 import { guarded } from './guard.js';
+import { SERVER_INSTRUCTIONS } from './workflow.js';
 
 /**
  * VibeHub MCP Server（设计文档第 4 节 + 步骤 03 §3.2 工具矩阵）。
@@ -33,6 +34,8 @@ export const TOOL_NAMES = [
   'list_tasks',
   'update_task',
   'purge_trash',
+  // 后补：AI 建任务（此前只能改不能建）
+  'create_task',
 ] as const;
 
 const TOKEN_BUDGET_NOTE =
@@ -45,8 +48,7 @@ export function createMcpServer(): McpServer {
   const server = new McpServer(
     { name: 'vibehub', version: '0.2.0' },
     {
-      instructions:
-        'VibeHub 研发上下文总线。先调用 get_project_context 了解项目活跃状态——系统有多个项目时须传 project_slug（不传会报错并列出全部可选 slug，按项目名选与当前代码仓库对应的那个）。修复缺陷后用 update_bug_status 回填状态与 commit hash，修复过程可用 add_bug_comment 记录。',
+      instructions: SERVER_INSTRUCTIONS,
     },
   );
 
@@ -56,7 +58,7 @@ export function createMcpServer(): McpServer {
     'get_project_context',
     {
       title: '获取项目上下文',
-      description: `获取项目当前活跃状态（冷启动用）：Open/In Progress 缺陷简报、待办任务、最新 5 条便签。只有一个进行中项目时可省略 project_slug；多项目时必须传（不传会报错并列出可选 slug）。${TOKEN_BUDGET_NOTE}`,
+      description: `获取项目当前活跃状态（冷启动用）：open/in_progress 缺陷、待验证/待关闭缺陷（awaiting_verification）、doing 与 todo 任务、最新 5 条便签，以及 reminders（该流转却还没流转的提醒，照做）。只有一个进行中项目时可省略 project_slug；多项目时必须传（不传会报错并列出可选 slug）。${TOKEN_BUDGET_NOTE}`,
       inputSchema: {
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
       },
@@ -206,22 +208,20 @@ export function createMcpServer(): McpServer {
     {
       title: '更新缺陷状态',
       description:
-        'AI 修复完成后标记状态与回填提交记录。调用后 Web 看板实时刷新，卡片无刷新归类到 Resolved。',
+        '流转缺陷状态，经手就要调，不等人提醒。状态机 open → in_progress → resolved → verified → closed，不能跳级（一次只走一步，需要时连续调用）。' +
+        '开始修 → in_progress；修完且自测通过 → resolved（写 resolution_notes，有提交带 commit_hash）；验证通过 → verified；已在最终环境生效或无需发布 → closed；' +
+        '验证不通过 → open 并填 reopen_reason（从 resolved/verified/closed 回流都必须填）。返回 allowed_next_statuses 与 next_step。',
       inputSchema: {
         bug_id: z.string().describe('缺陷 ID'),
-        status: z.enum(['open', 'in_progress', 'resolved', 'verified', 'closed']).describe('目标状态'),
-        resolution_notes: z.string().optional().describe('修复说明'),
-        commit_hash: z.string().optional().describe('修复对应的 git commit hash'),
+        status: z.enum(['open', 'in_progress', 'resolved', 'verified', 'closed']).describe('目标状态（只能是当前状态的下一步，见 get_bug_detail 的 allowed_next_statuses）'),
+        resolution_notes: z.string().optional().describe('resolved 时必写：根因、改了什么、怎么自测的；verified 时写在哪个环境怎么验证的；不修/重复时写原因'),
+        commit_hash: z.string().optional().describe('修复对应的 git commit hash（有提交才填）'),
+        reopen_reason: z.string().optional().describe('回流到 open/in_progress 时必填：验证没过的现象'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     guarded('update_bug_status', 'bug:write', (ctx, args) =>
-      tools.updateBugStatus(args as {
-        bug_id: string;
-        status: string;
-        resolution_notes?: string;
-        commit_hash?: string;
-      }, { type: 'ai', id: ctx.apiKeyId }),
+      tools.updateBugStatus(args as Parameters<typeof tools.updateBugStatus>[0], { type: 'ai', id: ctx.apiKeyId }),
     ),
   );
 
@@ -301,19 +301,43 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    'create_task',
+    {
+      title: '创建任务',
+      description:
+        'AI 把拆出来的待办/验收遗留项建成任务（可关联已通过 upload_attachment 上传的附件）。建之前先 search 查重。状态缺省 todo、优先级缺省 medium；马上就要动手的可直接建成 doing。',
+      inputSchema: {
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
+        title: z.string().describe('任务标题'),
+        description: z.string().optional().describe('任务描述（支持 Markdown）'),
+        priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级，缺省 medium'),
+        status: z.enum(['todo', 'doing', 'done']).optional().describe('初始状态，缺省 todo'),
+        attachment_ids: z.array(z.string()).optional().describe('关联的附件 ID 列表'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    guarded('create_task', 'task:write', (ctx, args) =>
+      ext.createTask(ctx, args as Parameters<typeof ext.createTask>[1]),
+    ),
+  );
+
+  server.registerTool(
     'update_task',
     {
       title: '更新任务',
-      description: '更新任务状态或优先级。',
+      description:
+        '流转任务状态（也可改优先级、标题、描述，只改传入的字段），经手就要调：开始做 → doing；做完并自测/验收通过 → done；受阻保持 doing。description 是整段替换，list_tasks 返回的是截断后的描述，不要拿它原样回写。',
       inputSchema: {
         task_id: z.string().describe('任务 ID'),
         status: z.enum(['todo', 'doing', 'done']).optional().describe('目标状态'),
         priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级'),
+        title: z.string().optional().describe('新标题'),
+        description: z.string().optional().describe('新描述（整段替换）'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     guarded('update_task', 'task:write', (ctx, args) =>
-      ext.updateTask(ctx, args as { task_id: string; status?: string; priority?: string }),
+      ext.updateTask(ctx, args as Parameters<typeof ext.updateTask>[1]),
     ),
   );
 

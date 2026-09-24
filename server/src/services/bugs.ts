@@ -340,7 +340,11 @@ export async function moveBugToProject(bugId: string, targetProjectId: string): 
 
 export async function deleteBug(bugId: string): Promise<void> {
   const bug = await getBug(bugId);
-  await prisma.bug.delete({ where: { id: bugId } });
+  // bug_comments 没有外键级联（schema 里只存 bugId），不一起删会留下孤儿评论
+  await prisma.$transaction([
+    prisma.bugComment.deleteMany({ where: { bugId } }),
+    prisma.bug.delete({ where: { id: bugId } }),
+  ]);
   await deleteEntityEmbedding('bug', bugId);
   eventBus.publish({ type: 'bug.updated', projectId: bug.projectId, bugId, status: 'deleted' });
 }

@@ -9,10 +9,11 @@ import { globalSearch } from '../services/search.js';
 import { config } from '../config.js';
 import { ValidationError, PayloadTooLargeError } from '../core/errors.js';
 import { DEFAULT_BUDGET, truncateText } from './token-budget.js';
+import { taskNextStep } from './workflow.js';
 
 /**
  * MCP 新增 7 工具（步骤 03 §3.2 矩阵）：
- * list_notes / search / create_bug / add_bug_comment / upload_attachment / list_tasks / update_task / purge_trash
+ * list_notes / search / create_bug / add_bug_comment / upload_attachment / list_tasks / create_task / update_task / purge_trash
  * 全部经 guard 包装（scope + 打点 + Token 经济学）。
  */
 
@@ -124,7 +125,7 @@ export async function uploadAttachment(ctx: McpContext, input: {
   };
 }
 
-/** 13. list_tasks / update_task —— 任务协同 */
+/** 13. list_tasks / create_task / update_task —— 任务协同 */
 export async function listTasks(_ctx: McpContext, input: { project_slug?: string; status?: string }) {
   const project = await projectsService.resolveProject(input.project_slug);
   const tasks = await tasksService.listTasks({ projectId: project.id, status: input.status });
@@ -133,6 +134,7 @@ export async function listTasks(_ctx: McpContext, input: { project_slug?: string
     tasks: tasks.map((t) => ({
       id: t.id,
       title: t.title,
+      description: truncateText(t.description, DEFAULT_BUDGET.noteMax).value,
       priority: t.priority,
       status: t.status,
       assignee_id: t.assigneeId,
@@ -140,12 +142,57 @@ export async function listTasks(_ctx: McpContext, input: { project_slug?: string
   };
 }
 
-export async function updateTask(_ctx: McpContext, input: { task_id: string; status?: string; priority?: string }) {
+/** AI 把拆出来的工作项建成任务（可关联已上传附件）；与 Web「新建任务」同走 tasksService */
+export async function createTask(_ctx: McpContext, input: {
+  project_slug?: string;
+  title: string;
+  description?: string;
+  priority?: string;
+  status?: string;
+  attachment_ids?: string[];
+}) {
+  if (!input.title?.trim()) {
+    throw new ValidationError('title 不能为空');
+  }
+  const project = await projectsService.resolveProject(input.project_slug);
+  const task = await tasksService.createTask({
+    projectId: project.id,
+    title: input.title.trim(),
+    description: input.description,
+    priority: input.priority,
+    status: input.status,
+  });
+  if (input.attachment_ids?.length) {
+    await attachmentsService.linkMany(input.attachment_ids, 'task', task.id);
+  }
+  return {
+    ok: true,
+    task: { id: task.id, title: task.title, status: task.status, priority: task.priority, project_slug: project.slug },
+    next_step: taskNextStep(task.status),
+  };
+}
+
+export async function updateTask(_ctx: McpContext, input: {
+  task_id: string;
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: string;
+}) {
+  if (input.title !== undefined && !input.title.trim()) {
+    throw new ValidationError('title 不能为空');
+  }
   const task = await tasksService.updateTask(input.task_id, {
+    title: input.title?.trim(),
+    description: input.description,
     status: input.status,
     priority: input.priority,
   });
-  return { ok: true, task: { id: task.id, title: task.title, status: task.status, priority: task.priority } };
+  return {
+    ok: true,
+    task: { id: task.id, title: task.title, status: task.status, priority: task.priority },
+    next_step: taskNextStep(task.status),
+  };
 }
 
 /** 14. purge_trash —— 清理超期回收区（admin scope） */

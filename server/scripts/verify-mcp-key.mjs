@@ -136,7 +136,7 @@ async function runSuite(label, client) {
 
   const list = await client.send('tools/list', {});
   const tools = list.result?.tools ?? [];
-  tools.length === 15 ? ok('tools/list 返回 15 个工具') : bad(`工具数 ${tools.length} ≠ 15`);
+  tools.length === 16 ? ok('tools/list 返回 16 个工具') : bad(`工具数 ${tools.length} ≠ 16`);
 
   const ctx = await client.send('tools/call', { name: 'get_project_context', arguments: {} });
   const ctxText = ctx.result?.content?.[0]?.text ?? '';

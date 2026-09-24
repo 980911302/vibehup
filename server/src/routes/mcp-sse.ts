@@ -41,6 +41,9 @@ export const mcpSseRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const res = reply.raw as ServerResponse;
+    // 反向代理（nginx 等）默认缓冲响应：tools/list 这类大消息会被扣住，IDE 侧表现为
+    // 「tools fetch failed: Request timed out」。transport 的 writeHead 会合并这里预置的头
+    res.setHeader('X-Accel-Buffering', 'no');
     // endpoint 事件会由 transport 自动追加 ?sessionId=xxx
     const transport = new SSEServerTransport('/mcp/messages', res);
     sessions.set(transport.sessionId, { transport, ctx });

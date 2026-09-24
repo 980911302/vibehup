@@ -61,7 +61,8 @@
 
 ## 5. MCP 契约
 
-- 15 工具（读取 7 + 写入 8）契约见 `docs/计划/03`；工具签名不得随意变更，变更须登记 PROGRESS §4。
+- 16 工具（读取 7 + 写入 9）契约见 `docs/计划/03`，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`；工具签名不得随意变更，变更须登记 PROGRESS §4。
+- **状态流转协议（R79 新增，`server/src/mcp/workflow.ts` 是 MCP 侧唯一出处）**：缺陷 `open → in_progress → resolved → verified → closed`、任务 `todo → doing → done`，**不能跳级**。规则不靠 AI 自己想起来加载技能，而是三处随协议一起送到每个连上来的 AI：① `initialize` 的 `instructions`（`SERVER_INSTRUCTIONS`）；② 工具描述（`update_bug_status` / `create_task` 等）；③ 工具返回值（`get_bug_detail` 带 `allowed_next_statuses` + `next_step`，`create_task`/`update_task` 带 `next_step`）。`get_project_context` 额外返回 `reminders`（该流转却没流转的存量）与 `awaiting_verification`。**改流转规则时必须同步** `workflow.ts`、`skills/vibehub-mcp/SKILL.md` 第 2–4 节、`docs/计划/03`。
 - 每个工具经 `guard(scope, fn)`：scope 校验 → 执行 → `recordToolCall` 打点 → Token 经济学校形。
 - **MCP 上下文传递契约（R69）**：上下文一律经 `mcpStore`（AsyncLocalStorage）传递——SSE 路由在握手 keyed ctx 内 `run()` 消息处理；`guard` 取 store 上下文、无 store 才回落 env 解析（stdio）。**禁止**在 HTTP 进程里对每次调用单独 `resolveMcpContext()`——无 VIBEHUB_API_KEY 环境变量会静默落到 local 全权：scope 校验被绕过（限权密钥可调写操作）+ 用量打点 api_key_id 为 NULL。
 - Token 经济学：列表默认 20 条 + has_more；长文本字段 500 字符截断并提示；图片默认降采样 1080；base64 需显式声明且 ≤4MB。
@@ -98,7 +99,7 @@
 
 - 测试库 = 一次性 pg 容器（`scripts/test-db.sh`，`TEST_DATABASE_URL` 指向 55432），与生产同引擎；禁 sqlite 分支。
 - 每个 bugfix 先写复现用例；services 行覆盖 ≥80%。
-- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R78 为 173），以脚本当次输出为准。
+- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项 + Playwright E2E + 日志脱敏实证）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R79 为 191），以脚本当次输出为准。
 - 声称"完成/通过"前必须当场跑验证命令并引用输出（verification-before-completion 技能同此要求）。
 
 ## 9. 技能治理契约（Skill Governance）

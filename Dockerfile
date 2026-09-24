@@ -70,6 +70,8 @@ COPY --from=server-builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=server-builder /app/server/dist ./dist
 COPY --from=server-builder /app/server/prisma ./prisma
 COPY --from=web-builder    /app/web/out /app/web/out
+# 技能文件随服务一起对外提供：GET /skills/vibehub-mcp/SKILL.md、/skills/install.sh（别的机器装技能用）
+COPY skills /app/web/out/skills
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/vibehub.conf
 COPY deploy/entrypoint.sh /usr/local/bin/vibehub-entrypoint.sh
 RUN chmod +x /usr/local/bin/vibehub-entrypoint.sh

@@ -18,7 +18,7 @@ import { recordToolCall } from './usage.js';
 import { paginate, truncateText, enforceSizeBudget } from './token-budget.js';
 import sharp from 'sharp';
 
-/** MCP 单测：15 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
+/** MCP 单测：16 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
 
 beforeEach(async () => {
   await resetDb();
@@ -26,13 +26,13 @@ beforeEach(async () => {
 });
 
 describe('工具矩阵', () => {
-  it('TOOL_NAMES = 15 个且与注册一致', async () => {
-    expect(TOOL_NAMES).toHaveLength(15);
+  it('TOOL_NAMES = 16 个且与注册一致', async () => {
+    expect(TOOL_NAMES).toHaveLength(16);
     const expected = [
       'get_project_context', 'list_bugs', 'get_bug_detail', 'read_attachment_text',
       'inspect_image_asset', 'update_bug_status', 'append_scratchpad',
       'list_notes', 'search', 'create_bug', 'add_bug_comment',
-      'upload_attachment', 'list_tasks', 'update_task', 'purge_trash',
+      'upload_attachment', 'list_tasks', 'create_task', 'update_task', 'purge_trash',
     ].sort();
     expect([...TOOL_NAMES].sort()).toEqual(expected);
     expect(createMcpServer()).toBeDefined();
@@ -136,6 +136,46 @@ describe('MCP 工具行为', () => {
     expect(comments[0].content).toContain('cafe1');
   });
 
+  it('状态流转：逐级推进带 next_step，回流必须 reopen_reason，详情给出可走的下一步', async () => {
+    const p = await projectsService.createProject({ name: 'F', slug: 'flow' });
+    const bug = await bugsService.createBug({ projectId: p.id, title: '流转' });
+    const ai = { type: 'ai' as const, id: 'key_f' };
+
+    expect((await mcpTools.getBugDetail({ bug_id: bug.id })).allowed_next_statuses).toEqual(['in_progress']);
+    await expect(mcpTools.updateBugStatus({ bug_id: bug.id, status: 'resolved' }, ai)).rejects.toThrow('不允许');
+
+    const s1 = await mcpTools.updateBugStatus({ bug_id: bug.id, status: 'in_progress' }, ai);
+    expect(s1.next_step).toContain('resolved');
+    const s2 = await mcpTools.updateBugStatus({ bug_id: bug.id, status: 'resolved', resolution_notes: '根因 X，改了 Y，单测覆盖' }, ai);
+    expect(s2.allowed_next_statuses).toContain('verified');
+    expect(s2.next_step).toContain('验证');
+
+    // 验证不通过：没填原因拒绝，填了才能回流（此前 MCP 不收 reopen_reason，AI 根本退不回去）
+    await expect(mcpTools.updateBugStatus({ bug_id: bug.id, status: 'open' }, ai)).rejects.toThrow('reopen_reason');
+    const back = await mcpTools.updateBugStatus({ bug_id: bug.id, status: 'open', reopen_reason: '159 上仍复现' }, ai);
+    expect(back.bug.status).toBe('open');
+    const comments = await prisma.bugComment.findMany({ where: { bugId: bug.id } });
+    expect(comments.some((c) => c.content.includes('159 上仍复现'))).toBe(true);
+  });
+
+  it('get_project_context 摆出待验证缺陷、doing 任务和流转提醒', async () => {
+    const p = await projectsService.createProject({ name: 'C', slug: 'ctx' });
+    const ai = { type: 'ai' as const, id: 'key_c' };
+    const fixing = await bugsService.createBug({ projectId: p.id, title: '修复中' });
+    await mcpTools.updateBugStatus({ bug_id: fixing.id, status: 'in_progress' }, ai);
+    const fixed = await bugsService.createBug({ projectId: p.id, title: '已修待验' });
+    await mcpTools.updateBugStatus({ bug_id: fixed.id, status: 'in_progress' }, ai);
+    await mcpTools.updateBugStatus({ bug_id: fixed.id, status: 'resolved', resolution_notes: 'ok' }, ai);
+    await tasksService.createTask({ projectId: p.id, title: '做到一半', status: 'doing' });
+    await tasksService.createTask({ projectId: p.id, title: '还没开始' });
+
+    const c = await mcpTools.getProjectContext({ project_slug: 'ctx' });
+    expect(c.summary).toMatchObject({ open_bugs: 1, awaiting_verification: 1, todo_tasks: 1, doing_tasks: 1 });
+    expect(c.awaiting_verification.map((b) => b.title)).toEqual(['已修待验']);
+    expect(c.doing_tasks.map((t) => t.title)).toEqual(['做到一半']);
+    expect(c.reminders.join('\n')).toMatch(/in_progress[\s\S]*待验证[\s\S]*doing/);
+  });
+
   it('append_scratchpad 建全局便签并解析标签', async () => {
     const note = await mcpTools.appendScratchpad({ content: '想法', tags: ['idea'] });
     expect(note.tags).toEqual(['idea']);
@@ -215,6 +255,42 @@ describe('MCP 工具行为', () => {
 
     const purged = await ext.purgeTrash(ctx, {});
     expect(purged.ok).toBe(true);
+  });
+
+  it('create_task：缺省值 / 指定状态 / 关联附件 / 校验，update_task 可改标题描述', async () => {
+    const p = await projectsService.createProject({ name: '任务项目', slug: 'tsk' });
+    await projectsService.createProject({ name: '另一个项目', slug: 'other' });
+    const ctx = { mode: 'local' as const, apiKeyId: null, scopes: new Set(['admin']), actorLabel: 'local' };
+
+    const a = await ext.createTask(ctx, { project_slug: 'tsk', title: '  补验收用例  ', description: '详情 **md**' });
+    expect(a.task).toMatchObject({ title: '补验收用例', status: 'todo', priority: 'medium', project_slug: 'tsk' });
+    const row = await prisma.task.findUnique({ where: { id: a.task.id } });
+    expect(row).toMatchObject({ projectId: p.id, description: '详情 **md**' });
+
+    const att = await attachmentsService.createAttachment({
+      projectId: p.id, entityType: 'general', fileName: 'log.txt', fileType: 'text/plain', fileSize: 1, storagePath: 'x/log.txt',
+    });
+    const b = await ext.createTask(ctx, {
+      project_slug: 'tsk', title: '已在做', priority: 'high', status: 'doing', attachment_ids: [att.id],
+    });
+    expect(b.task).toMatchObject({ status: 'doing', priority: 'high' });
+    expect(b.next_step).toContain('done');
+    expect(await prisma.attachment.findUnique({ where: { id: att.id } })).toMatchObject({ entityType: 'task', entityId: b.task.id });
+
+    // 多项目不传 slug 必须报错，不能静默落进别的项目
+    await expect(ext.createTask(ctx, { title: 'x' })).rejects.toThrow('project_slug');
+    await expect(ext.createTask(ctx, { project_slug: 'tsk', title: '   ' })).rejects.toThrow('title');
+    await expect(ext.createTask(ctx, { project_slug: 'tsk', title: 'x', status: 'blocked' })).rejects.toThrow('status');
+    await expect(ext.createTask(ctx, { project_slug: 'nope', title: 'x' })).rejects.toThrow('项目不存在');
+
+    const listed = await ext.listTasks(ctx, { project_slug: 'tsk', status: 'todo' });
+    expect(listed.tasks).toHaveLength(1);
+    expect(listed.tasks[0].description).toBe('详情 **md**');
+
+    const u = await ext.updateTask(ctx, { task_id: a.task.id, title: '改后标题', description: '新描述', status: 'done' });
+    expect(u.task).toMatchObject({ title: '改后标题', status: 'done' });
+    expect(await prisma.task.findUnique({ where: { id: a.task.id } })).toMatchObject({ description: '新描述', priority: 'medium' });
+    await expect(ext.updateTask(ctx, { task_id: a.task.id, title: ' ' })).rejects.toThrow('title');
   });
 
   it('空 q 校验拒绝', async () => {

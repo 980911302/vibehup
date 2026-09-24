@@ -21,10 +21,10 @@
 | --- | --- |
 | 访问地址 | **http://10.72.121.9:3210** |
 | 代码目录 | `/Users/zhanglinlin/Downloads/vibehup/`（本文件所在目录） |
-| 编排文件 | `/Users/zhanglinlin/Downloads/vibehup/docker-compose.yml` |
-| 配置（含密钥） | `/Users/zhanglinlin/Downloads/vibehup/.env`（权限 600，勿提交） |
+| 编排文件（**运行中容器用的这份**） | `/Users/zhanglinlin/vibehub/docker-compose.yml`（compose 项目名 `vibehub`，密钥直接写在 environment 里，权限 600） |
+| 源码目录里的编排 | `/Users/zhanglinlin/Downloads/vibehup/docker-compose.yml` + `.env`：**只作模板，不要在这里 `compose up`**——目录名是 `vibehup`，项目名随之变成 `vibehup`，会挂上空卷 `vibehup_vibehub-*`，看起来像数据丢了，且与 `container_name: vibehub` 冲突 |
 | 容器名 | `vibehub` |
-| 镜像 | `vibehub:1.3`（arm64/linux；源码构建，见 §5） |
+| 镜像 | `vibehub:1.5`（arm64/linux；源码构建，见 §5；1.4 / 1.3 留作回滚） |
 | 对外端口 | `3210`（PG 的 5432 **只在容器内**，不对外暴露） |
 | 数据卷 | `vibehub_vibehub-pg` → 库 / `vibehub_vibehub-data` → 附件 |
 | 重启策略 | `unless-stopped` |
@@ -50,7 +50,7 @@
 - **后端**：Fastify + Prisma + PostgreSQL 16 + pgvector；分层严格单向 `routes → services → core`
   （routes 禁直连 Prisma；services 禁 import Fastify 对象）。API 与 MCP **平级共用 services**。
 - **前端**：Next.js **静态导出**（`output: 'export'`）到 `web/out/`，由 Fastify 直接托管，与 API 同源。
-- **MCP**：15 个工具（读取 7 + 写入 8），双传输——`stdio`（IDE 起子进程）与 `SSE`
+- **MCP**：16 个工具（读取 7 + 写入 9），双传输——`stdio`（IDE 起子进程）与 `SSE`
   （`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=…`，Bearer 必需）。
 
 ```
@@ -68,7 +68,7 @@ vibehup/
 │   │   ├── routes/      REST 路由（auth/bugs/attachments/mcp-sse/events…）
 │   │   ├── services/    业务逻辑（唯一被 routes 与 MCP 共用的层）
 │   │   ├── core/        prisma / errors / jwt / serialize / events / asset-sign …
-│   │   ├── mcp/         15 个工具、scope 守卫、上下文与计量
+│   │   ├── mcp/         16 个工具、scope 守卫、上下文与计量
 │   │   └── bootstrap.ts 容器启动序列
 │   ├── prisma/schema.prisma   数据模型（迁移在 prisma/migrations/）
 │   ├── scripts/         门禁与运维脚本（acceptance.sh / backup.sh / trial-metrics.sh …）
@@ -83,7 +83,7 @@ vibehup/
 
 ```bash
 DK=/usr/local/bin/docker
-cd ~/Downloads/vibehup
+cd ~/vibehub                             # 运行中容器的编排目录（不是源码目录，见 §2）
 
 $DK ps                                   # 容器状态（应 healthy）
 $DK logs -f vibehub --tail 50            # 跟随日志
@@ -108,11 +108,22 @@ $DK exec vibehub npx prisma migrate status
 代码目录已在本机，可直接在本机构建（arm64 原生，无需交叉编译）：
 
 ```bash
-cd ~/Downloads/vibehup
-/usr/local/bin/docker build -t vibehub:1.4 .        # 打新 tag，便于回滚
-# 改 docker-compose.yml 的 image: vibehub:1.4 后：
-/usr/local/bin/docker compose up -d
+DK=/usr/local/bin/docker
+$DK exec vibehub pg_dump -U vibehub -d vibehub -Fc > ~/vibehub-backups/pg-$(date +%F-%H%M).dump   # 先备份
+cd ~/Downloads/vibehup && $DK build -t vibehub:1.6 .     # 在源码目录构建，打新 tag 便于回滚
+# 再到编排目录把 image 改成新 tag 后拉起（必须在 ~/vibehub，见 §2）：
+cd ~/vibehub && sed -i '' 's/image: vibehub:1.5/image: vibehub:1.6/' docker-compose.yml && $DK compose up -d
 ```
+
+> 版本记录：1.4 → **1.5**（2026-09-24）状态流转协议进 MCP（`server/src/mcp/workflow.ts`）：initialize 下发流转规则，
+> `get_project_context` 增加 `awaiting_verification`、`doing_tasks`、`reminders`，`get_bug_detail` / `update_bug_status` 返回
+> `allowed_next_statuses` 与 `next_step`，`update_bug_status` 新增 `reopen_reason`（此前 AI 无法把验证不过的缺陷退回）；
+> `deleteBug` 连带删除评论（`bug_comments` 无外键，原先会留孤儿）；技能改为 MD 文件 `skills/vibehub-mcp/SKILL.md`，
+> 镜像内对外提供 `/skills/vibehub-mcp/SKILL.md` 与 `/skills/install.sh`。
+>
+> 1.3 → 1.4（2026-09-24）新增 MCP 工具 `create_task`，`update_task` 可改标题/描述，
+> `list_tasks` 返回描述；`/mcp/sse` 加 `X-Accel-Buffering: no`（经 nginx 反代时大消息不再被缓冲，
+> 否则 IDE 报「tools fetch failed: Request timed out」）；新增 `.dockerignore`。
 
 > 构建耗时较长（四阶段 + Prisma 引擎 + Node 运行时）。构建失败时先看是否网络问题拉不到基底镜像
 > `pgvector/pgvector:pg16`（`docker pull` 试一下）。
@@ -155,7 +166,7 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 - **测试库**：`vibehub-test-db`（本机另起的容器，破坏性——每用例 TRUNCATE 全表）。
   **不要**把测试指向生产库，那会清空真实数据。
 - **MCP 全工具自测**：`node scripts/test-all-mcp-tools.mjs`（需 `KEY=` 环境变量），
-  15 个工具逐个真调 + 数据库二次核对，期望 `PASS=54 FAIL=0`。
+  16 个工具逐个真调 + 数据库二次核对，期望 `PASS=54 FAIL=0`。
 - **性能体检**：`node scripts/perf-probe.mjs <BASE> <email> <password>`。
 - 声称「完成/通过」前必须当场跑命令并引用输出，不接受「我觉得应该没问题」。
 
@@ -183,12 +194,19 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
   **建议按需最小授权**：日常「读上下文 + 回填」给 `context:read,attachment:read,bug:write` 足够。
 - **多项目时必须传 `project_slug`**（不传会报错并列出可选值——这是刻意设计，防止 AI 把内容写进别的项目）。
 
-### 15 个工具
+### 技能 vibehub-mcp（状态流转规范）
+
+- 正本：`skills/vibehub-mcp/SKILL.md`（本目录）。**不要再把技能写成 VibeHub 便签**——MCP 读便签会截断到 300 字，AI 读不全，也不会自动加载。
+- 安装到本机 Claude Code / Codex / 通用 agents 的用户级技能目录：`bash skills/install.sh`（改了 SKILL.md 重跑即可）。
+- 别的机器：`curl -fsSL http://<地址>:3210/skills/install.sh | VIBEHUB_URL=http://<地址>:3210 bash`。
+- 规则的核心同时写在 `server/src/mcp/workflow.ts`（随 initialize 下发、写进工具描述与返回），**改流转规则时两处同步**。
+
+### 16 个工具
 
 读取：`get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、
 `inspect_image_asset`、`list_notes`、`list_tasks`
 写入：`update_bug_status`、`create_bug`、`add_bug_comment`、`append_scratchpad`、
-`upload_attachment`、`update_task`、`purge_trash`（需 admin）
+`upload_attachment`、`create_task`、`update_task`、`purge_trash`（需 admin）
 
 **易踩的参数坑**（实测确认）：
 - `upload_attachment` 不吃文件路径，必须 `data_base64` + `file_name` + `file_type`。

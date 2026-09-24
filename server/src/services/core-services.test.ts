@@ -75,8 +75,18 @@ describe('缺陷与任务', () => {
   it('删除缺陷', async () => {
     const p = await projectsService.createProject({ name: 'D', slug: 'del' });
     const bug = await bugsService.createBug({ projectId: p.id, title: '删' });
+    const keep = await bugsService.createBug({ projectId: p.id, title: '留' });
+    await prisma.bugComment.createMany({
+      data: [
+        { id: 'cmt_del_1', bugId: bug.id, authorType: 'ai', content: '随缺陷一起删' },
+        { id: 'cmt_keep_1', bugId: keep.id, authorType: 'ai', content: '别的缺陷的评论要留着' },
+      ],
+    });
     await bugsService.deleteBug(bug.id);
     await expect(bugsService.getBug(bug.id)).rejects.toThrow('缺陷不存在');
+    // bug_comments 无外键级联：删缺陷必须连带删评论，不留孤儿
+    expect(await prisma.bugComment.count({ where: { bugId: bug.id } })).toBe(0);
+    expect(await prisma.bugComment.count({ where: { bugId: keep.id } })).toBe(1);
   });
 });
 
