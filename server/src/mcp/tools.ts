@@ -4,6 +4,7 @@ import { AppError } from '../core/errors.js';
 import * as projectsService from '../services/projects.js';
 import * as bugsService from '../services/bugs.js';
 import * as tasksService from '../services/tasks.js';
+import * as skillsService from '../services/skills.js';
 import * as notesService from '../services/notes.js';
 import * as attachmentsService from '../services/attachments.js';
 import { readTextSlice, isTextFile, inspectImageAsset } from '../services/assets.js';
@@ -36,11 +37,13 @@ function briefBug(bug: bugsService.BugWithMeta) {
 /** 1. get_project_context —— 冷启动：项目活跃状态简报 */
 export async function getProjectContext(input: { project_slug?: string }) {
   const project = await projectsService.resolveProject(input.project_slug);
-  const [board, tasks, doingTasks, notes] = await Promise.all([
+  const [board, tasks, doingTasks, reviewTasks, notes, skills] = await Promise.all([
     bugsService.getBugBoard(project.id, 20),
     tasksService.listTasks({ projectId: project.id, status: 'todo' }),
     tasksService.listTasks({ projectId: project.id, status: 'doing' }),
+    tasksService.listTasks({ projectId: project.id, status: 'review' }),
     notesService.listNotes({ projectId: project.id, limit: 5 }),
+    skillsService.listSkills({ projectId: project.id }),
   ]);
 
   const openBugs = [...board.open, ...board.in_progress].map(briefBug);
@@ -60,17 +63,27 @@ export async function getProjectContext(input: { project_slug?: string }) {
       awaiting_verification: awaitingVerification.length,
       todo_tasks: tasks.length,
       doing_tasks: doingTasks.length,
+      review_tasks: reviewTasks.length,
       recent_notes: notes.length,
+      skills: skills.length,
     },
     reminders: contextReminders({
       inProgressBugs: board.in_progress.length,
       awaitingVerification: awaitingVerification.length,
       doingTasks: doingTasks.length,
+      reviewTasks: reviewTasks.length,
     }),
     open_bugs: openBugs.slice(0, DEFAULT_BUDGET.listLimit),
     awaiting_verification: awaitingVerification.slice(0, DEFAULT_BUDGET.listLimit),
     doing_tasks: doingTasks.slice(0, 20).map(briefTask),
+    review_tasks: reviewTasks.slice(0, 20).map(briefTask),
     todo_tasks: tasks.slice(0, 20).map(briefTask),
+    // 团队技能：只给名称与描述，要用时 download_skill 取全文
+    skills: skills.slice(0, DEFAULT_BUDGET.listLimit).map((s) => ({
+      name: s.name,
+      description: truncateText(s.description, DEFAULT_BUDGET.noteMax).value,
+      scope: s.projectId ? 'project' : 'global',
+    })),
     recent_notes: notes.map((n) => ({
       id: n.id,
       ...truncateText(n.content, DEFAULT_BUDGET.noteMax),

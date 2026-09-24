@@ -18,7 +18,7 @@ import { recordToolCall } from './usage.js';
 import { paginate, truncateText, enforceSizeBudget } from './token-budget.js';
 import sharp from 'sharp';
 
-/** MCP 单测：16 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
+/** MCP 单测：26 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
 
 beforeEach(async () => {
   await resetDb();
@@ -26,13 +26,15 @@ beforeEach(async () => {
 });
 
 describe('工具矩阵', () => {
-  it('TOOL_NAMES = 16 个且与注册一致', async () => {
-    expect(TOOL_NAMES).toHaveLength(16);
+  it('TOOL_NAMES = 26 个且与注册一致', async () => {
+    expect(TOOL_NAMES).toHaveLength(26);
     const expected = [
       'get_project_context', 'list_bugs', 'get_bug_detail', 'read_attachment_text',
       'inspect_image_asset', 'update_bug_status', 'append_scratchpad',
       'list_notes', 'search', 'create_bug', 'add_bug_comment',
       'upload_attachment', 'list_tasks', 'create_task', 'update_task', 'purge_trash',
+      'get_task_detail', 'delete_task', 'delete_bug', 'update_note', 'delete_note', 'delete_attachment',
+      'list_skills', 'download_skill', 'upload_skill', 'delete_skill',
     ].sort();
     expect([...TOOL_NAMES].sort()).toEqual(expected);
     expect(createMcpServer()).toBeDefined();
@@ -274,7 +276,7 @@ describe('MCP 工具行为', () => {
       project_slug: 'tsk', title: '已在做', priority: 'high', status: 'doing', attachment_ids: [att.id],
     });
     expect(b.task).toMatchObject({ status: 'doing', priority: 'high' });
-    expect(b.next_step).toContain('done');
+    expect(b.next_step).toContain('review');
     expect(await prisma.attachment.findUnique({ where: { id: att.id } })).toMatchObject({ entityType: 'task', entityId: b.task.id });
 
     // 多项目不传 slug 必须报错，不能静默落进别的项目
@@ -287,8 +289,8 @@ describe('MCP 工具行为', () => {
     expect(listed.tasks).toHaveLength(1);
     expect(listed.tasks[0].description).toBe('详情 **md**');
 
-    const u = await ext.updateTask(ctx, { task_id: a.task.id, title: '改后标题', description: '新描述', status: 'done' });
-    expect(u.task).toMatchObject({ title: '改后标题', status: 'done' });
+    const u = await ext.updateTask(ctx, { task_id: a.task.id, title: '改后标题', description: '新描述', status: 'doing' });
+    expect(u.task).toMatchObject({ title: '改后标题', status: 'doing' });
     expect(await prisma.task.findUnique({ where: { id: a.task.id } })).toMatchObject({ description: '新描述', priority: 'medium' });
     await expect(ext.updateTask(ctx, { task_id: a.task.id, title: ' ' })).rejects.toThrow('title');
   });

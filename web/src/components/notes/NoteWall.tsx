@@ -5,6 +5,7 @@ import { Plus, StickyNote } from 'lucide-react';
 import type { Note } from '@/lib/api-types';
 import { NoteCard } from './NoteCard';
 import { NoteComposer } from './NoteComposer';
+import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 
 interface NoteWallProps {
   notes: Note[];
@@ -39,8 +40,9 @@ export function NoteWall({
 
   return (
     <div className="flex h-full flex-col">
-      {/* 顶栏：计数 + 新建 */}
-      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2.5">
+      {/* 顶栏：项目 + 计数 + 新建 */}
+      <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
+        <CurrentProjectSwitcher />
         <span className="text-xs text-[var(--text-tertiary)]">{filtered.length} 条随手记</span>
         <div className="flex-1" />
         <button className="vh-btn ghost" onClick={onOpenComposer} data-testid="note-new">

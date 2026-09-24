@@ -10,6 +10,8 @@
 人类在 Web 端粘贴截图即录缺陷；AI 通过 MCP 直读上下文并回填修复状态。团队单机版，Docker 单容器部署（PostgreSQL + pgvector 内置）。
 
 > **当前阶段（R77 起）：试用冻结期**——新功能一律冻结，只做试用反馈 / 验证 / 加固；新增用户可见功能、入口或配置项即算新功能，不得施工。卡片 39（全局截图入口）与卡片 51（看板表格视图）已按 R78 决定**彻底移除**，不再重开、不再列入任何看板。详见 `docs/计划/09-真实试用与范围冻结.md`。
+>
+> **R80（用户决定，定向解冻）**：用户在查看功能巡检后明确要求施工以下功能，按其决定落地——任务五态（待办/进行中/待验证/已完成/已取消）+ 标签 + 可点开的详情 + 删除；技能模块（Skills：上传/下载/查看，挂项目或全团队通用）；MCP 增删改补全（26 工具）；任务/随手记/文件/技能页共享当前项目并带切换器。除此之外的新功能仍按冻结规则处理。
 
 ## 1. 权威文档索引（施工前必读）
 
@@ -27,7 +29,8 @@
 
 - 后端分层严格单向：`routes → services → core`；routes 禁止直连 Prisma；services 禁止 import Fastify 对象。
 - MCP 与 routes **平级**共用 services；MCP stdout 只走 JSON-RPC，日志一律 stderr。
-- 前端数据唯一入口 `lib/api.ts`；页面只消费 `hooks/use-vibehub.ts`；跨页状态用 Provider，URL 状态用 searchParams。
+- 前端数据唯一入口 `lib/api.ts`（HTTP 底座 `lib/http.ts`、任务/技能接口 `lib/api-more.ts` 平铺进 `api`）；页面只消费 `hooks/use-vibehub.ts`；跨页状态用 Provider，URL 状态用 searchParams。
+- **当前项目共享契约（R80）**：数据中枢只在 `(app)/layout` 的 `VibeHubProvider` 实例化一次——当前项目、看板数据与**唯一一条** SSE 连接全站共享；当前项目记在 localStorage `vibehub_current_project`，恢复时校验仍存在且未归档（`lib/current-project.ts`）；各页顶栏统一用 `CurrentProjectSwitcher`。**禁止**页面各自再实例化一份 store（曾致一换页项目被重置、每页各开一条 SSE、非最新项目的任务/随手记在界面上无法访问）。
 - 事件：业务写成功后 `eventBus.publish`，负载扁平 `{type, projectId, entityId}`；**实时推送契约（R52 更新）**：publish 同时发 PG `pg_notify`（通道 `vibehub_events`，异步且失败隔离）——SSE 端点用独立 pg Client `LISTEN` 单通道推送，MCP stdio 等跨进程写入 <1s 可达（不再依赖轮询兜底）；失败隔离（NOTIFY/LISTEN 断只丢加速不炸进程，pg Client 必须挂 error 监听器）；前端 5s 轮询保留为**条件兜底**（R78：SSE 已连通且最近有活动则跳过本轮，避免每 5s 白拉一次整板；判定按「最近活动时间」而非布尔标记——EventSource 半开时 onerror 不一定触发，只看标记会永久停掉兜底）。
 - **AI 活动流契约（R60）**：`GET /api/activity/recent` 全员可读（刻意不挂 requireRole——让非管理员感知「AI 读了什么」是特性目的）；数据经 service 层 select 脱敏（仅 key_name/key_prefix/工具名/耗时，禁 keyHash/salt/明文）；管理员完整用量仍在密钥页 keyUsage。
 - **计量契约**：所有 UsageEvent / 审计写入必须 `await`（logEvent 内部已 try-catch 不抛）；禁 `void logEvent(...)` 即发即弃——会导致紧随的用量查询漏账（R11 竞态教训）。
@@ -45,6 +48,7 @@
 - **刷新令牌契约（R76）**：一次性轮换 + 重放整族吊销不变；但同一旧令牌在 10s 宽限期内重复提交且令牌族仍存活 = 并发竞态，照常签发不吊销（多请求/多标签同时刷新曾致用户每 15 分钟随机掉线）；登出吊销**整个令牌族**（否则宽限期内并发签出的同族令牌可让已登出会话复活）。
 - 状态码：200/201/204/400/401/403/404/409/413/429。
 - **multipart 上传顺序无关契约（R53）**：`/api/upload` 的文件 part 与 project_id 等字段到达顺序客户端不保证，路由必须两段式（遍历落盘收集 → 字段齐后建记录），禁止「文件先到就抛缺少字段」（容器 curl 实测抓到，已有回归用例）。
+- **任务 / 技能接口契约（R80）**：写接口（POST/PATCH/DELETE）限 owner/admin/member，viewer 只读（缺陷/便签/附件的写接口尚未加角色校验，见 PROGRESS §4）；任务 PATCH 字段 snake_case 映射（`assignee_id/labels/reopen_reason`），响应带 `labels/assignee/reopen_reason/reopened_count/allowed_next_statuses`，`GET /api/tasks/:id` 带附件。技能上传 `POST /api/skills` 收 JSON：`skill_md` + `files[{path, content_base64|content}]` 或 `zip_base64`（二选一），`project_id` 缺省/null = 全团队通用；同一范围同名即覆盖（201 新建 / 200 覆盖）；`GET /api/skills/:id/download` 返回 `<name>/SKILL.md + 附带文件` 的 zip。
 - **登录防暴力契约（R78）**：`/auth/login` 按「邮箱 + 客户端 IP」滑动窗口计数**失败**尝试（成功即清零），达阈值返回 429 `RATE_LIMITED` + 人话提示 + `Retry-After` 头；阈值/窗口由 `LOGIN_MAX_ATTEMPTS`（默认 5）/`LOGIN_THROTTLE_WINDOW_MS`（默认 15 分钟）控制；实现为进程内 Map（单容器部署成立，多副本须换共享存储）；客户端 IP 取 `X-Forwarded-For` 首段、缺省直连地址。**不得**因限流把正确密码也永久拒绝（窗口过期自动放行，已有用例锁定）。
 
 ## 4. 数据契约（PostgreSQL + pgvector）
@@ -54,20 +58,21 @@
 - `notes.tags` 为原生 `String[]`；数组/JSON 字段的解码函数集中在 service 层。
 - 向量能力：`Embedding` 表 + raw SQL 向量列 + HNSW 索引；`EMBEDDING_PROVIDER=none` 默认关闭，降级纯关键词。**Embedding provider 契约（R49 登记）**：枚举 `none | dashscope`（OpenAI 兼容模式，`EMBEDDING_BASE_URL` 指向 `.../compatible-mode/v1`）；列宽由卡片 28 迁移改为 `vector(1024)`（text-embedding-v3），后续维度以 `EMBEDDING_DIM` 为准且必须与列宽一致；`EMBEDDING_API_KEY` 只进 `.env`/部署环境变量，禁写入任何文档与代码默认值；请求可选带 `dimensions` 参数（`EMBEDDING_SEND_DIM`）与 base64 文本（`EMBEDDING_USE_BASE64`，响应为 float32 小端 base64）。**raw SQL 物理列名陷阱**：`embeddings` 表混合命名——`entityType/entityId/model/dim/embedding` 为 camelCase 物理名，`created_at/updated_at` 为 snake_case（唯二带 @map 的列），写裸 SQL 前先 `\d 表名` 核对。
 - **embedding 写路径契约（R51）**：bug/note 的 create/update 成功后 `await upsertEntityEmbedding`（与 UsageEvent 同属「必须 await」族，防漏写竞态），但内部 try-catch 隔离——外部 API 失败只丢语义索引、禁断业务主流程；delete 时 `deleteEntityEmbedding` 同步清理防幽灵命中。测试与 acceptance 门禁环境强制 `EMBEDDING_PROVIDER=none`（hermetic 禁打外网）；客户端单测用 vi.mock 覆盖 `config.embedding` 开启态。**语义相似阈值（R57）**：`similarEntities` 默认过滤 cosine 距离 ≥0.5 的低相关命中——无阈值时任何查询都会返回近邻，垃圾查询也出「语义命中」分组（卡片 34 实测抓到）。
-- 迁移只准 `prisma migrate` 生成，禁手写 SQL 迁移（raw SQL 仅限 vector 列并注释原因）。
+- 迁移只准 `prisma migrate` 生成，禁手写 SQL 迁移（raw SQL 仅限 vector 列并注释原因）。**向量列陷阱（R80）**：Prisma 不感知 `embeddings.embedding`，每次 `migrate dev` 生成的迁移都会带 `DROP INDEX "Embedding_embedding_idx"` + `DROP COLUMN "embedding"`；与向量列无关的迁移生成后必须删去这两句并留注释（此前的做法是删了再补回，会清空全部语义索引）。
+- **任务表（R80）**：`labels String[]`、`reopen_reason`（最近一次打回原因）、`reopened_count`；`assignee_id` **不建外键**（存量可能指向已删除用户，加外键会让迁移失败），负责人名字由路由批量查。**技能表（R80）**：`skills`（`project_id` 可空 = 全团队通用；同一范围 `name` 唯一由 service 保证——PG 唯一索引不拦 NULL）+ `skill_files`（`bytea`，路径相对技能根目录，单文件 ≤1MB、总 ≤5MB、≤100 个），项目删除级联。
 - **连接契约（双库分离，R64）**：测试库 = 容器 `vibehub-test-db`（`postgresql://postgres:test@127.0.0.1:55432/postgres`，pg16，**破坏性**——vitest 每用例 resetDb TRUNCATE 全表，只供测试/acceptance.sh）；验收/开发库 = 容器 `vibehub-dev-db`（`postgresql://vibehub:vibehub@127.0.0.1:55433/vibehub`，pg16，**持久**——命名卷 `vibehub-dev-pg`，用户验收数据、常驻服务默认连此库；`bash server/scripts/dev-db.sh` 起/复用）；`server/.env` 的 DATABASE_URL 指向验收库；`TEST_DATABASE_URL` 环境变量指向测试库（test-setup.ts 读取）。两库同镜像同迁移， schema 幂等。
 - **.env 加载契约（R57）**：非 Docker 环境下 `server/.env` 是全部配置（DATABASE_URL/JWT_SECRET/EMBEDDING_*/REGISTRATION_OPEN）的**唯一来源**——`config.ts` 的 loadDotEnv 必须把 `server/.env` 作为首个候选（与 Prisma Client 按 schema 旁 .env 加载的约定同源）；漏加载会静默降级（JWT 每次重启随机→全员掉登录、EMBEDDING 关闭、SSE LISTEN 拿 dev.db 兜底），且因库仍可用而极难察觉。
 - **禁止演示数据**：任何环境不得残留 seed/演示数据。
 
 ## 5. MCP 契约
 
-- 16 工具（读取 7 + 写入 9）契约见 `docs/计划/03`，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`；工具签名不得随意变更，变更须登记 PROGRESS §4。
-- **状态流转协议（R79 新增，`server/src/mcp/workflow.ts` 是 MCP 侧唯一出处）**：缺陷 `open → in_progress → resolved → verified → closed`、任务 `todo → doing → done`，**不能跳级**。规则不靠 AI 自己想起来加载技能，而是三处随协议一起送到每个连上来的 AI：① `initialize` 的 `instructions`（`SERVER_INSTRUCTIONS`）；② 工具描述（`update_bug_status` / `create_task` 等）；③ 工具返回值（`get_bug_detail` 带 `allowed_next_statuses` + `next_step`，`create_task`/`update_task` 带 `next_step`）。`get_project_context` 额外返回 `reminders`（该流转却没流转的存量）与 `awaiting_verification`。**改流转规则时必须同步** `workflow.ts`、`skills/vibehub-mcp/SKILL.md` 第 2–4 节、`docs/计划/03`。
+- 26 工具（读取 11 + 写入 15）契约见 `docs/计划/03` §3.2.1，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`，每个工具所需 scope 唯一出处是 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES`；工具签名不得随意变更，变更须登记 PROGRESS §4。**删除类工具（R80 用户决定）**：`delete_bug/delete_task/delete_note/delete_attachment/delete_skill` 跟着对应数据的写权限走，不单设删除权限；工具描述要求 AI 删除前先向用户确认。
+- **状态流转协议（R79 新增，`server/src/mcp/workflow.ts` 是 MCP 侧唯一出处）**：缺陷 `open → in_progress → resolved → verified → closed`、任务 `todo → doing → review → done`（R80：外加 `cancelled`；`review/done → doing` 为打回须带 `reopen_reason`，任务规则唯一出处是 `services/tasks.ts` 的 `TASK_TRANSITIONS`），**不能跳级**。规则不靠 AI 自己想起来加载技能，而是三处随协议一起送到每个连上来的 AI：① `initialize` 的 `instructions`（`SERVER_INSTRUCTIONS`）；② 工具描述（`update_bug_status` / `create_task` 等）；③ 工具返回值（`get_bug_detail` / `get_task_detail` / `create_task` / `update_task` 带 `allowed_next_statuses` + `next_step`）。`get_project_context` 额外返回 `reminders`（该流转却没流转的存量）、`awaiting_verification`、`review_tasks` 与 `skills`（名称+描述）。**改流转规则时必须同步** `workflow.ts`、`skills/vibehub-mcp/SKILL.md` 第 2–4 节、`docs/计划/03`。
 - 每个工具经 `guard(scope, fn)`：scope 校验 → 执行 → `recordToolCall` 打点 → Token 经济学校形。
 - **MCP 上下文传递契约（R69）**：上下文一律经 `mcpStore`（AsyncLocalStorage）传递——SSE 路由在握手 keyed ctx 内 `run()` 消息处理；`guard` 取 store 上下文、无 store 才回落 env 解析（stdio）。**禁止**在 HTTP 进程里对每次调用单独 `resolveMcpContext()`——无 VIBEHUB_API_KEY 环境变量会静默落到 local 全权：scope 校验被绕过（限权密钥可调写操作）+ 用量打点 api_key_id 为 NULL。
 - Token 经济学：列表默认 20 条 + has_more；长文本字段 500 字符截断并提示；图片默认降采样 1080；base64 需显式声明且 ≤4MB。
 - 双传输：stdio（`VIBEHUB_API_KEY` 可选，无密钥=本地全权）+ SSE（`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=xxx`，Bearer 必需，session 即凭据；容器部署形态）。
-- scope 枚举：`context:read / attachment:read / attachment:write / bug:write / note:write / task:read / task:write / admin`；新建密钥默认仅 `context:read`。
+- scope 枚举：`context:read / attachment:read / attachment:write / bug:write / note:write / task:read / task:write / skill:write / admin`（`skill:write` 为 R80 新增：上传/删除技能；查看与下载技能属 `context:read`）；新建密钥默认仅 `context:read`。
 - **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效（SSE 长连接由 guard 每次调用按 ID 复核密钥状态与 scope，R76）；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。
 - **成员与密钥联动（R76）**：密钥校验连带检查创建人状态——账号禁用则其密钥随之停用（可逆，恢复账号即恢复）；移除成员在同一事务内先吊销其创建的全部密钥再删用户（`createdBy` 为 SetNull，否则离职人员密钥继续有效）。
 - **项目解析契约（R76）**：工具未传 `project_slug` 时，仅当只有一个进行中（未归档）项目才自动选择，否则 `VALIDATION_ERROR` 并列出可选 slug；**禁止**按 MCP 服务进程 cwd 猜项目或静默回落到最近更新的项目（容器内 cwd=/app、stdio 为 vibehub/server，均与 IDE 工作区无关，会把 AI 写入落进别的项目）。
@@ -99,7 +104,7 @@
 
 - 测试库 = 一次性 pg 容器（`scripts/test-db.sh`，`TEST_DATABASE_URL` 指向 55432），与生产同引擎；禁 sqlite 分支。
 - 每个 bugfix 先写复现用例；services 行覆盖 ≥80%。
-- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项 + Playwright E2E + 日志脱敏实证）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R79 为 191），以脚本当次输出为准。
+- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项 + Playwright E2E + 日志脱敏实证）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R80 为 vitest 243 + E2E 6），以脚本当次输出为准。
 - 声称"完成/通过"前必须当场跑验证命令并引用输出（verification-before-completion 技能同此要求）。
 
 ## 9. 技能治理契约（Skill Governance）

@@ -43,12 +43,6 @@ export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =>
         </div>
       </div>
       <style jsx global>{`
-        .vh-modal-mask {
-          position: fixed; inset: 0; z-index: 80;
-          background: rgba(2, 6, 16, 0.6); backdrop-filter: blur(4px);
-          display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
-          animation: vh-toast-in 140ms var(--ease) 1;
-        }
         .vh-shortcuts-panel {
           width: min(640px, 92vw); max-height: 70vh; overflow-y: auto;
           background: var(--bg-panel); border: 1px solid var(--border-strong);

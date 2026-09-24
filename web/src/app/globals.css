@@ -397,9 +397,23 @@
 .vh-note-prose pre { background: var(--bg-elevated); border-radius: 8px; padding: 8px 10px; margin: 0 0 6px; overflow-x: auto; }
 .vh-note-prose pre code { background: none; padding: 0; }
 .vh-note-prose ul, .vh-note-prose ol { margin: 0 0 6px; padding-left: 18px; }
+/* Tailwind preflight 会清掉列表符号：有序列表不显示序号、无序列表没有圆点 */
+.vh-note-prose ul { list-style: disc; }
+.vh-note-prose ol { list-style: decimal; }
+.vh-note-prose li:has(> input[type='checkbox']) { list-style: none; }
 .vh-note-prose li { margin: 2px 0; }
 .vh-note-prose h1, .vh-note-prose h2, .vh-note-prose h3 { margin: 0 0 4px; font-size: 14px; color: var(--text-primary); }
 .vh-note-prose blockquote { margin: 0 0 6px; padding-left: 10px; border-left: 2px solid var(--gold); color: var(--text-tertiary); }
 .vh-note-prose hr { border: none; border-top: 1px solid var(--border-subtle); margin: 8px 0; }
 .vh-note-prose table { border-collapse: collapse; margin: 0 0 6px; font-size: 12px; }
 .vh-note-prose th, .vh-note-prose td { border: 1px solid var(--border-subtle); padding: 3px 8px; }
+
+/* 浮层遮罩（⌘K 命令面板与 ? 快捷键帮助共用）。
+   原先只写在 ShortcutsHelp 的 styled-jsx 里，帮助面板没打开时规则不存在，
+   命令面板因此掉到页面左下角并把整页挤扁（功能巡检 B3）。 */
+.vh-modal-mask {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(2, 6, 16, 0.6); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh;
+  animation: vh-toast-in 140ms var(--ease) 1;
+}

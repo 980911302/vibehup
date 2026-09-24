@@ -45,6 +45,22 @@
 
 > 说明：13 号含两个工具函数名，合计 14 个可调用工具。
 
+### 3.2.1 后续扩充（现行 26 个：读取 11 + 写入 15）
+
+> 现行清单以 `server/src/mcp/server.ts` 的 `TOOL_NAMES` 为唯一出处，每个工具所需 scope 以 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES` 为唯一出处。
+
+| 轮次 | 新增工具 | Scope | 说明 |
+| --- | --- | :-: | --- |
+| R8 | （无新增）上表实为 15 个：13 号含两个工具名，原文「合计 14」算术有误 | — | 见 PROGRESS §4 |
+| R79 | `create_task`（16 个） | task:write | AI 建任务；同时上线状态流转协议（`workflow.ts`） |
+| R80 | `get_task_detail` | task:read | 描述默认 500 字符截断，`full: true` 取全文；带 `allowed_next_statuses` / `next_step` |
+| R80 | `delete_task` / `delete_bug` / `delete_note` / `delete_attachment` | 各自的写权限 | 用户决定：删除跟着对应写权限走，不单设删除权限；工具描述要求 AI 删除前先确认 |
+| R80 | `update_note` | note:write | 改内容 / 标签 / 置顶 |
+| R80 | `list_skills` / `download_skill` | context:read | 查看技能（名称+描述）/ 下载全文；下载按 40K 字符分批，`pending` 文件带 `path` 再取，大文件按 `next_offset` 分段 |
+| R80 | `upload_skill` / `delete_skill` | skill:write（新 scope） | 同一范围（项目 / 通用）同名即覆盖 |
+
+**任务流转（R80）**：`todo → doing → review → done`，不能跳级；`review/done → doing` 为打回，必须带 `reopen_reason`；`doing → todo` 为放回；未完成的可 `cancelled`，取消后只能回 `todo`。规则唯一出处为 `server/src/services/tasks.ts` 的 `TASK_TRANSITIONS`，MCP 侧提示在 `workflow.ts`，技能说明在 `skills/vibehub-mcp/SKILL.md` §3。`get_project_context` 增加 `review_tasks` 与 `skills`（名称+描述）。
+
 ## 3.3 Token 经济学（`token-budget.ts` 契约）
 
 ```ts

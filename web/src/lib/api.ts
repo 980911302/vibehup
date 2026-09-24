@@ -1,3 +1,6 @@
+/**
+ * VibeHub API 客户端（AGENTS.md 前端契约：唯一数据入口）。HTTP 底座见 ./http。
+ */
 import type {
   ActivityItem,
   ApiKeyView,
@@ -17,102 +20,10 @@ import type {
   TextSlice,
   UserWithStats,
 } from './api-types';
-import { createTokenRefresher, webLock } from './token-refresh';
+import { ApiError, BASE, currentAccessToken, parseError, rawRequest, request, setTokenAccessors } from './http';
+import { taskApi, skillApi } from './api-more';
 
-/**
- * VibeHub API 客户端（AGENTS.md 前端契约：唯一数据入口）。
- * - 自动带 Authorization；401 → 经刷新协调器换新令牌重放一次（单飞 + 跨标签，见 token-refresh.ts）
- * - 与 Fastify 同源部署（生产）；开发环境由 next rewrites 代理到 :3210
- */
-
-const BASE = '/api';
-
-interface TokenAccessors {
-  getAccessToken: () => string | null;
-  getRefreshToken: () => string | null;
-  onTokens: (access: string, refresh: string) => void;
-  onAuthFail: () => void;
-}
-
-let tokenAccessors: TokenAccessors | null = null;
-let refreshAccess: ((failedAccess: string | null) => Promise<string | null>) | null = null;
-
-/** 由 AuthProvider 注入（避免循环依赖） */
-export function setTokenAccessors(accessors: TokenAccessors): void {
-  tokenAccessors = accessors;
-  refreshAccess = createTokenRefresher({
-    readTokens: () => ({ access: accessors.getAccessToken(), refresh: accessors.getRefreshToken() }),
-    callRefresh: (refreshToken) =>
-      rawRequest<{ access_token: string; refresh_token: string }>(
-        '/auth/refresh',
-        {
-          method: 'POST',
-          body: JSON.stringify({ refresh_token: refreshToken }),
-          // 持有跨标签锁期间不能无限挂起
-          signal: AbortSignal.timeout(15_000),
-        },
-        null,
-      ),
-    saveTokens: accessors.onTokens,
-    isAuthRejection: (err) => err instanceof ApiError && (err.status === 401 || err.status === 403),
-    withLock: webLock,
-  });
-}
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: string,
-  ) {
-    super(message);
-    this.name = 'ApiError';
-  }
-}
-
-async function parseError(res: Response): Promise<ApiError> {
-  let message = `请求失败 (${res.status})`;
-  let code = 'HTTP_ERROR';
-  try {
-    const body = await res.json();
-    if (body?.error?.message) message = body.error.message;
-    if (body?.error?.code) code = body.error.code;
-  } catch {
-    // 非 JSON 响应
-  }
-  return new ApiError(message, res.status, code);
-}
-
-async function rawRequest<T>(path: string, init: RequestInit, token: string | null): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init?.headers,
-    },
-  });
-  if (!res.ok) throw await parseError(res);
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
-
-/** 统一请求：401 → 换新令牌重放一次；只有刷新被拒才登出，网络抖动/服务重启不踢人（R76） */
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = tokenAccessors?.getAccessToken() ?? null;
-  try {
-    return await rawRequest<T>(path, init, token);
-  } catch (err) {
-    if (!(err instanceof ApiError && err.status === 401 && tokenAccessors && refreshAccess)) throw err;
-    const fresh = await refreshAccess(token).catch(() => undefined);
-    if (fresh === undefined) throw err;
-    if (fresh === null) {
-      tokenAccessors.onAuthFail();
-      throw err;
-    }
-    return rawRequest<T>(path, init, fresh);
-  }
-}
+export { ApiError, setTokenAccessors };
 
 export interface AuthResult {
   user: PublicUser;
@@ -194,12 +105,9 @@ export const api = {
   deleteView: (id: string) => request<void>(`/bugs/views/${id}`, { method: 'DELETE' }),
 
   // ============ 任务 ============
-  listTasks: (projectId?: string) => request<Task[]>(`/tasks${projectId ? `?project_id=${projectId}` : ''}`),
-  createTask: (body: { project_id: string; title: string; description?: string; priority?: string; assignee_id?: string | null }) =>
-    request<Task>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
-  updateTask: (taskId: string, body: Record<string, unknown>) =>
-    request<Task>(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  deleteTask: (taskId: string) => request<void>(`/tasks/${taskId}`, { method: 'DELETE' }),
+  // 任务、技能（R80）：定义在 ./api-more，平铺进 api
+  ...taskApi,
+  ...skillApi,
 
   // ============ 便签 ============
   listNotes: (params: { projectId?: string | null; tag?: string } = {}) => {
@@ -222,7 +130,7 @@ export const api = {
     form.append('project_id', projectId);
     form.append('entity_type', 'general');
     for (const file of files) form.append('files', file);
-    const token = tokenAccessors?.getAccessToken() ?? null;
+    const token = currentAccessToken();
     const res = await fetch(`${BASE}/upload`, {
       method: 'POST',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -235,7 +143,7 @@ export const api = {
   /** 单文件上传（XHR，带进度回调；卡片 37：进度条与失败重试的基础） */
   uploadFile: (projectId: string, file: File, onProgress?: (percent: number) => void): Promise<Attachment> =>
     new Promise((resolve, reject) => {
-      const token = tokenAccessors?.getAccessToken() ?? null;
+      const token = currentAccessToken();
       const form = new FormData();
       form.append('project_id', projectId);
       form.append('entity_type', 'general');

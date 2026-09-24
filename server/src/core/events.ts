@@ -7,10 +7,13 @@ export type VibeEvent =
   | { type: 'bug.updated'; projectId: string; bugId: string; status: string }
   | { type: 'task.created'; projectId: string; taskId: string }
   | { type: 'task.updated'; projectId: string; taskId: string; status: string }
+  | { type: 'task.deleted'; projectId: string; taskId: string }
   | { type: 'note.created'; projectId: string | null; noteId: string }
   | { type: 'note.updated'; projectId: string | null; noteId: string }
+  | { type: 'note.deleted'; projectId: string | null; noteId: string }
   | { type: 'attachment.created'; projectId: string; attachmentId: string }
-  | { type: 'attachment.deleted'; projectId: string; attachmentId: string };
+  | { type: 'attachment.deleted'; projectId: string; attachmentId: string }
+  | { type: 'skill.changed'; projectId: string | null; skillId: string };
 
 /** PG LISTEN/NOTIFY 通道名（卡片 29）：MCP stdio 等独立进程写入后，SSE 经此 <1s 感知 */
 export const NOTIFY_CHANNEL = 'vibehub_events';

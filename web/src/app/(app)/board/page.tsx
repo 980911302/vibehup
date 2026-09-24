@@ -11,7 +11,7 @@ import { BugDetailDialog } from '@/components/bugs/BugDetailDialog';
 import { CreateBugDialog } from '@/components/bugs/CreateBugDialog';
 import { TextViewer } from '@/components/assets/TextViewer';
 import { BatchBar } from '@/components/bugs/BatchBar';
-import { ProjectSwitcher } from '@/components/layout/ProjectSwitcher';
+import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 import type { Bug } from '@/lib/api-types';
 
 /** 缺陷看板页（步骤 07 §7.1）：筛选条 + 五列看板 + 批量栏 */
@@ -135,12 +135,7 @@ export default function BoardPage() {
     <div className="flex h-full flex-col">
       {/* 筛选条 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
-        <ProjectSwitcher
-          projects={store.projects}
-          current={store.currentProject}
-          onSelect={store.selectProject}
-          onCreate={(name) => void store.createProject(name)}
-        />
+        <CurrentProjectSwitcher />
 
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />

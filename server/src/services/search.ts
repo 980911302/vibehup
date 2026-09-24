@@ -80,7 +80,7 @@ export async function globalSearch(q: string, limitPerType = 5): Promise<GlobalS
     tasks: tasks
       .filter((t) => matchIndex(q, buildSearchIndex(t.title, t.description ?? '')))
       .slice(0, limitPerType)
-      .map(serializeTask),
+      .map((t) => serializeTask(t)),
     notes: notes
       .filter((n) => matchIndex(q, buildSearchIndex(n.content.slice(0, 40), `${n.content} ${parseTags(n.tags).join(' ')}`)))
       .slice(0, limitPerType)

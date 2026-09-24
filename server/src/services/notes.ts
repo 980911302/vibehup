@@ -138,7 +138,8 @@ export async function listNoteTags(projectId?: string | null): Promise<{ tag: st
 }
 
 export async function deleteNote(noteId: string): Promise<void> {
-  await getNote(noteId);
+  const note = await getNote(noteId);
   await prisma.note.delete({ where: { id: noteId } });
   await deleteEntityEmbedding('note', noteId);
+  eventBus.publish({ type: 'note.deleted', projectId: note.projectId, noteId });
 }

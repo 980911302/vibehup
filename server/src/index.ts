@@ -10,6 +10,7 @@ import { prisma } from './core/prisma.js';
 import { projectRoutes } from './routes/projects.js';
 import { bugRoutes } from './routes/bugs.js';
 import { taskRoutes } from './routes/tasks.js';
+import { skillRoutes } from './routes/skills.js';
 import { noteRoutes } from './routes/notes.js';
 import { attachmentRoutes, attachmentRawRoutes, uploadRoutes } from './routes/attachments.js';
 import { eventRoutes } from './routes/events.js';
@@ -100,6 +101,7 @@ export async function buildServer(opts: { loggerStream?: NodeJS.WritableStream }
     [bugRoutes, '/api/bugs'],
     [bugExtrasRoutes, '/api/bugs'],
     [taskRoutes, '/api/tasks'],
+    [skillRoutes, '/api/skills'],
     [noteRoutes, '/api/notes'],
     [attachmentRoutes, '/api/attachments'],
     [uploadRoutes, '/api/upload'],

@@ -30,14 +30,16 @@
 | 随手记 | 瀑布流便签（实时 Markdown 渲染）、**置顶浮顶**、标签过滤、行内编辑（`G N`） |
 | 文件管理 | 我的/全部文件、三上传入口（**逐文件进度条 + 失败重试**）、图片灯箱、**在线文本查看（分片 + grep 高亮）**、删除与回收站 |
 | 快速录入 | 按 `C` → `Ctrl+V` 粘贴截图 → 异步上传生成缩略图 → 模板填充 → `⌘+Enter` 发送 |
-| 任务与项目 | 任务三列流转/转缺陷；项目表格、slug 复制（AI 匹配用）、归档、删除确认 |
+| 任务与项目 | 任务五列流转（待办 → 进行中 → 待验证 → 已完成，外加已取消；不能跳级，打回要写原因）、点开详情编辑标题/描述/优先级/负责人/**标签**、删除、转缺陷；项目表格、slug 复制（AI 匹配用）、归档、删除确认 |
+| 技能 | 团队的 Claude Code skill（SKILL.md + 附带文件）：选文件夹或 zip 上传、查看正文与附带文件、打包下载；挂在项目下或设为全团队通用；AI 经 MCP 查看、下载、上传 |
+| 当前项目 | 看板、任务、随手记、文件、技能各页共享当前项目并都带切换器，刷新后仍记得 |
 | MCP 密钥 | 三步创建向导、一次性明文、scope 最小权限、轮换（24h 宽限）、撤销、30 天用量图 |
 | AI 活动可见流 | 顶栏 ✦ 面板：全员可见「AI 刚才读了什么」（脱敏：密钥名/前缀/工具/耗时） |
 | 语义检索 | ⌘K 搜索内置 pgvector 语义近邻（`text-embedding-v3` 可配），独立「✦ 语义相似（AI）」分组 |
 | 项目切换 | 顶栏切换工作区，支持**中文/拼音/首字母模糊检索**（`yhzx` → 用户中心） |
 | 角色化导航 | 日常五项平铺，密钥/成员/设置收进「更多」折叠；非管理员见锁定态；「简洁模式」可隐藏次要入口 |
 | 实时同步 | SSE 推送（Web）+ **PG LISTEN/NOTIFY 跨进程通道**（MCP stdio 写入 <1s 可达）；5s 轮询仅作双保险 |
-| MCP Tools | **16 个工具**（读取 7 + 写入 9）：见下方工具矩阵 |
+| MCP Tools | **26 个工具**（读取 11 + 写入 15）：见下方工具矩阵 |
 | 双主题 | Midnight 暗色（默认）/ Daylight 纸白，全快捷键驱动（? 查看）；全站 Lucide 图标 |
 
 ## 快速开始（本地开发）
@@ -68,7 +70,7 @@ npm run dev:web
 
 - 打开 <http://127.0.0.1:3211>（或生产形态 <http://127.0.0.1:3210>）。
 - 首个注册账号自动成为团队 Owner。
-- 一键质量门禁：`bash server/scripts/acceptance.sh`（tsc + 173 用例 + HTTP 冒烟 14 项）。
+- 一键质量门禁：`bash server/scripts/acceptance.sh`（tsc + vitest 全量用例 + HTTP 冒烟 + Playwright E2E）。
 
 ## 连接 IDE Agent（MCP）
 
@@ -104,12 +106,12 @@ VibeHub 支持两种传输，密钥均在 Web 端「MCP 密钥」页创建：
 
 > 密钥的 scope 决定可调用的工具（默认最小权限 `context:read`）；stdio 模式不配置密钥时为本地全权（单机信任模型）。`project_slug` 可在 Web 端「项目」页复制；系统只有一个进行中的项目时可省略，多项目时不传会报错并列出全部可选 slug（不会再按目录名猜测、写错项目）。
 
-### MCP Tools 一览（16 个）
+### MCP Tools 一览（26 个）
 
 | 类别 | 工具 |
 | --- | --- |
-| 读取 | `get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、`inspect_image_asset`、`list_notes`、`search`、`list_tasks` |
-| 写入 | `update_bug_status`、`create_bug`、`add_bug_comment`、`append_scratchpad`、`upload_attachment`、`create_task`、`update_task`、`purge_trash` |
+| 读取 | `get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、`inspect_image_asset`、`list_notes`、`search`、`list_tasks`、`get_task_detail`、`list_skills`、`download_skill` |
+| 写入 | `update_bug_status`、`create_bug`、`add_bug_comment`、`delete_bug`、`append_scratchpad`、`update_note`、`delete_note`、`upload_attachment`、`delete_attachment`、`create_task`、`update_task`、`delete_task`、`upload_skill`、`delete_skill`、`purge_trash` |
 
 Token 经济学：列表默认 20 条 + `has_more`；长文本字段 500 字符截断并提示用 `read_attachment_text` 分片；图片默认降采样至 1080px；`upload_attachment` 让 AI 把自己抓到的日志/截图贴回工单。
 
@@ -130,8 +132,16 @@ GET    /api/bugs/:bugId                    缺陷详情 + 附件清单
 PATCH  /api/bugs/:bugId                    更新（拖拽改状态走这里）
 DELETE /api/bugs/:bugId
 
-GET    /api/tasks?project_id=&status=&priority=&q=
-POST   /api/tasks / PATCH / DELETE
+GET    /api/tasks?project_id=&status=&priority=&label=&q=
+GET    /api/tasks/:taskId                  任务详情（含附件、可走的下一步）
+POST   /api/tasks / PATCH / DELETE         写操作限 owner/admin/member
+
+GET    /api/skills?project_id=&include_global=&q=   技能列表（本项目 + 全团队通用）
+GET    /api/skills/:skillId                技能详情（SKILL.md 全文 + 附带文件清单）
+GET    /api/skills/:skillId/file?path=     读单个附带文件
+GET    /api/skills/:skillId/download       打包下载 zip
+POST   /api/skills                         上传（skill_md + files，或 zip_base64；同一范围同名即覆盖）
+PATCH  /api/skills/:skillId / DELETE       调整归属（project_id: null = 通用）/ 删除
 
 GET    /api/notes?project_id=&tag=&q=&include_archived=
 GET    /api/notes/tags?project_id=         标签聚合
@@ -207,7 +217,7 @@ vibehub/
 │       ├── core/                  # prisma 单例 / 事件总线(PG NOTIFY) / ID / 拼音检索 / 序列化 / 错误
 │       ├── services/              # 领域服务（项目/缺陷/任务/便签/附件/存储/资产/语义检索/AI 活动）
 │       ├── routes/                # REST 路由
-│       └── mcp/                   # MCP Server 与 16 个 Tools
+│       └── mcp/                   # MCP Server 与 26 个 Tools
 ├── web/                           # Next.js (App Router) + Tailwind v4 + shadcn/ui
 │   └── src/
 │       ├── app/                   # 页面与全局样式
@@ -221,13 +231,13 @@ vibehub/
 ## 测试
 
 ```bash
-npm test                                        # vitest：173 个用例（services / MCP / HTTP / TDD 回归）
+npm test                                        # vitest：243 个用例（services / MCP / HTTP / TDD 回归）
 node scripts/final-acceptance.mjs               # 四场景端到端总验收（30 项，需服务在跑）
 cd server && npx vitest run --root ../web       # 前端纯函数单测（12 个：令牌刷新协调 / TSV 解析）
 cd server && bash scripts/acceptance.sh         # 提交门禁：tsc + vitest + HTTP 冒烟
 ```
 
-覆盖：缺陷状态机与看板分组、便签置顶与标签编解码、文本分片与 grep、图片降采样、语义检索（请求形态/base64/阈值/排序）、实时通知（LISTEN 可达性）、AI 活动脱敏、上传顺序无关、16 个 MCP 工具、上传→建缺陷→拖拽→详情全链路、四场景（身份治理/人的闭环/AI 闭环/治理）30 项。
+覆盖：缺陷状态机与看板分组、便签置顶与标签编解码、文本分片与 grep、图片降采样、语义检索（请求形态/base64/阈值/排序）、实时通知（LISTEN 可达性）、AI 活动脱敏、上传顺序无关、26 个 MCP 工具、任务五态与技能上传下载、上传→建缺陷→拖拽→详情全链路、四场景（身份治理/人的闭环/AI 闭环/治理）30 项。
 
 ## 路线图（设计文档第 6 节）
 

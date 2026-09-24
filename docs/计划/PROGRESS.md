@@ -1,5 +1,5 @@
 # VibeHub 构建驾驶舱（PROGRESS）```
-状态：🧊 试用冻结期（R77 起，见 docs/计划/09）：新功能冻结；卡片 51 / 39 已按 R78 彻底删除；R76/R77/R78 在分支 fix/p0-review 待用户合并
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 定向解冻（任务五态/标签/详情/删除、技能模块、MCP 26 工具、各页共享当前项目）已完成；卡片 51 / 39 已按 R78 彻底删除；R80 在分支 claude/relaxed-knuth-jzkfzg 待用户合并
 下一步：先查 F0（验收库 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项（当前为 F1 补验）
 前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76/R77/R78，待用户合并）——每轮结束按 AGENTS.md §10 提交；
       测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据与试用数据（勿 TRUNCATE、勿写测试数据）；
@@ -22,10 +22,10 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 
 ## 1. 当前状态（每次运行结束更新）
 
-- **当前步骤**：🧊 **试用冻结期（R77 起）**——新功能冻结，按 `docs/计划/09` 真实试用 10 个工作日；R78 已把冻结期清单 F1–F8 全部做完，除 F0（试用反馈）外无待办
-- **当前子任务**：R78 完成（删卡片 39/51 + F1–F8 全部落地 + 交付镜像 1.3 重建 + 服务已起）；**试用起始日：待用户开始实际使用时填写**
+- **当前步骤**：🧊 **试用冻结期（R77 起）+ R80 定向解冻**——用户看过功能巡检后要求完善任务（五态/标签/详情/删除）、新增技能模块、补全 MCP 增删改、各页共享当前项目，R80 已全部落地；其余新功能仍冻结，F0（试用反馈）常驻
+- **当前子任务**：R80 完成（分支 `claude/relaxed-knuth-jzkfzg`，待用户合并；交付镜像未重建）；**试用起始日：待用户开始实际使用时填写**
 - **环境状态**：双库容器在跑（dev 55433 持久卷 / test 55432 破坏性）；**服务已启动**——后端 :3210（连验收库）+ 前端 dev :3211（/api 代理 3210）；`vibehub:1.3` 为唯一交付镜像（含 R76/R77/R78 全部修复，1.2 已删）
-- **代码基线**：R78 后全绿：vitest 188/188 + web 单测 18/18 + 冒烟 14/14 + E2E 3 用例 + 备份恢复演练 10/10 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**；git：main（R75 基线）→ fix/p0-review（R76/R77/R78 共 12 个提交，待用户合并）
+- **代码基线**：R80 后全绿：vitest 243/243 + web 单测 26/26 + E2E 6 用例 + 26 工具 SSE 实测 PASS=81 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**（云端会话无 Docker，测试库改指本机 PG16+pgvector，其余步骤原样）。R78 基线（历史）：：vitest 188/188 + web 单测 18/18 + 冒烟 14/14 + E2E 3 用例 + 备份恢复演练 10/10 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**；git：main（R75 基线）→ fix/p0-review（R76/R77/R78 共 12 个提交，待用户合并）
 
 ## 2. 看板（工程进度）
 
@@ -302,13 +302,21 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 | R79 | 用户在远端改完代码要求同步回本地：新增**状态流转协议**（`server/src/mcp/workflow.ts`：`SERVER_INSTRUCTIONS` 随 initialize 下发 + 工具描述 + 工具返回 `allowed_next_statuses`/`next_step`/`reminders`）、新增第 16 个工具 **`create_task`**（此前 AI 只能改任务不能建）、`update_bug_status` 增 `reopen_reason` 参数、`get_project_context` 增 `awaiting_verification`/`doing_tasks`/`reminders`、`list_tasks` 出 description；并修复**删缺陷遗留孤儿评论**（`bug_comments` 无外键级联）+ SSE 加 `X-Accel-Buffering: no`（nginx 缓冲致 IDE `tools fetch failed`） | 工具矩阵 15 → **16**（读取 7 + 写入 9），契约定居 AGENTS.md §5；流转规则以 `workflow.ts` 为 MCP 侧唯一出处，改规则须同步 `skills/vibehub-mcp/SKILL.md` §2–4 与 `docs/计划/03`；`skills/` 随镜像发布（Dockerfile 复制到 `web/out/skills`，供 `GET /skills/vibehub-mcp/SKILL.md`） | AGENTS.md §5/§8；server/src/mcp/{workflow,server,tools,tools-extended}.ts、services/{bugs,tasks}.ts、routes/mcp-sse.ts；skills/ |
 | R78 | 15 个 MCP 工具逐个实测（用户要求）时抓到**真 bug**：`get_bug_detail` 返回对象里 `...truncateText(...)` 把该函数结果对象（`value`/`truncated`）整段展开进响应，导致每条缺陷详情都混入无意义的 `"value"` 字段——AI 看到的字段集与 03 文档契约不一致（紧随其后的同名正确字段把它覆盖，故此前未被发现） | 删除该展开行；新增回归断言「详情不得再出现 `value`」；沉淀 `server/scripts/test-all-mcp-tools.mjs`（15 工具逐个真调，含失败路径与数据库二次核对），本机 **PASS=54 FAIL=0** | server/src/mcp/tools.ts；server/scripts/test-all-mcp-tools.mjs |
 | R78 | 实时推送契约原文「前端 5s 轮询保留为双保险」与「SSE 有效时跳过轮询」冲突 | 契约改为**条件兜底**：SSE 已连通且最近有活动则跳过本轮；判定必须按「最近活动时间」而非连通标记——EventSource 半开时 onerror 不触发，只看标记会永久停掉兜底（丢实时性的风险大于省下的请求） | AGENTS.md §2；web/src/lib/sse-poll.ts（纯函数 + 6 条单测锁定语义） |
+| R80 | 冻结期（R77）规定新功能不施工；用户在功能巡检后明确要求：任务可点开查看、五种状态、标签、删除；MCP 补全删除等操作；菜单新增「技能」（MCP 可上传/下载/查看，挂项目）；任务与随手记页能选项目 | **用户决定定向解冻**，只做上述范围；设计决策由用户拍板：任务状态 `todo → doing → review → done` + `cancelled`（打回须写原因）；技能 = SKILL.md + 附带文件，挂项目或全团队通用；MCP 删除跟着对应写权限走（不单设删除 scope） | AGENTS.md §0/§2/§3/§4/§5/§8；docs/计划/03 §3.2.1；skills/vibehub-mcp/SKILL.md |
+| R80 | 功能巡检 B1：每个页面各自实例化 `useVibeHub()`，当前项目一换页就回到「最近更新的项目」，且只有看板有项目切换器——非最新项目的任务与随手记在界面上根本打不开；每页还各开一条 SSE | 数据中枢改为 `(app)/layout` 的 `VibeHubProvider` 单例；当前项目记 localStorage 并校验仍存在/未归档；看板、任务、随手记、文件、技能页统一 `CurrentProjectSwitcher`；「我的文件」随之限定当前项目 | web/src/hooks/{use-vibehub,use-vibehub-store,vibehub-live}.ts、lib/current-project.ts；AGENTS.md §2 |
+| R80 | 功能巡检 B3：⌘K 面板的遮罩类 `.vh-modal-mask` 只写在 ShortcutsHelp 的 styled-jsx 里，帮助面板没打开时不存在，面板掉到左下角并把整页挤扁（本轮要往面板里加「任务/技能」入口，一并修） | 规则移入 `globals.css`；E2E 断言遮罩 `position: fixed` | web/src/app/globals.css、components/layout/{ShortcutsHelp,CommandPalette}.tsx |
+| R80 | `migrate dev` 每次都会生成 DROP pgvector 列（Prisma 不感知 raw SQL 列）；此前做法是迁移末尾再补回——列与索引回来了，但**全部语义索引数据被清空** | 本轮两个迁移生成后删去 DROP 两句并注释原因（raw SQL 例外），实测迁移后向量列保留；契约写入 AGENTS.md §4 | server/prisma/migrations/2026092412{1439,1754}_*；AGENTS.md §4 |
+| R80 | 任务负责人要显示名字，但加外键会让存量指向已删用户的 `assignee_id` 迁移失败（测试里也有 `usr_1` 这类假 ID） | 任务表不建外键，路由批量查名字；序列化层不依赖 service（`allowed_next_statuses` 由路由传入） | server/src/routes/tasks.ts、core/serialize.ts；AGENTS.md §4 |
+| R80 | 技能打包下载需要 zip | 新增依赖 `fflate@0.8.3`（MIT、零依赖）；lockfile 只加 fflate 条目并保持 npmmirror 源地址（云端 npm 版本较旧会改写 169 行无关 `libc` 字段，已规避），`npm ci --dry-run` 校验一致 | server/package.json、package-lock.json |
+| R80 | 功能巡检 B2（viewer 能增删改缺陷/任务）只在本轮新写的接口处理：任务与技能的写接口限 owner/admin/member | **缺陷、便签、附件的写接口仍无角色校验**，未在本轮扩大范围，待用户决定 | server/src/routes/{tasks,skills}.ts |
+| R80 | `lib/api.ts` 已 330 行（契约上限 300） | HTTP 底座拆到 `lib/http.ts`，任务/技能接口在 `lib/api-more.ts` 平铺进 `api`；页面仍只经 `api` 取数 | web/src/lib/{api,http,api-more}.ts；AGENTS.md §2 |
 
 ---
 
 ## 5. 给下一次运行的起点指令（最重要，结束时必须更新）
 
 ```
-状态：🧊 试用冻结期（R77 起，见 docs/计划/09）：新功能冻结；卡片 51 / 39 已按 R78 彻底删除；R76/R77/R78 在分支 fix/p0-review 待用户合并
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 定向解冻（任务五态/标签/详情/删除、技能模块、MCP 26 工具、各页共享当前项目）已完成；卡片 51 / 39 已按 R78 彻底删除；R80 在分支 claude/relaxed-knuth-jzkfzg 待用户合并
 下一步：先查 F0（验收库 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项（当前为 F1 补验）
 前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76/R77/R78，待用户合并）——每轮结束按 AGENTS.md §10 提交；
       测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据与试用数据（勿 TRUNCATE、勿写测试数据）；
@@ -378,3 +386,4 @@ R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url�
 | R77 | 用户授权代为决策「收拢范围」：卡片 39 **砍**（inject 探针实测 MCP 密钥调 REST 录入接口 401 INVALID_TOKEN，方案「零后端改动」前提不成立；收益未经数据验证）；卡片 51 **冻结**；新建 `docs/计划/09`（10 个工作日真实试用、可量化达标标准、结束评审解冻规则）；新增只读 `server/scripts/trial-metrics.sh`；§2 看板改为冻结期清单 F0–F8；§6 增冻结期规则 | 指标脚本以四场景总验收数据校验口径（总验收 30/30 后：AI resolved 1 / 人工新建 2 = 50%，MCP 成功 7 / 失败 1，与剧本一致；补录带图缺陷后截图计数 0→1；起始日期过滤生效）；测试库已清空。**附带实证**：只读核对验收库 `auth.token_reused` 共 4 条＝2 组同毫秒成对（并发刷新指纹，UTC 00:24 / 04:36，均早于 R76 刷新修复 11:51 UTC）——P0-2 在用户环境真实发生过 2 次；故试用指标必须以修复后的日期为起点 | F0 / F1（冻结期清单）。**技能治理**：① 无新重复工作流；② vibehub-build 补「冻结期协议」；③ AGENTS.md §0 补当前阶段、§1 文档索引补 09 |
 | R78 | 用户指示：「卡片 51/39 都删除了不要了，然后其它没做完的就继续做，你先给我跑起来」——① 删除 39/51 全部计划痕迹；② 起服务并推进冻结期清单 F1–F8；③ 交付镜像刷新 | 删卡：删 `docs/计划/39-全局截图入口方案.md` + AGENTS.md/09/07/PROGRESS 全部引用（历史日志留原貌）。清单：F1/F3 引入 Playwright E2E（3 用例：闭环 + 指派 + TSV 速录）、F2 语义写路径超时与跳过、F4 登录限流、F5 SSE 单连接与日志脱敏、F6 镜像 1.3 容器冒烟、F7 备份恢复演练 10/10、F8 文档纠偏。**门禁**：`acceptance.sh` **PASS=19 FAIL=0**（tsc + vitest 188 + 冒烟 14 + E2E 3 passed + 日志脱敏 2 实证）。**实测抓到的四个坑**：MCP 子进程缺 DATABASE_URL 会静默落 dev 库（查无密钥 → initialize 超时）；状态机不允许 open→resolved 跨级（工具返回 isError，早期断言写错漏判）；`getByAltText` 在看板与对话框同名文件下命中两元素（strict mode）；非空库首注册用户是 member（建项目 403）→ 夹具共用同一 Owner。服务已起：后端 :3210（验收库）+ 前端 dev :3211 | 试用启动（F0 常驻）；R76/R77/R78 待合并到 main | **技能治理**：① 「E2E 前置清库 + 共用 Owner 夹具」为可复用模式，已随代码库沉淀（tests/e2e/fixtures.ts），不另立技能；② vibehub-build 补两条教训（MCP 子进程须显式传 DATABASE_URL；E2E 断言要检查工具返回的 isError）；③ AGENTS.md §3 补登录防暴力契约、§5 工具数订正 15、§8 门禁去硬编码 |
 | R79 | 用户指示「那边的代码我更新了，同步过来」：远端 `~/Downloads/vibehup/` 已提交（1 提交、工作区干净），经 `git fetch` 取回对象做**文件级对比**后同步——判明 4 个文件（bugs/tools/server/tools-extended）远端版是「我的修复 + 你的新功能」的超集，零冲突直接采用；`AGENTS.md` 远端版是**本机部署文档**（247 行），保留在 `deploy/remote/AGENTS.remote.md`，不覆盖仓库契约版 | 同步后门禁：tsc 0 错误 + **vitest 191/191**（+3）+ acceptance **PASS=19 FAIL=0**；16 工具自测 **PASS=57 FAIL=0**（含新增 `create_task`）；顺带修 `verify-mcp-key.mjs` 硬断言 15→16（不改会误报失败） | **远端状态（订正）**：我一度判断「远端仍跑旧镜像」，复核后**该判断有误**——远端已在 `vibehub:1.5` 上生效：16 工具可见、`create_task` 在列、流转协议随 `initialize` 下发，且运行中镜像的 `dist/` 与本地源码编译产物 **md5 逐字节一致**。**技能治理**：① 「远端改动同步」流程沉淀为 fetch + 文件级 diff + 超集判定，未另立技能；② vibehub-build 无冲突结论；③ AGENTS.md §5 补流转协议与 16 工具契约、§8 门禁数字更新 |
+| R80 | 云端会话（用户查看功能巡检后提需求）：① 任务五态 `todo/doing/review/done/cancelled` + 标签 + 打回原因/次数 + 详情接口 + 删除（附件转通用）+ 写接口角色校验，修 PATCH 忽略 `assignee_id`；② 技能模块：`skills`/`skill_files` 两表、SKILL.md frontmatter 解析与命名校验、同名覆盖、zip 进出（fflate）、REST 七个端点；③ MCP 16→26 工具（`get_task_detail`、四类删除、`update_note`、技能四件套）+ `skill:write` scope + `TOOL_SCOPES` 单一出处 + workflow 五态提示；④ 前端：Provider 单例共享当前项目（修 B1）、任务五列看板 + 详情弹窗（改标题/描述/优先级/负责人/标签、合法下一步、页内写打回原因、二次确认删除）、技能页（选文件夹/zip 上传、SKILL.md 渲染、附带文件查看、下载 zip、调整归属）、侧栏/G S/⌘K 入口、⌘K 任务搜索直达详情、修 B3 面板排版、Markdown 列表序号 | TDD：新增 52 条后端用例（任务 12 + 任务 REST 5 + 技能 14 + 技能 REST 7 + MCP 14）与 web 单测 8 条；**vitest 243/243**、web 单测 26/26、`acceptance.sh` **PASS=19 FAIL=0**（E2E 6 passed，新增 3 条：跨页项目保持 / 任务五态详情删除 / 技能上传查看）；26 工具 SSE 实测 **PASS=81 FAIL=0**；浏览器真机 26 项断言全过 | 用户合并分支后：重建交付镜像；决定 B2 剩余部分（缺陷/便签/附件写接口角色校验）。**技能治理**：① 无新重复工作流；② `skills/vibehub-mcp/SKILL.md` 已同步（§3 任务五态、§5 团队技能、§8 26 工具）；③ AGENTS.md 补 R80 契约 6 处 |

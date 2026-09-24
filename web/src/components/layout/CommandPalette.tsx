@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, FolderKanban, Image as ImageIcon, Moon, Search, Sparkles, StickyNote, Sun } from 'lucide-react';
+import { FileText, FolderKanban, Image as ImageIcon, ListChecks, Moon, Puzzle, Search, Sparkles, StickyNote, Sun } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useToast } from '@/lib/toast';
 import type { SearchResults } from '@/lib/api-types';
+import { TASK_STATUS_LABELS, type TaskStatus } from '@/lib/task-flow';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -68,6 +69,8 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       { id: 'nav-board', icon: FolderKanban, label: '跳转：缺陷看板', hint: 'G B', run: () => router.push('/board') },
       { id: 'nav-files', icon: ImageIcon, label: '跳转：文件', hint: 'G F', run: () => router.push('/files') },
       { id: 'nav-notes', icon: StickyNote, label: '跳转：随手记', hint: 'G N', run: () => router.push('/notes') },
+      { id: 'nav-tasks', icon: ListChecks, label: '跳转：任务', hint: 'G T', run: () => router.push('/tasks') },
+      { id: 'nav-skills', icon: Puzzle, label: '跳转：技能', hint: 'G S', run: () => router.push('/skills') },
       { id: 'nav-projects', icon: FolderKanban, label: '跳转：项目', hint: 'G P', run: () => router.push('/projects') },
       { id: 'nav-keys', icon: FileText, label: '跳转：MCP 密钥', hint: 'G K', run: () => router.push('/keys') },
       { id: 'nav-members', icon: StickyNote, label: '跳转：成员', hint: 'G M', run: () => router.push('/members') },
@@ -89,6 +92,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
   type Row =
     | { kind: 'action'; id: string; icon: typeof Search; label: string; hint: string; run: () => void }
     | { kind: 'bug'; id: string; icon: typeof Search; label: string; hint: string; run: () => void }
+    | { kind: 'task'; id: string; icon: typeof Search; label: string; hint: string; run: () => void }
     | { kind: 'project'; id: string; icon: typeof Search; label: string; hint: string; run: () => void }
     | { kind: 'note'; id: string; icon: typeof Search; label: string; hint: string; run: () => void }
     | { kind: 'sem-header'; id: string }
@@ -105,6 +109,14 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       label: b.title,
       hint: `${b.status} · ${b.severity}`,
       run: () => router.push(`/board?bug=${b.id}`),
+    }));
+    const taskRows: Row[] = (results?.tasks ?? []).map((t) => ({
+      kind: 'task' as const,
+      id: `tsk-${t.id}`,
+      icon: ListChecks,
+      label: t.title,
+      hint: TASK_STATUS_LABELS[t.status as TaskStatus] ?? t.status,
+      run: () => router.push(`/tasks?task=${t.id}`),
     }));
     const projectRows: Row[] = (results?.projects ?? []).map((p) => ({
       kind: 'project' as const,
@@ -143,7 +155,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
     ];
     // 行数预算 12：语义组占 1 行标题 + N 行，从关键词结果里预留，保证语义组可见
     const semanticBudget = semanticRows.length > 0 ? Math.min(semanticRows.length + 1, 4) : 0;
-    const keywordRows = [...actionRows, ...bugRows, ...projectRows, ...noteRows].slice(0, 12 - semanticBudget);
+    const keywordRows = [...actionRows, ...bugRows, ...taskRows, ...projectRows, ...noteRows].slice(0, 12 - semanticBudget);
     const semanticSection: Row[] = semanticRows.length > 0
       ? [{ kind: 'sem-header' as const, id: 'sem-header' }, ...semanticRows.slice(0, semanticBudget - 1)]
       : [];
@@ -224,7 +236,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       </div>
       <style jsx global>{`
         .vh-palette {
-          width: min(680px, 92vw); margin-top: 12vh;
+          width: min(680px, 92vw);
           background: var(--bg-panel); border: 1px solid var(--border-strong);
           border-radius: var(--r-panel); box-shadow: var(--shadow-3);
           backdrop-filter: var(--glass); overflow: hidden;

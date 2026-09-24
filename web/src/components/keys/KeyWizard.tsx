@@ -7,14 +7,16 @@ import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import type { ApiKeyView } from '@/lib/api-types';
 
+/** scope → 可调用的 MCP 工具（与 server/src/mcp/tool-scopes.ts 一致） */
 const SCOPE_TOOLS: Record<string, string[]> = {
-  'context:read': ['get_project_context', 'list_bugs', 'get_bug_detail', 'list_notes', 'search'],
+  'context:read': ['get_project_context', 'list_bugs', 'get_bug_detail', 'list_notes', 'search', 'list_skills', 'download_skill'],
   'attachment:read': ['read_attachment_text', 'inspect_image_asset'],
-  'attachment:write': ['upload_attachment'],
-  'bug:write': ['update_bug_status', 'create_bug', 'add_bug_comment'],
-  'note:write': ['append_scratchpad'],
-  'task:read': ['list_tasks'],
-  'task:write': ['create_task', 'update_task'],
+  'attachment:write': ['upload_attachment', 'delete_attachment'],
+  'bug:write': ['update_bug_status', 'create_bug', 'add_bug_comment', 'delete_bug'],
+  'note:write': ['append_scratchpad', 'update_note', 'delete_note'],
+  'task:read': ['list_tasks', 'get_task_detail'],
+  'task:write': ['create_task', 'update_task', 'delete_task'],
+  'skill:write': ['upload_skill', 'delete_skill'],
   admin: ['purge_trash'],
 };
 
