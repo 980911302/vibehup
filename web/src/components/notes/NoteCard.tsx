@@ -5,6 +5,7 @@ import { Paperclip, Pencil, Pin, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useHotkeys } from '@/lib/shortcuts';
+import { useCanEdit } from '@/lib/auth';
 import type { Note } from '@/lib/api-types';
 import { relativeTime } from '@/lib/time';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,7 @@ interface NoteCardProps {
 
 /** 随手记卡片（卡片 27）：Markdown 渲染 + 置顶浮顶 + 行内编辑 + 标签筛选入口 */
 export function NoteCard({ note, onTogglePin, onUpdate, onDelete, onTagClick }: NoteCardProps) {
+  const canEdit = useCanEdit();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.content);
   const pinned = note.pinned_at !== null;
@@ -57,7 +59,7 @@ export function NoteCard({ note, onTogglePin, onUpdate, onDelete, onTagClick }: 
       <div className="mb-1.5 flex items-center gap-1">
         {pinned && <span className="text-[10px] font-medium text-[var(--gold)]">置顶</span>}
         <div className="flex-1" />
-        <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        {canEdit && <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
           <button
             className="rounded p-1 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--gold)]"
             onClick={() => void onTogglePin(note.id, !pinned)}
@@ -82,7 +84,7 @@ export function NoteCard({ note, onTogglePin, onUpdate, onDelete, onTagClick }: 
           >
             <Trash2 size={13} />
           </button>
-        </div>
+        </div>}
       </div>
 
       {/* 内容：编辑态 / Markdown 渲染 */}

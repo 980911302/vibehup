@@ -13,6 +13,25 @@ export const BUG_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 
 export type BugStatus = (typeof BUG_STATUSES)[number];
 
+/** 状态中文名（与看板列名一致；报错与活动流都用它，不直出英文枚举） */
+export const BUG_STATUS_LABELS: Record<BugStatus, string> = {
+  open: '待处理',
+  in_progress: '进行中',
+  resolved: '已解决',
+  verified: '已验证',
+  closed: '已关闭',
+};
+
+const label = (s: string): string => BUG_STATUS_LABELS[s as BugStatus] ?? s;
+
+/** 负责人与提出人（只取 id + 名字），看板/列表/详情统一带上 */
+const WITH_PEOPLE = {
+  assignee: { select: { id: true, name: true } },
+  reporter: { select: { id: true, name: true } },
+} as const;
+
+type Person = { id: string; name: string } | null;
+
 /**
  * 缺陷状态机（步骤 04 §4.2 唯一真理源）：
  * open → in_progress → resolved → verified → closed 为主干；
@@ -35,11 +54,11 @@ export function assertTransition(from: BugStatus, to: BugStatus, hasReason: bool
   const allowed = BUG_TRANSITIONS[from];
   if (!allowed.includes(to)) {
     throw new ValidationError(
-      `不允许从 ${from} 直接改为 ${to}。可进行的操作：${allowed.join(' / ')}`,
+      `不能从「${label(from)}」直接改为「${label(to)}」，可以改为：${allowed.map(label).join(' / ')}`,
     );
   }
   if (REOPEN_TARGETS.includes(to) && from !== to && (from === 'resolved' || from === 'verified' || from === 'closed') && !hasReason) {
-    throw new ValidationError(`从 ${from} 重开到 ${to} 需要填写重开原因（reopen_reason）`);
+    throw new ValidationError(`从「${label(from)}」重开到「${label(to)}」需要填写重开原因（reopen_reason）`);
   }
 }
 
@@ -75,6 +94,8 @@ export async function createBug(input: {
   dueDate?: Date | string | null;
   labels?: string[];
   createdBy?: string;
+  /** 提出人（用户 id）：网页录入=当前用户，MCP 建单=密钥创建人 */
+  reporterId?: string | null;
   attachmentIds?: string[];
 }): Promise<Bug> {
   if (input.severity && !BUG_SEVERITIES.includes(input.severity as never)) {
@@ -100,7 +121,9 @@ export async function createBug(input: {
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       labels: input.labels ?? [],
       createdBy: input.createdBy ?? 'human',
+      reporterId: input.reporterId ?? null,
     } as Prisma.BugUncheckedCreateInput,
+    include: WITH_PEOPLE,
   });
 
   // 关联上传时返回的附件
@@ -188,11 +211,11 @@ export async function updateBug(
   if (patch.createdBy !== undefined) data.createdBy = patch.createdBy;
   if (isReopen) data.reopenedCount = existing.reopenedCount + 1;
 
-  const bug = await prisma.bug.update({ where: { id: bugId }, data });
+  const bug = await prisma.bug.update({ where: { id: bugId }, data, include: WITH_PEOPLE });
 
   // 状态变化自动写活动流（闭环①留痕）
   if (statusChanged) {
-    const parts = [`状态变更：${existing.status} → ${patch.status}`];
+    const parts = [`状态变更：${label(existing.status)} → ${label(patch.status as string)}`];
     if (isReopen && patch.reopenReason) parts.push(`重开原因：${patch.reopenReason.trim()}`);
     if (patch.resolutionNotes) parts.push(`修复说明：${patch.resolutionNotes}`);
     if (patch.gitCommitHash) parts.push(`commit: ${patch.gitCommitHash}`);
@@ -223,10 +246,10 @@ export async function updateBug(
   return bug;
 }
 
-export async function getBug(bugId: string): Promise<Bug & { assignee: { id: string; name: string } | null }> {
+export async function getBug(bugId: string): Promise<Bug & { assignee: Person; reporter: Person }> {
   const bug = await prisma.bug.findUnique({
     where: { id: bugId },
-    include: { assignee: { select: { id: true, name: true } } },
+    include: WITH_PEOPLE,
   });
   if (!bug) throw new NotFoundError(`缺陷不存在: ${bugId}`);
   return bug;
@@ -258,7 +281,7 @@ export async function listBugs(query: BugListQuery = {}): Promise<BugListResult>
     where,
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     take: 500,
-    include: { assignee: { select: { id: true, name: true } } },
+    include: WITH_PEOPLE,
   });
 
   // 中文/拼音模糊检索在内存中进行（SQLite 无全文检索）
@@ -295,7 +318,7 @@ export async function getBugBoard(projectId: string, limitPerColumn = 100): Prom
     where: { projectId },
     orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     take: limitPerColumn * 5,
-    include: { assignee: { select: { id: true, name: true } } },
+    include: WITH_PEOPLE,
   });
 
   const groups: Record<string, Bug[]> = {

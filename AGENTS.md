@@ -12,6 +12,8 @@
 > **当前阶段（R77 起）：试用冻结期**——新功能一律冻结，只做试用反馈 / 验证 / 加固；新增用户可见功能、入口或配置项即算新功能，不得施工。卡片 39（全局截图入口）与卡片 51（看板表格视图）已按 R78 决定**彻底移除**，不再重开、不再列入任何看板。详见 `docs/计划/09-真实试用与范围冻结.md`。
 >
 > **R80（用户决定，定向解冻）**：用户在查看功能巡检后明确要求施工以下功能，按其决定落地——任务五态（待办/进行中/待验证/已完成/已取消）+ 标签 + 可点开的详情 + 删除；技能模块（Skills：上传/下载/查看，挂项目或全团队通用）；MCP 增删改补全（26 工具）；任务/随手记/文件/技能页共享当前项目并带切换器。除此之外的新功能仍按冻结规则处理。
+>
+> **R81（用户决定，定向解冻）**：功能巡检第一批（只读成员真只读、拖拽跳级给提示、卡片显示截止日期、删除二次确认并去掉假「撤销」、状态文案全中文、文本查看器、粘贴孤儿附件）+ 第二批 1、2（缺陷详情全字段可改 / 只摆合法下一步 / 页内写重开原因；记录提出人 +「指派给我 / 我提的 / 未指派」筛选）。第三批（通知、AI 活动流可读化、技能版本、跨项目「我的待办」）留待试用后再定。
 
 ## 1. 权威文档索引（施工前必读）
 
@@ -48,7 +50,9 @@
 - **刷新令牌契约（R76）**：一次性轮换 + 重放整族吊销不变；但同一旧令牌在 10s 宽限期内重复提交且令牌族仍存活 = 并发竞态，照常签发不吊销（多请求/多标签同时刷新曾致用户每 15 分钟随机掉线）；登出吊销**整个令牌族**（否则宽限期内并发签出的同族令牌可让已登出会话复活）。
 - 状态码：200/201/204/400/401/403/404/409/413/429。
 - **multipart 上传顺序无关契约（R53）**：`/api/upload` 的文件 part 与 project_id 等字段到达顺序客户端不保证，路由必须两段式（遍历落盘收集 → 字段齐后建记录），禁止「文件先到就抛缺少字段」（容器 curl 实测抓到，已有回归用例）。
-- **任务 / 技能接口契约（R80）**：写接口（POST/PATCH/DELETE）限 owner/admin/member，viewer 只读（缺陷/便签/附件的写接口尚未加角色校验，见 PROGRESS §4）；任务 PATCH 字段 snake_case 映射（`assignee_id/labels/reopen_reason`），响应带 `labels/assignee/reopen_reason/reopened_count/allowed_next_statuses`，`GET /api/tasks/:id` 带附件。技能上传 `POST /api/skills` 收 JSON：`skill_md` + `files[{path, content_base64|content}]` 或 `zip_base64`（二选一），`project_id` 缺省/null = 全团队通用；同一范围同名即覆盖（201 新建 / 200 覆盖）；`GET /api/skills/:id/download` 返回 `<name>/SKILL.md + 附带文件` 的 zip。
+- **只读成员契约（R81）**：所有内容写接口（缺陷含批量/评论/导入、便签、附件上传与删除、任务、技能）一律挂 `requireRole(...WRITER_ROLES)`（`plugins/authenticate.ts` 唯一出处：owner/admin/member），viewer 只读；保存视图属个人偏好，viewer 可用。viewer 的 403 文案须告诉他找管理员改角色。前端写入口统一按 `useCanEdit()` 隐藏/禁用（`lib/auth.tsx`），不得各页自行判断角色。
+- **缺陷提出人契约（R81）**：`bugs.reporter_id`（外键 → users，删用户 SetNull）记录「谁提的」：Web/REST 取登录用户，CSV 导入取导入人，MCP 取密钥创建人（stdio 无密钥 = 不记录）；看板/列表/详情响应统一带 `reporter{id,name}` 与 `assignee{id,name}`（service 层 `WITH_PEOPLE`）；成员页「建单」数按 `reporter_id` 计。缺陷状态对人一律说中文（`BUG_STATUS_LABELS`：待处理/进行中/已解决/已验证/已关闭；`verified` 是「已验证」不是「待验证」），报错文案与活动流「状态变更」同此。
+- **任务 / 技能接口契约（R80）**：写接口（POST/PATCH/DELETE）限 owner/admin/member，viewer 只读；任务 PATCH 字段 snake_case 映射（`assignee_id/labels/reopen_reason`），响应带 `labels/assignee/reopen_reason/reopened_count/allowed_next_statuses`，`GET /api/tasks/:id` 带附件。技能上传 `POST /api/skills` 收 JSON：`skill_md` + `files[{path, content_base64|content}]` 或 `zip_base64`（二选一），`project_id` 缺省/null = 全团队通用；同一范围同名即覆盖（201 新建 / 200 覆盖）；`GET /api/skills/:id/download` 返回 `<name>/SKILL.md + 附带文件` 的 zip。
 - **登录防暴力契约（R78）**：`/auth/login` 按「邮箱 + 客户端 IP」滑动窗口计数**失败**尝试（成功即清零），达阈值返回 429 `RATE_LIMITED` + 人话提示 + `Retry-After` 头；阈值/窗口由 `LOGIN_MAX_ATTEMPTS`（默认 5）/`LOGIN_THROTTLE_WINDOW_MS`（默认 15 分钟）控制；实现为进程内 Map（单容器部署成立，多副本须换共享存储）；客户端 IP 取 `X-Forwarded-For` 首段、缺省直连地址。**不得**因限流把正确密码也永久拒绝（窗口过期自动放行，已有用例锁定）。
 
 ## 4. 数据契约（PostgreSQL + pgvector）
@@ -85,6 +89,7 @@
 - 单文件 ≤300 行、单函数 ≤50 行、props ≤7；基础组件 forwardRef + cva + cn()。
 - 快捷键宪法：C 新建 / ⌘K 命令面板 / ? 帮助 / G+字母导航 / J K X 列表操作 / Esc 逐层退出。
 - **移动端入口契约（R62）**：<900px（触屏主场景）看板顶栏常驻「＋录缺陷」按钮（快捷键触屏不可达）；对话框基座 `w-[calc(100vw-2rem)] max-h-[85vh] overflow-y-auto` 保证小屏不溢出；粘贴区文案与主按钮按 `pointer: coarse` 分支（触屏无剪贴板，走常驻「选择截图/文件」大按钮）。
+- **危险按钮（R81）**：`.vh-btn` 是未分层的全局类，Tailwind 工具类（`bg-[var(--danger)]`/`text-[var(--danger)]`/`h-8` 等）压不过它——删除/撤销类按钮一律用 `vh-btn danger` / `vh-btn ghost danger` 变体，不要再叠工具类改颜色（此前全站删除按钮都显示成普通蓝/灰按钮）。
 - **图标宪法（R58）**：全站图标一律使用 `lucide-react` 组件，禁 emoji（空态/营销位/计数徽章）与 CSS `content` 字符图标（AI 徽章、星尘标识）——后者已全部上移为 JSX 组件（`Sparkles` 等），`globals.css` 不再出现 `content: '字符'` 图标规则。新增图标从 lucide 选型（PascalCase），尺寸/描边用 props，颜色走 token。
 - **认证后导航用硬导航（R59）**：登录/注册成功后必须 `window.location.replace(target)`——`router.replace` 与 setUser 同刻提交会被 React 批处理吞掉（R50/R59 二次复现，表现为 token 已写但停在中转页）；静态导出生效下硬导航即普通跳转。
 - **路由守卫竞态防护（R54）**：`(app)/layout` 守卫踢回登录页前必须确认 localStorage 无 token——登录成功后的 `router.replace` 可能在 React 提交新上下文前触发导航，守卫读到旧上下文（user=null）会把用户踢回，与 setUser 赛跑；有 token = 刚登录/恢复中，应等待而非踢回（失效 token 由启动流程清理后自然踢回，不会卡死）。
@@ -104,7 +109,7 @@
 
 - 测试库 = 一次性 pg 容器（`scripts/test-db.sh`，`TEST_DATABASE_URL` 指向 55432），与生产同引擎；禁 sqlite 分支。
 - 每个 bugfix 先写复现用例；services 行覆盖 ≥80%。
-- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项 + Playwright E2E + 日志脱敏实证）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R80 为 vitest 243 + E2E 6），以脚本当次输出为准。
+- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项 + Playwright E2E + 日志脱敏实证）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R81 为 vitest 253 + E2E 10），以脚本当次输出为准。**门禁起服务防残留（R81）**：`npx tsx` 是三层进程，只 kill npx 会留下真正监听端口的 node，下一轮门禁就连上旧服务测旧代码却照样 PASS（本轮实测抓到）；脚本用 `kill_tree` 杀整棵进程树，起服务前端口已有应答直接判失败。
 - 声称"完成/通过"前必须当场跑验证命令并引用输出（verification-before-completion 技能同此要求）。
 
 ## 9. 技能治理契约（Skill Governance）

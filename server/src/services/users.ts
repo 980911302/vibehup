@@ -35,11 +35,12 @@ export interface UserWithStats extends PublicUser {
 }
 
 async function userStats(userId: string): Promise<UserWithStats['stats']> {
-  const [filesUploaded, activeKeys] = await Promise.all([
+  const [bugsCreated, filesUploaded, activeKeys] = await Promise.all([
+    prisma.bug.count({ where: { reporterId: userId } }),
     prisma.attachment.count({ where: { uploadedBy: userId } }),
     prisma.apiKey.count({ where: { createdBy: userId, revokedAt: null } }),
   ]);
-  return { bugs_created: 0, files_uploaded: filesUploaded, active_keys: activeKeys };
+  return { bugs_created: bugsCreated, files_uploaded: filesUploaded, active_keys: activeKeys };
 }
 
 /** 成员列表：支持 status/role 过滤与 q（姓名/邮箱/拼音）检索 */

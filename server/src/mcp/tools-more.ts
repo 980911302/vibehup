@@ -1,6 +1,6 @@
 import type { McpContext } from './context.js';
-import { prisma } from '../core/prisma.js';
 import * as tasksService from '../services/tasks.js';
+import * as projectsService from '../services/projects.js';
 import * as bugsService from '../services/bugs.js';
 import * as notesService from '../services/notes.js';
 import * as attachmentsService from '../services/attachments.js';
@@ -18,13 +18,13 @@ import { isTextFile } from '../services/assets.js';
 export async function getTaskDetail(_ctx: McpContext, input: { task_id: string; full?: boolean }) {
   const task = await tasksService.getTaskDetail(input.task_id);
   const [project, names] = await Promise.all([
-    prisma.project.findUnique({ where: { id: task.projectId }, select: { slug: true } }),
+    projectsService.getProject(task.projectId),
     tasksService.resolveAssigneeNames([task.assigneeId]),
   ]);
   const desc = input.full ? { value: task.description, truncated: false } : truncateText(task.description, DEFAULT_BUDGET.textFieldMax);
   return {
     id: task.id,
-    project_slug: project?.slug ?? null,
+    project_slug: project.slug,
     title: task.title,
     description: desc.value,
     description_truncated: desc.truncated,

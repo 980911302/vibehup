@@ -28,7 +28,9 @@ export function serializeProject(
   };
 }
 
-export function serializeBug(b: Bug & { attachmentCount?: number; commentCount?: number; assignee?: { id: string; name: string } | null }) {
+type PersonRef = { id: string; name: string } | null;
+
+export function serializeBug(b: Bug & { attachmentCount?: number; commentCount?: number; assignee?: PersonRef; reporter?: PersonRef }) {
   return {
     id: b.id,
     project_id: b.projectId,
@@ -41,6 +43,8 @@ export function serializeBug(b: Bug & { attachmentCount?: number; commentCount?:
     priority: b.priority,
     assignee_id: b.assigneeId,
     assignee: b.assignee ? { id: b.assignee.id, name: b.assignee.name } : null,
+    reporter_id: b.reporterId,
+    reporter: b.reporter ? { id: b.reporter.id, name: b.reporter.name } : null,
     due_date: b.dueDate?.toISOString() ?? null,
     labels: b.labels,
     reopened_count: b.reopenedCount,

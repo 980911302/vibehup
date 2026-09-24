@@ -174,3 +174,9 @@ export function useAuth(): AuthState {
   if (!ctx) throw new Error('useAuth 必须在 AuthProvider 内使用');
   return ctx;
 }
+
+/** 当前用户能否写内容：viewer（只读）不能，服务端写接口同样拦截（功能巡检 B2） */
+export function useCanEdit(): boolean {
+  const { user } = useAuth();
+  return !!user && user.role !== 'viewer';
+}

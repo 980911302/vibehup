@@ -156,7 +156,7 @@ export default function KeysPage() {
                             <button className="vh-btn ghost h-7 text-xs" onClick={() => void rotate(k.id)} title="轮换（旧密钥 24h 宽限）">
                               <RotateCw size={12} />
                             </button>
-                            <button className="vh-btn ghost h-7 text-xs text-[var(--danger)]" onClick={() => void revoke(k.id)} title="立即撤销">
+                            <button className="vh-btn ghost danger h-7 text-xs" onClick={() => void revoke(k.id)} title="立即撤销">
                               <Trash2 size={12} />
                             </button>
                           </>

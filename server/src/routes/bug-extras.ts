@@ -5,6 +5,7 @@ import * as bugTemplates from '../services/bug-templates.js';
 import * as savedViews from '../services/saved-views.js';
 import * as bugImport from '../services/bug-import.js';
 import { ValidationError } from '../core/errors.js';
+import { WRITER_ROLES } from '../plugins/authenticate.js';
 
 /**
  * 缺陷域扩展路由（步骤 04 §4.3）：批量 / 评论 / 模板 / 视图 / CSV 导入导出。
@@ -14,7 +15,7 @@ const BATCH_ACTIONS = ['status', 'assign', 'label', 'priority', 'move_project', 
 
 export const bugExtrasRoutes: FastifyPluginAsync = async (app) => {
   // ============ 批量操作（Excel 式，部分失败逐条报原因） ============
-  app.post('/batch', { preHandler: [app.authenticate] }, async (request) => {
+  app.post('/batch', { preHandler: [app.authenticate, app.requireRole(...WRITER_ROLES)] }, async (request) => {
     const body = request.body as {
       ids?: string[];
       action?: string;
@@ -72,7 +73,7 @@ export const bugExtrasRoutes: FastifyPluginAsync = async (app) => {
     return bugComments.listComments(bugId);
   });
 
-  app.post('/:bugId/comments', { preHandler: [app.authenticate] }, async (request, reply) => {
+  app.post('/:bugId/comments', { preHandler: [app.authenticate, app.requireRole(...WRITER_ROLES)] }, async (request, reply) => {
     const { bugId } = request.params as { bugId: string };
     const body = request.body as { content?: string };
     const { id } = await bugComments.addComment({
@@ -175,7 +176,7 @@ export const bugExtrasRoutes: FastifyPluginAsync = async (app) => {
     const body = request.body as { project_id?: string; csv?: string };
     if (!body?.project_id) throw new ValidationError('project_id 不能为空');
     if (!body?.csv) throw new ValidationError('csv 内容不能为空');
-    const result = await bugImport.importBugsCsv(body.project_id, body.csv);
+    const result = await bugImport.importBugsCsv(body.project_id, body.csv, request.user?.id ?? null);
     reply.code(200);
     return result;
   });

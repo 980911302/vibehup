@@ -1,6 +1,5 @@
 import type { Skill } from '@prisma/client';
 import type { McpContext } from './context.js';
-import { prisma } from '../core/prisma.js';
 import * as projectsService from '../services/projects.js';
 import * as skillsService from '../services/skills.js';
 import { ValidationError } from '../core/errors.js';
@@ -20,8 +19,8 @@ interface FileIn {
 
 async function scopeOf(skill: Pick<Skill, 'projectId'>) {
   if (!skill.projectId) return { scope: 'global' as const, project_slug: null };
-  const p = await prisma.project.findUnique({ where: { id: skill.projectId }, select: { slug: true } });
-  return { scope: 'project' as const, project_slug: p?.slug ?? null };
+  const p = await projectsService.getProject(skill.projectId);
+  return { scope: 'project' as const, project_slug: p.slug as string | null };
 }
 
 /** 按 skill_id 或 name 定位；name 查找时项目内同名优先、其次通用 */

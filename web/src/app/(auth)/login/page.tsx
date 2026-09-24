@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bot, ClipboardList, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Bot, ClipboardList, Eye, EyeOff, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -190,8 +190,8 @@ export default function AuthPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && onSubmit()}
                 />
-                <button type="button" className="login-eye" onClick={() => setShowPassword((v) => !v)}>
-                  {showPassword ? '🙈' : '👁'}
+                <button type="button" className="login-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "隐藏密码" : "显示密码"}>
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
               {tab === 'register' && (
@@ -319,7 +319,7 @@ export default function AuthPage() {
         .login-password { position: relative; }
         .login-eye {
           position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-          background: none; border: none; cursor: pointer; font-size: 14px; padding: 4px;
+          background: none; border: none; cursor: pointer; padding: 4px; display: flex; color: #86909C;
         }
         .login-strength { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
         .login-strength-bars { display: flex; gap: 4px; }

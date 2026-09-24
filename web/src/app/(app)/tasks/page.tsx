@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FolderPlus, ListTodo } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
-import { useAuth } from '@/lib/auth';
+import { useCanEdit } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import type { Task } from '@/lib/api-types';
@@ -30,12 +30,11 @@ function TaskUrlSync({ onOpen }: { onOpen: (taskId: string) => void }) {
 /** 任务页：五列流转（待办 → 进行中 → 待验证 → 已完成 / 已取消）、标签筛选、点卡片看详情 */
 export default function TasksPage() {
   const store = useVibeHub();
-  const { user } = useAuth();
   const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [labelFilter, setLabelFilter] = useState('');
   const [detailId, setDetailId] = useState<string | null>(null);
-  const canEdit = user?.role !== 'viewer';
+  const canEdit = useCanEdit();
   const projectId = store.currentProject?.id;
 
   const load = useCallback(async () => {

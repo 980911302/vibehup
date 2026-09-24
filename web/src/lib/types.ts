@@ -100,7 +100,7 @@ export const BUG_STATUS_LABELS: Record<string, string> = {
   open: '待处理',
   in_progress: '进行中',
   resolved: '已解决',
-  verified: '待验证',
+  verified: '已验证',
   closed: '已关闭',
 };
 

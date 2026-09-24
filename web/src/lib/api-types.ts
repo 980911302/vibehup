@@ -33,6 +33,9 @@ export interface Bug {
   assignee_id: string | null;
   /** 指派负责人摘要（R74：后端 include + 序列化；未指派为 null） */
   assignee: { id: string; name: string } | null;
+  /** 提出人：网页录入=录入者，AI 经 MCP 建单=密钥创建人；历史数据为 null */
+  reporter_id: string | null;
+  reporter: { id: string; name: string } | null;
   due_date: string | null;
   labels: string[];
   reopened_count: number;
@@ -241,7 +244,7 @@ export const BUG_STATUS_LABELS: Record<Bug['status'], string> = {
   open: '待处理',
   in_progress: '进行中',
   resolved: '已解决',
-  verified: '待验证',
+  verified: '已验证',
   closed: '已关闭',
 };
 

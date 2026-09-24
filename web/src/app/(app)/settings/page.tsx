@@ -221,7 +221,7 @@ export default function SettingsPage() {
         <h2 className="mb-2 text-sm font-semibold text-[var(--danger)]">退出登录</h2>
         <p className="mb-3 text-xs text-[var(--text-tertiary)]">退出后需重新登录才能继续使用</p>
         <button
-          className="vh-btn ghost text-xs text-[var(--danger)]"
+          className="vh-btn ghost danger text-xs"
           onClick={async () => {
             await logout();
             router.replace('/login');

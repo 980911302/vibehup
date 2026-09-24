@@ -4,8 +4,12 @@ import * as attachmentsService from '../services/attachments.js';
 import { ValidationError } from '../core/errors.js';
 import { serializeNote } from '../core/serialize.js';
 import { parseTags } from '../services/notes.js';
+import { WRITER_ROLES } from '../plugins/authenticate.js';
 
 export const noteRoutes: FastifyPluginAsync = async (fastify) => {
+  // 写操作限 owner/admin/member：viewer（只读）只能看（功能巡检 B2）
+  const canWrite = { preHandler: [fastify.requireRole(...WRITER_ROLES)] };
+
   // GET /api/notes?project_id=&tag=&q=&include_archived=
   fastify.get('/', async (request) => {
     const q = request.query as Record<string, string>;
@@ -26,7 +30,7 @@ export const noteRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/notes
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', canWrite, async (request, reply) => {
     const body = request.body as {
       project_id?: string | null;
       content?: string;
@@ -56,7 +60,7 @@ export const noteRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PATCH /api/notes/:noteId
-  fastify.patch('/:noteId', async (request) => {
+  fastify.patch('/:noteId', canWrite, async (request) => {
     const { noteId } = request.params as { noteId: string };
     const body = request.body as {
       content?: string;
@@ -76,7 +80,7 @@ export const noteRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/notes/:noteId
-  fastify.delete('/:noteId', async (request, reply) => {
+  fastify.delete('/:noteId', canWrite, async (request, reply) => {
     const { noteId } = request.params as { noteId: string };
     await notesService.deleteNote(noteId);
     reply.code(204);

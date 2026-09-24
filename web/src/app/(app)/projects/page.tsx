@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Archive, ArchiveRestore, Copy, FolderPlus, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Copy, FolderPlus, Package, Trash2 } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useAuth } from '@/lib/auth';
 import { api } from '@/lib/api';
@@ -107,7 +107,7 @@ export default function ProjectsPage() {
                         {archived ? '恢复' : '归档'}
                       </button>
                       {isAdmin && (
-                        <button className="vh-btn ghost h-7 text-xs text-[var(--danger)]" onClick={() => { setDeleteTarget(p); setDeleteConfirmText(''); }} title="删除项目">
+                        <button className="vh-btn ghost danger h-7 text-xs" onClick={() => { setDeleteTarget(p); setDeleteConfirmText(''); }} title="删除项目">
                           <Trash2 size={12} />
                         </button>
                       )}
@@ -120,7 +120,7 @@ export default function ProjectsPage() {
         </table>
         {store.projects.length === 0 && (
           <div className="vh-empty">
-            <span className="vh-empty-icon">📦</span>
+            <span className="vh-empty-icon"><Package size={28} strokeWidth={1.6} /></span>
             <p className="vh-empty-title">还没有项目</p>
             <p className="vh-empty-hint">在上方输入名称创建第一个项目</p>
           </div>
@@ -146,7 +146,7 @@ export default function ProjectsPage() {
             <div className="flex justify-end gap-2">
               <button className="vh-btn ghost" onClick={() => setDeleteTarget(null)}>取消</button>
               <button
-                className="vh-btn bg-[var(--danger)] text-white"
+                className="vh-btn danger"
                 disabled={deleteConfirmText !== deleteTarget.name}
                 onClick={async () => {
                   await api.deleteProject(deleteTarget.id);

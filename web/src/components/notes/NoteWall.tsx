@@ -6,6 +6,7 @@ import type { Note } from '@/lib/api-types';
 import { NoteCard } from './NoteCard';
 import { NoteComposer } from './NoteComposer';
 import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
+import { useCanEdit } from '@/lib/auth';
 
 interface NoteWallProps {
   notes: Note[];
@@ -31,6 +32,7 @@ export function NoteWall({
   onUpdateNote,
   onDeleteNote,
 }: NoteWallProps) {
+  const canEdit = useCanEdit();
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const filtered = useMemo(
     () => (activeTag ? notes.filter((n) => n.tags.includes(activeTag)) : notes),
@@ -45,14 +47,16 @@ export function NoteWall({
         <CurrentProjectSwitcher />
         <span className="text-xs text-[var(--text-tertiary)]">{filtered.length} 条随手记</span>
         <div className="flex-1" />
-        <button className="vh-btn ghost" onClick={onOpenComposer} data-testid="note-new">
-          <Plus size={14} />
-          记一笔
-        </button>
+        {canEdit && (
+          <button className="vh-btn ghost" onClick={onOpenComposer} data-testid="note-new">
+            <Plus size={14} />
+            记一笔
+          </button>
+        )}
       </div>
 
       {/* 录入器 */}
-      {composerOpen && (
+      {composerOpen && canEdit && (
         <div className="px-4 pt-3">
           <NoteComposer open onClose={onCloseComposer} onCreate={onCreateNote} />
         </div>

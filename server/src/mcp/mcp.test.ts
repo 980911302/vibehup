@@ -144,7 +144,7 @@ describe('MCP 工具行为', () => {
     const ai = { type: 'ai' as const, id: 'key_f' };
 
     expect((await mcpTools.getBugDetail({ bug_id: bug.id })).allowed_next_statuses).toEqual(['in_progress']);
-    await expect(mcpTools.updateBugStatus({ bug_id: bug.id, status: 'resolved' }, ai)).rejects.toThrow('不允许');
+    await expect(mcpTools.updateBugStatus({ bug_id: bug.id, status: 'resolved' }, ai)).rejects.toThrow('不能从「待处理」直接改为「已解决」');
 
     const s1 = await mcpTools.updateBugStatus({ bug_id: bug.id, status: 'in_progress' }, ai);
     expect(s1.next_step).toContain('resolved');

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolderPlus, Puzzle, Search, Upload } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
-import { useAuth } from '@/lib/auth';
+import { useCanEdit } from '@/lib/auth';
 import { api } from '@/lib/api';
 import type { Skill } from '@/lib/api-types';
 import { buildSearchIndex, matchIndex } from '@/lib/search';
@@ -22,13 +22,12 @@ const SCOPE_TABS: { key: ScopeFilter; label: string }[] = [
 /** 技能页：当前项目的技能 + 全团队通用技能；上传、查看、下载、调整归属、删除 */
 export default function SkillsPage() {
   const store = useVibeHub();
-  const { user } = useAuth();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [scope, setScope] = useState<ScopeFilter>('all');
   const [query, setQuery] = useState('');
   const [uploading, setUploading] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const canEdit = user?.role !== 'viewer';
+  const canEdit = useCanEdit();
   const projectId = store.currentProject?.id;
 
   const load = useCallback(async () => {

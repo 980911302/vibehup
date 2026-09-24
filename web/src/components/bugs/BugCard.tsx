@@ -1,6 +1,7 @@
 'use client';
 
 import { MessageCircle, Paperclip, RotateCcw, Sparkles } from 'lucide-react';
+import { isBugOverdue } from '@/lib/bug-flow';
 import { cn } from '@/lib/utils';
 import { SEVERITY_LABELS, formatTime, type Bug } from '@/lib/api-types';
 
@@ -28,7 +29,7 @@ export function BugCard({
   bug, thumbnailUrl, selected, dragging, flash,
   onDragStart, onDragEnd, onClick, onContextMenu,
 }: BugCardProps) {
-  const isOverdue = bug.due_date && new Date(bug.due_date).getTime() < Date.now() && bug.status !== 'resolved' && bug.status !== 'closed' && bug.status !== 'verified';
+  const overdue = isBugOverdue(bug);
 
   return (
     <div
@@ -111,10 +112,14 @@ export function BugCard({
             </span>
           )}
         </span>
-        <span className={isOverdue ? 'text-[var(--danger)]' : undefined}>
-          {isOverdue ? '逾期 ' : ''}
-          {formatTime(bug.updated_at).slice(5, 16)}
-        </span>
+        {bug.due_date ? (
+          <span className={overdue ? 'text-[var(--danger)]' : undefined} title={`截止 ${bug.due_date.slice(0, 10)}`} data-testid="bug-due">
+            {overdue ? '逾期 ' : '截止 '}
+            {bug.due_date.slice(5, 10)}
+          </span>
+        ) : (
+          <span title="最后更新">{formatTime(bug.updated_at).slice(5, 16)}</span>
+        )}
       </div>
     </div>
   );

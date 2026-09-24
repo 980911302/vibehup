@@ -12,8 +12,12 @@ import { isTextFile, readTextSlice, inspectImageAsset } from '../services/assets
 import { ValidationError, PayloadTooLargeError } from '../core/errors.js';
 import { verifyAssetSignature } from '../core/asset-sign.js';
 import { config } from '../config.js';
+import { WRITER_ROLES } from '../plugins/authenticate.js';
 
 export const attachmentRoutes: FastifyPluginAsync = async (fastify) => {
+  // 写操作限 owner/admin/member：viewer（只读）只能看（功能巡检 B2）
+  const canWrite = { preHandler: [fastify.requireRole(...WRITER_ROLES)] };
+
   // GET /api/attachments?project_id=&entity_type=&entity_id=&q=&mine=true
   fastify.get('/', async (request) => {
     const q = request.query as Record<string, string>;
@@ -113,7 +117,7 @@ export const attachmentRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/attachments/:attachmentId
-  fastify.delete('/:attachmentId', async (request, reply) => {
+  fastify.delete('/:attachmentId', canWrite, async (request, reply) => {
     const { attachmentId } = request.params as { attachmentId: string };
     await attachmentsService.deleteAttachment(attachmentId);
     reply.code(204);
@@ -174,12 +178,14 @@ export const attachmentRawRoutes: FastifyPluginAsync = async (fastify) => {
 
 /** 上传路由：挂载于 /api/upload（设计文档第 5 节 Web 端交互流程） */
 export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
+  const canWrite = { preHandler: [fastify.requireRole(...WRITER_ROLES)] };
+
   /**
    * POST /api/upload
    * multipart 表单：files[] + project_id + entity_type(选填, 默认 general) + entity_id(选填)
    * 返回附件元数据数组（含 attachment_id 与 public_url），前端拿到后即可预览缩略图。
    */
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', canWrite, async (request, reply) => {
     // parts() 同时 yield 字段与文件（files() 只会 yield 文件）。
     // TS 类型为 Multipart = MultipartFile | MultipartValue，此处收敛为本路由使用的形态。
     const parts = request.parts({
@@ -277,7 +283,7 @@ export const uploadRoutes: FastifyPluginAsync = async (fastify) => {
    * POST /api/upload/base64
    * 剪贴板图片兜底通道：前端将 clipboard item 转为 base64 后提交。
    */
-  fastify.post('/base64', async (request, reply) => {
+  fastify.post('/base64', canWrite, async (request, reply) => {
     const body = request.body as {
       project_id?: string;
       file_name?: string;
