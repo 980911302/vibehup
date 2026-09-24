@@ -19,16 +19,16 @@
 
 | 项 | 值 |
 | --- | --- |
-| 访问地址 | **http://10.72.121.9:3210** |
-| 代码目录 | `/Users/zhanglinlin/Downloads/vibehup/`（本文件所在目录） |
-| 编排文件（**运行中容器用的这份**） | `/Users/zhanglinlin/vibehub/docker-compose.yml`（compose 项目名 `vibehub`，密钥直接写在 environment 里，权限 600） |
-| 源码目录里的编排 | `/Users/zhanglinlin/Downloads/vibehup/docker-compose.yml` + `.env`：**只作模板，不要在这里 `compose up`**——目录名是 `vibehup`，项目名随之变成 `vibehup`，会挂上空卷 `vibehup_vibehub-*`，看起来像数据丢了，且与 `container_name: vibehub` 冲突 |
+| 访问地址 | **http://&lt;服务器地址&gt;:3210**（部署时按实际填；本文件公开，故不写真实地址） |
+| 代码目录 | `~/Downloads/vibehup/`（本文件所在目录；`~` 为部署账号家目录） |
+| 编排文件（**运行中容器用的这份**） | `~/vibehub/docker-compose.yml`（compose 项目名 `vibehub`，密钥直接写在 environment 里，权限 600） |
+| 源码目录里的编排 | `~/Downloads/vibehup/docker-compose.yml` + `.env`：**只作模板，不要在这里 `compose up`**——目录名是 `vibehup`，compose 项目名随之变成 `vibehup`，会挂上空卷 `vibehup_vibehub-*`，看起来像数据丢了，且与 `container_name: vibehub` 冲突 |
 | 容器名 | `vibehub` |
 | 镜像 | `vibehub:1.5`（arm64/linux；源码构建，见 §5；1.4 / 1.3 留作回滚） |
 | 对外端口 | `3210`（PG 的 5432 **只在容器内**，不对外暴露） |
 | 数据卷 | `vibehub_vibehub-pg` → 库 / `vibehub_vibehub-data` → 附件 |
 | 重启策略 | `unless-stopped` |
-| 初始 Owner | `zhanglinlin@local`（密码见 `.env` 同级部署记录；**建议尽快改密**） |
+| 初始 Owner | 由 `deploy/remote/bootstrap-owner.cjs` 创建，邮箱与密码经 `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD` 传入（脚本无默认值）；**首次登录后改密** |
 | 语义检索 | **已开启**（DashScope `text-embedding-v3`，1024 维） |
 
 > **本机 docker 的非交互 SSH 坑**：`docker` 不在默认 PATH 里。远程执行一律用绝对路径
@@ -181,7 +181,7 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
   "mcpServers": {
     "vibehub": {
       "type": "sse",
-      "url": "http://10.72.121.9:3210/mcp/sse",
+      "url": "http://<服务器地址>:3210/mcp/sse",
       "headers": { "Authorization": "Bearer <在 Web「密钥」页新建的密钥>" }
     }
   }

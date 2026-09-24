@@ -9,8 +9,16 @@
 const { PrismaClient } = require('@prisma/client');
 const { createHash, randomBytes, scryptSync } = require('node:crypto');
 
-const EMAIL = process.env.BOOTSTRAP_EMAIL || 'zhanglinlin@local';
-const PASSWORD = process.env.BOOTSTRAP_PASSWORD || 'vibehub1234';
+const EMAIL = process.env.BOOTSTRAP_EMAIL;
+const PASSWORD = process.env.BOOTSTRAP_PASSWORD;
+// 凭据一律由环境变量传入，**不提供默认值**——带默认密码的引导脚本一旦公开，
+// 等于给所有人一个可猜的初始口令。缺失即快速失败，避免「悄悄用了弱默认值」。
+if (!EMAIL || !PASSWORD) {
+  console.error('缺少 BOOTSTRAP_EMAIL / BOOTSTRAP_PASSWORD。用法示例：');
+  console.error('  docker exec -i -e DATABASE_URL=... -e BOOTSTRAP_EMAIL=you@example.com \\');
+  console.error("    -e BOOTSTRAP_PASSWORD='<强密码>' vibehub node - < bootstrap-owner.cjs");
+  process.exit(1);
+}
 const KEY_SCOPES = (process.env.BOOTSTRAP_SCOPES || 'context:read,attachment:read,attachment:write,bug:write').split(',');
 
 const hashToken = (t) => createHash('sha256').update(t).digest('hex');
