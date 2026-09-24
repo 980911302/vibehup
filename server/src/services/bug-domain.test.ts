@@ -33,7 +33,7 @@ describe('状态机', () => {
     await bugsService.updateBug(bug2.id, { status: 'resolved' });
     await bugsService.updateBug(bug2.id, { status: 'verified' });
     await bugsService.updateBug(bug2.id, { status: 'closed' });
-    await expect(bugsService.updateBug(bug2.id, { status: 'resolved' })).rejects.toThrow('不允许');
+    await expect(bugsService.updateBug(bug2.id, { status: 'resolved' })).rejects.toThrow('不能从');
   });
 
   it('resolved → open 需 reason；带 reason 后 reopenedCount+1 且评论流记录', async () => {

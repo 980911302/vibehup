@@ -162,11 +162,11 @@ function SkillFooter({ skill, canEdit, projects, onDownload, onChanged }: Footer
       {canEdit && (confirming ? (
         <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
           删除后无法恢复，确定删除？
-          <button className="vh-btn h-8 bg-[var(--danger)] text-xs" onClick={() => void remove()} data-testid="skill-delete-confirm">确认删除</button>
+          <button className="vh-btn danger h-8 text-xs" onClick={() => void remove()} data-testid="skill-delete-confirm">确认删除</button>
           <button className="vh-btn ghost h-8 text-xs" onClick={() => setConfirming(false)}>取消</button>
         </div>
       ) : (
-        <button className="vh-btn ghost h-8 text-xs text-[var(--danger)]" onClick={() => setConfirming(true)} data-testid="skill-delete"><Trash2 size={13} />删除</button>
+        <button className="vh-btn ghost danger h-8 text-xs" onClick={() => setConfirming(true)} data-testid="skill-delete"><Trash2 size={13} />删除</button>
       ))}
     </div>
   );

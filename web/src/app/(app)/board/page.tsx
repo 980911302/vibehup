@@ -12,7 +12,9 @@ import { CreateBugDialog } from '@/components/bugs/CreateBugDialog';
 import { TextViewer } from '@/components/assets/TextViewer';
 import { BatchBar } from '@/components/bugs/BatchBar';
 import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
-import type { Bug } from '@/lib/api-types';
+import { BugContextMenu } from '@/components/bugs/BugContextMenu';
+import { BoardFilterPanel, WhoSegment } from '@/components/bugs/BoardFilterControls';
+import { activeFilterCount, filterBoard, type WhoFilter } from '@/lib/bug-filters';
 
 /** 缺陷看板页（步骤 07 §7.1）：筛选条 + 五列看板 + 批量栏 */
 export default function BoardPage() {
@@ -29,6 +31,7 @@ export default function BoardPage() {
   const [menu, setMenu] = useState<{ bugId: string; x: number; y: number } | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<{ severity?: string; label?: string }>({});
+  const [who, setWho] = useState<WhoFilter>('all');
   const [search, setSearch] = useState('');
   const flashTimers = useRef<Map<string, number>>(new Map());
 
@@ -36,7 +39,7 @@ export default function BoardPage() {
 
   // 快捷键：C 新建 / Esc 清选择（输入态放行由 useHotkeys 处理）
   useHotkeys([
-    { combo: 'c', description: '新建缺陷', handler: () => setCreateOpen(true) },
+    { combo: 'c', description: '新建缺陷', handler: () => canEdit && setCreateOpen(true) },
     { combo: 'esc', description: '清选择', handler: () => { setSelectedIds([]); setMenu(null); } },
   ]);
 
@@ -44,14 +47,14 @@ export default function BoardPage() {
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const files = Array.from(e.clipboardData?.files ?? []);
-      if (!files.length) return;
+      if (!files.length || !canEdit) return;
       e.preventDefault();
       setPendingFiles(files);
       setCreateOpen(true);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, []);
+  }, [canEdit]);
 
   // 组件卸载清定时器
   useEffect(() => {
@@ -83,23 +86,12 @@ export default function BoardPage() {
     return map;
   }, [store.attachments]);
 
-  // 筛选 + 搜索
-  const filteredBoard = useMemo(() => {
-    const apply = (bugs: Bug[]) =>
-      bugs.filter((b) => {
-        if (filters.severity && b.severity !== filters.severity) return false;
-        if (filters.label && !b.labels.includes(filters.label)) return false;
-        if (search.trim() && !`${b.title} ${b.labels.join(' ')}`.toLowerCase().includes(search.trim().toLowerCase())) return false;
-        return true;
-      });
-    return {
-      open: apply(store.board.open),
-      in_progress: apply(store.board.in_progress),
-      resolved: apply(store.board.resolved),
-      verified: apply(store.board.verified),
-      closed: apply(store.board.closed),
-    };
-  }, [store.board, filters, search]);
+  // 筛选 + 搜索（人员维度：指派给我 / 我提的 / 未指派）
+  const boardFilters = { who, ...filters, search };
+  const filteredBoard = useMemo(
+    () => filterBoard(store.board, { who, ...filters, search }, user?.id ?? null),
+    [store.board, who, filters, search, user?.id],
+  );
 
   const allLabels = useMemo(() => {
     const s = new Set<string>();
@@ -129,13 +121,14 @@ export default function BoardPage() {
     );
   }
 
-  const activeFilters = Object.entries(filters).filter(([, v]) => v).length + (search.trim() ? 1 : 0);
+  const activeFilters = activeFilterCount(boardFilters);
 
   return (
     <div className="flex h-full flex-col">
       {/* 筛选条 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
         <CurrentProjectSwitcher />
+        <WhoSegment value={who} onChange={setWho} />
 
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
@@ -153,17 +146,19 @@ export default function BoardPage() {
         </button>
 
         {/* 移动端录缺陷入口（卡片 38：触屏无 C 快捷键，<900px 常驻按钮） */}
-        <button
-          className="vh-btn hidden h-8 text-xs max-[899px]:inline-flex"
-          onClick={() => setCreateOpen(true)}
-          data-testid="mobile-create-bug"
-        >
-          <Plus size={14} />
-          录缺陷
-        </button>
+        {canEdit && (
+          <button
+            className="vh-btn hidden h-8 text-xs max-[899px]:inline-flex"
+            onClick={() => setCreateOpen(true)}
+            data-testid="mobile-create-bug"
+          >
+            <Plus size={14} />
+            录缺陷
+          </button>
+        )}
 
         {activeFilters > 0 && (
-          <button className="vh-btn ghost h-8 text-xs" onClick={() => { setFilters({}); setSearch(''); }}>
+          <button className="vh-btn ghost h-8 text-xs" onClick={() => { setFilters({}); setSearch(''); setWho('all'); }}>
             <X size={13} />
             清除
           </button>
@@ -177,22 +172,12 @@ export default function BoardPage() {
       </div>
 
       {filterOpen && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)] px-4 py-2 text-xs">
-          <label className="flex items-center gap-1.5">
-            严重度
-            <select className="h-7 rounded border border-[var(--border-strong)] bg-[var(--bg-page)] px-1" value={filters.severity ?? ''} onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value || undefined }))}>
-              <option value="">全部</option>
-              <option value="low">低</option><option value="normal">中</option><option value="high">高</option><option value="critical">紧急</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-1.5">
-            标签
-            <select className="h-7 rounded border border-[var(--border-strong)] bg-[var(--bg-page)] px-1" value={filters.label ?? ''} onChange={(e) => setFilters((f) => ({ ...f, label: e.target.value || undefined }))}>
-              <option value="">全部</option>
-              {allLabels.map((l) => <option key={l} value={l}>{l}</option>)}
-            </select>
-          </label>
-        </div>
+        <BoardFilterPanel
+          severity={filters.severity}
+          label={filters.label}
+          labels={allLabels}
+          onChange={(patch) => setFilters((f) => ({ ...f, ...patch }))}
+        />
       )}
 
       {/* 看板 */}
@@ -205,8 +190,11 @@ export default function BoardPage() {
           selectedIds={selectedIds}
           onSelectionChange={setSelectedIds}
           onMoveBug={(bugId, status) => {
-            void store.moveBug(bugId, status);
-            flash(bugId);
+            // 服务端仍可能拒绝（比如别人刚改过状态）：人话提示，不再抛未捕获异常（功能巡检 B4）
+            store.moveBug(bugId, status).then(
+              () => flash(bugId),
+              (e) => toast.error(e instanceof Error ? e.message : '状态修改失败'),
+            );
           }}
           onOpenBug={(bugId) => setDetailId(bugId)}
           onContextMenu={(bugId, e) => {
@@ -227,21 +215,18 @@ export default function BoardPage() {
             if (result.skipped.length > 0) {
               toast.error(`${result.skipped.length} 项失败：${result.skipped[0].reason}`);
             }
-            if (result.updated > 0) {
-              toast.success(`已更新 ${result.updated} 项`, {
-                action: { label: '撤销', onClick: () => toast.info('请手动改回原状态') },
-              });
-            }
+            if (result.updated > 0) toast.success(`已更新 ${result.updated} 项`);
             setSelectedIds([]);
           }}
         />
       )}
 
-      {/* 右键菜单 */}
+      {/* 右键菜单（删除二次确认） */}
       {menu && (
         <BugContextMenu
           x={menu.x}
           y={menu.y}
+          canDelete={canEdit}
           onClose={() => setMenu(null)}
           onCopy={() => {
             const bug = Object.values(store.board).flat().find((b) => b.id === menu.bugId);
@@ -252,14 +237,14 @@ export default function BoardPage() {
             setDetailId(menu.bugId);
             setMenu(null);
           }}
-          onDelete={canEdit ? () => {
+          onDelete={() => {
             const id = menu.bugId;
             setMenu(null);
-            void store.deleteBug(id);
-            toast.success('已删除 1 个缺陷', {
-              action: { label: '撤销', onClick: () => toast.info('删除不可自动撤销') },
-            });
-          } : undefined}
+            store.deleteBug(id).then(
+              () => toast.success('已删除 1 个缺陷'),
+              (e) => toast.error(e instanceof Error ? e.message : '删除失败'),
+            );
+          }}
         />
       )}
 
@@ -279,9 +264,7 @@ export default function BoardPage() {
           bugId={detailId}
           canEdit={canEdit}
           onClose={() => setDetailId(null)}
-          onUpdate={store.updateBug}
-          onDelete={store.deleteBug}
-          onRefreshBoard={store.refreshBoard}
+          onChanged={() => void store.refreshBoard()}
           onOpenText={(id, name) => setTextViewer({ id, name })}
         />
       )}
@@ -293,32 +276,6 @@ export default function BoardPage() {
           onClose={() => setTextViewer(null)}
         />
       )}
-    </div>
-  );
-}
-
-/** 缺陷右键菜单 */
-function BugContextMenu({
-  x, y, onClose, onCopy, onOpen, onDelete,
-}: {
-  x: number; y: number; onClose: () => void;
-  onCopy: () => void; onOpen: () => void; onDelete?: () => void;
-}) {
-  useEffect(() => {
-    const close = () => onClose();
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed z-50 min-w-36 overflow-hidden rounded-[10px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-1 shadow-lg"
-      style={{ left: x, top: y }}
-      data-testid="bug-context-menu"
-    >
-      <button className="vh-menu-item" onClick={onOpen}>打开详情</button>
-      <button className="vh-menu-item" onClick={onCopy}>复制标题</button>
-      {onDelete && <button className="vh-menu-item text-[var(--danger)]" onClick={onDelete}>删除</button>}
     </div>
   );
 }

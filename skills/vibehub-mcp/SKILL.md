@@ -90,8 +90,8 @@ VibeHub：bug_ab12 in_progress → resolved（commit 1a2b3c）；tsk_cd34 doing 
 
 | 报错 | 原因 / 做法 |
 |---|---|
-| 「不允许从 open 直接改为 resolved」 | 不能跳级：先调一次 `in_progress`，再调 `resolved` |
-| 「从 resolved 重开到 open 需要填写重开原因」 | 回流要带 `reopen_reason` |
+| 「不能从「待处理」直接改为「已解决」，可以改为：进行中」 | 不能跳级：先调一次 `in_progress`，再调 `resolved`（报错里的中文状态名对应：待处理 open / 进行中 in_progress / 已解决 resolved / 已验证 verified / 已关闭 closed） |
+| 「从「已解决」重开到「待处理」需要填写重开原因（reopen_reason）」 | 回流要带 `reopen_reason` |
 | 「不能从「待办」直接改为「待验证」」 | 任务也不能跳级：先 `doing`，做完再 `review` |
 | 「从「待验证」打回「进行中」需要写明原因」 | 任务打回要带 `reopen_reason` |
 | 「SKILL.md 需要以 --- 包起来的 frontmatter 开头」 | 上传技能时 `skill_md` 开头要有 `name` 和 `description` |

@@ -4,8 +4,12 @@ import * as attachmentsService from '../services/attachments.js';
 import { serializeAttachment } from '../core/serialize.js';
 import { ValidationError } from '../core/errors.js';
 import { serializeBug } from '../core/serialize.js';
+import { WRITER_ROLES } from '../plugins/authenticate.js';
 
 export const bugRoutes: FastifyPluginAsync = async (fastify) => {
+  // 写操作限 owner/admin/member：viewer（只读）只能看（功能巡检 B2）
+  const canWrite = { preHandler: [fastify.requireRole(...WRITER_ROLES)] };
+
   // GET /api/bugs?project_id=&status=&severity=&q=&page=&page_size=
   fastify.get('/', async (request) => {
     const q = request.query as Record<string, string>;
@@ -34,7 +38,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/bugs
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', canWrite, async (request, reply) => {
     const body = request.body as {
       project_id?: string;
       title?: string;
@@ -76,6 +80,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
       dueDate: body.due_date ?? null,
       labels: body.labels ?? (defaults.labels as string[]) ?? undefined,
       attachmentIds: body.attachment_ids,
+      reporterId: request.user?.id ?? null,
     });
     reply.code(201);
     return serializeBug(bug);
@@ -92,7 +97,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PATCH /api/bugs/:bugId —— 拖拽改状态 / 编辑
-  fastify.patch('/:bugId', async (request) => {
+  fastify.patch('/:bugId', canWrite, async (request) => {
     const { bugId } = request.params as { bugId: string };
     const body = request.body as {
       title?: string;
@@ -129,7 +134,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/bugs/:bugId
-  fastify.delete('/:bugId', async (request, reply) => {
+  fastify.delete('/:bugId', canWrite, async (request, reply) => {
     const { bugId } = request.params as { bugId: string };
     await bugsService.deleteBug(bugId);
     reply.code(204);
@@ -137,7 +142,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/bugs/:bugId/attachments —— 关联已有附件
-  fastify.post('/:bugId/attachments', async (request, reply) => {
+  fastify.post('/:bugId/attachments', canWrite, async (request, reply) => {
     const { bugId } = request.params as { bugId: string };
     const body = request.body as { attachment_id?: string };
     if (!body?.attachment_id) throw new ValidationError('attachment_id 不能为空');
@@ -147,7 +152,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/bugs/:bugId/attachments/:attachmentId
-  fastify.delete('/:bugId/attachments/:attachmentId', async (request, reply) => {
+  fastify.delete('/:bugId/attachments/:attachmentId', canWrite, async (request, reply) => {
     const { attachmentId } = request.params as { attachmentId: string };
     await attachmentsService.deleteAttachment(attachmentId);
     reply.code(204);

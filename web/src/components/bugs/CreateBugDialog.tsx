@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, Loader2, Send, Trash2 } from 'lucide-react';
+import { ImagePlus, Loader2, Send } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { UploadProgressStrip } from '@/components/files/UploadProgressStrip';
 import { BugFormExtras } from './BugFormExtras';
 import { TsvImportPanel } from './TsvImportPanel';
+import { PendingAttachmentThumbs, discardAttachments } from './PendingAttachments';
 import { isBulkPaste, parseTsvRows, type TsvRow } from '@/lib/tsv-import';
 import type { Attachment, Bug, BugTemplate } from '@/lib/api-types';
 
@@ -55,6 +56,10 @@ export function CreateBugDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  // 离开看板时仍未提交的已上传附件一并删除，不留无主文件（B10）
+  const attachmentsRef = useRef<Attachment[]>([]);
+  attachmentsRef.current = attachments;
+  useEffect(() => () => discardAttachments(attachmentsRef.current), []);
 
   useEffect(() => {
     if (open) {
@@ -236,22 +241,13 @@ export function CreateBugDialog({
                 上传中…
               </div>
             )}
-            {attachments.map((a) => (
-              <div key={a.id} className="group relative h-20 w-20 overflow-hidden rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
-                {a.file_type.startsWith('image/') ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.public_url ?? ''} alt={a.file_name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center p-1 text-center text-[10px] text-[var(--text-tertiary)]">{a.file_name}</div>
-                )}
-                <button
-                  className="absolute right-1 top-1 rounded bg-black/60 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 cursor-pointer"
-                  onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
-                >
-                  <Trash2 className="h-3 w-3 text-white" />
-                </button>
-              </div>
-            ))}
+            <PendingAttachmentThumbs
+              attachments={attachments}
+              onRemove={(a) => {
+                setAttachments((prev) => prev.filter((x) => x.id !== a.id));
+                discardAttachments([a]);
+              }}
+            />
           </div>
           {uploadQ.items.length > 0 && (
             <div className="mt-1.5">

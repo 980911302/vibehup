@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import * as skillsService from '../services/skills.js';
 import { ValidationError } from '../core/errors.js';
+import { WRITER_ROLES } from '../plugins/authenticate.js';
 import { serializeSkill } from '../core/serialize.js';
 
 interface UploadBody {
@@ -31,7 +32,7 @@ async function presentDetail(skillId: string) {
 
 export const skillRoutes: FastifyPluginAsync = async (fastify) => {
   // 写操作限 owner/admin/member（登录校验已由外层 onRequest 钩子完成）
-  const canWrite = { preHandler: [fastify.requireRole('owner', 'admin', 'member')] };
+  const canWrite = { preHandler: [fastify.requireRole(...WRITER_ROLES)] };
 
   // GET /api/skills?project_id=&include_global=false&q=
   fastify.get('/', async (request) => {

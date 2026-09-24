@@ -112,6 +112,8 @@ function parseCsv(text: string): string[][] {
 export async function importBugsCsv(
   projectId: string,
   csvText: string,
+  /** 导入者：记为每条缺陷的提出人 */
+  reporterId: string | null = null,
 ): Promise<{ imported: number; results: ImportRowResult[] }> {
   const rows = parseCsv(csvText);
   if (rows.length < 2) throw new ValidationError('CSV 至少需要表头和一行数据');
@@ -182,7 +184,7 @@ export async function importBugsCsv(
       // 不走交互状态机（reopenedCount 保持 0）。
       await prisma.bug.create({
         data: {
-          id: ids.attachment(),
+          id: ids.bug(),
           projectId,
           title,
           severity,
@@ -193,6 +195,7 @@ export async function importBugsCsv(
           labels: labelsRaw ? labelsRaw.split(/[,，]/).map((t) => t.trim()).filter(Boolean) : [],
           stepsToReproduce: steps || null,
           createdBy: 'human',
+          reporterId,
         },
       });
       imported++;

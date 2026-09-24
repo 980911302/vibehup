@@ -199,7 +199,7 @@ export default function MembersPage() {
                       {u.status === 'active' ? '禁用' : '启用'}
                     </button>
                     <button
-                      className="vh-btn ghost h-7 text-xs text-[var(--danger)]"
+                      className="vh-btn ghost danger h-7 text-xs"
                       disabled={u.id === me?.id || isLastOwner(u)}
                       title={u.id === me?.id ? '不能移除自己' : isLastOwner(u) ? '系统需要至少一名 Owner' : undefined}
                       onClick={() => void remove(u)}
@@ -218,7 +218,7 @@ export default function MembersPage() {
       {isOwner && (
         <div className="border-t border-[var(--border-subtle)] px-4 py-3">
           {!transferOpen ? (
-            <button className="vh-btn ghost text-xs text-[var(--danger)]" onClick={() => setTransferOpen(true)}>
+            <button className="vh-btn ghost danger text-xs" onClick={() => setTransferOpen(true)}>
               <ShieldAlert size={13} />
               转让 Owner
             </button>
@@ -232,7 +232,7 @@ export default function MembersPage() {
                 onChange={(e) => setTransferEmail(e.target.value)}
               />
               <button
-                className="vh-btn bg-[var(--danger)] text-white h-8 text-xs"
+                className="vh-btn danger h-8 text-xs"
                 onClick={async () => {
                   const target = users.find((u) => u.email === transferEmail.trim());
                   if (!target) {

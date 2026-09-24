@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolderOpen, FolderPlus, Upload } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
+import { useCanEdit } from '@/lib/auth';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { FileGrid } from '@/components/files/FileGrid';
@@ -30,6 +31,7 @@ export default function FilesPage() {
   const [textViewer, setTextViewer] = useState<{ id: string; name: string } | null>(null);
 
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
+  const canEdit = useCanEdit();
 
   // 我的文件（服务端 mine 过滤，限当前项目——与顶栏的项目切换一致）
   const [mineAttachments, setMineAttachments] = useState<Attachment[]>([]);
@@ -75,15 +77,15 @@ export default function FilesPage() {
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const files = Array.from(e.clipboardData?.files ?? []);
-      if (!files.length) return;
+      if (!files.length || !canEdit) return;
       e.preventDefault();
       void handleFiles(files);
     };
     window.addEventListener('paste', onPaste);
     return () => window.removeEventListener('paste', onPaste);
-  }, [handleFiles]);
+  }, [handleFiles, canEdit]);
 
-  const canDeleteFile = (a: Attachment) => a.uploaded_by === user?.id || isAdmin;
+  const canDeleteFile = (a: Attachment) => canEdit && (a.uploaded_by === user?.id || isAdmin);
 
   const deleteFile = async (a: Attachment) => {
     await store.deleteAttachment(a.id);
@@ -134,7 +136,7 @@ export default function FilesPage() {
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
-        void handleFiles(Array.from(e.dataTransfer.files));
+        if (canEdit) void handleFiles(Array.from(e.dataTransfer.files));
       }}
     >
       {/* 顶栏 */}
@@ -183,7 +185,7 @@ export default function FilesPage() {
           <span>{formatSize(usage)}</span>
         </div>
 
-        <label className="vh-btn h-8 cursor-pointer text-xs">
+        {canEdit && <label className="vh-btn h-8 cursor-pointer text-xs" data-testid="files-upload">
           <Upload size={13} />
           上传
           <input
@@ -195,7 +197,7 @@ export default function FilesPage() {
               e.target.value = '';
             }}
           />
-        </label>
+        </label>}
       </div>
 
       {/* 上传进度条（卡片 37） */}

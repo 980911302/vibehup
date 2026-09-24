@@ -6,7 +6,7 @@ import { FileText, FolderKanban, Image as ImageIcon, ListChecks, Moon, Puzzle, S
 import { api } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useToast } from '@/lib/toast';
-import type { SearchResults } from '@/lib/api-types';
+import { BUG_STATUS_LABELS, SEVERITY_LABELS, type SearchResults } from '@/lib/api-types';
 import { TASK_STATUS_LABELS, type TaskStatus } from '@/lib/task-flow';
 
 interface CommandPaletteProps {
@@ -107,7 +107,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       id: `bug-${b.id}`,
       icon: FileText,
       label: b.title,
-      hint: `${b.status} · ${b.severity}`,
+      hint: `${BUG_STATUS_LABELS[b.status]} · ${SEVERITY_LABELS[b.severity]}`,
       run: () => router.push(`/board?bug=${b.id}`),
     }));
     const taskRows: Row[] = (results?.tasks ?? []).map((t) => ({

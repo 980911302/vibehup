@@ -34,6 +34,9 @@ export async function authenticate(request: FastifyRequest, _reply: FastifyReply
   request.user = { id: payload.sub, role: payload.role, email: payload.email };
 }
 
+/** 可写内容（缺陷/任务/便签/附件/技能）的角色；viewer 只读 */
+export const WRITER_ROLES: Role[] = ['owner', 'admin', 'member'];
+
 /** 角色守卫：403 FORBIDDEN */
 export function requireRole(...roles: Role[]) {
   return async (request: FastifyRequest, _reply: FastifyReply): Promise<void> => {
@@ -41,7 +44,11 @@ export function requireRole(...roles: Role[]) {
       throw new UnauthorizedError();
     }
     if (!roles.includes(request.user.role as Role)) {
-      throw new ForbiddenError('该操作需要更高的角色权限');
+      throw new ForbiddenError(
+        request.user.role === 'viewer'
+          ? '只读成员不能修改内容；需要编辑请联系管理员把你的角色调整为成员'
+          : '该操作需要更高的角色权限，请联系团队拥有者或管理员',
+      );
     }
   };
 }

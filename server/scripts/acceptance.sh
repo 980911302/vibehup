@@ -41,8 +41,13 @@ fi
 
 step "4/6 HTTP 冒烟（:${PORT}）"
 SERVER_PID=""
-cleanup() { [ -n "${SERVER_PID}" ] && kill "${SERVER_PID}" 2>/dev/null; }
+# npx → tsx → node 三层进程：只 kill npx 会留下真正监听端口的 node，下一次门禁连上旧服务测到旧代码却照样 PASS
+kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }
+cleanup() { [ -n "${SERVER_PID}" ] && kill_tree "${SERVER_PID}"; }
 trap cleanup EXIT
+# 端口已有服务应答 = 残留进程，直接判失败（否则整段冒烟/E2E 打在旧代码上）
+port_busy() { curl -sf "http://127.0.0.1:$1/api/health" > /dev/null 2>&1; }
+if port_busy "${PORT}"; then bad "端口 ${PORT} 已被占用（多半是上次门禁残留的服务），请先结束该进程"; exit 1; fi
 
 # 卡片 28：冒烟服务显式关闭语义检索，门禁 hermetic（不打 DashScope 外网）
 DATABASE_URL="${TEST_DATABASE_URL}" DATA_DIR=./acceptance-data PORT=${PORT} EMBEDDING_PROVIDER=none npx tsx src/index.ts > /tmp/vh-server.log 2>&1 &
@@ -121,8 +126,9 @@ else
 fi
 
 E2E_PID=""
-cleanup_e2e() { [ -n "${E2E_PID}" ] && kill "${E2E_PID}" 2>/dev/null; }
+cleanup_e2e() { [ -n "${E2E_PID}" ] && kill_tree "${E2E_PID}"; }
 trap 'cleanup; cleanup_e2e' EXIT
+if port_busy "${E2E_PORT}"; then bad "端口 ${E2E_PORT} 已被占用（多半是上次门禁残留的服务），请先结束该进程"; exit 1; fi
 
 # LOGIN_MAX_ATTEMPTS 放宽：E2E 多用例复用同一 owner 登录，默认 5 次阈值会误伤门禁
 DATABASE_URL="${TEST_DATABASE_URL}" DATA_DIR=./acceptance-e2e-data PORT=${E2E_PORT} EMBEDDING_PROVIDER=none LOGIN_MAX_ATTEMPTS=100 npx tsx src/index.ts > /tmp/vh-e2e-server.log 2>&1 &

@@ -3,6 +3,7 @@ import type { Task } from '@prisma/client';
 import * as tasksService from '../services/tasks.js';
 import * as attachmentsService from '../services/attachments.js';
 import { ValidationError } from '../core/errors.js';
+import { WRITER_ROLES } from '../plugins/authenticate.js';
 import { serializeAttachment, serializeTask } from '../core/serialize.js';
 
 interface TaskBody {
@@ -25,7 +26,7 @@ async function present(task: Task & { attachmentCount?: number }) {
 
 export const taskRoutes: FastifyPluginAsync = async (fastify) => {
   // 写操作限 owner/admin/member：viewer（只读）只能看（登录校验已由外层 onRequest 钩子完成）
-  const canWrite = { preHandler: [fastify.requireRole('owner', 'admin', 'member')] };
+  const canWrite = { preHandler: [fastify.requireRole(...WRITER_ROLES)] };
 
   // GET /api/tasks?project_id=&status=&priority=&label=&q=
   fastify.get('/', async (request) => {

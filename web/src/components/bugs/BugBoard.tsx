@@ -5,6 +5,7 @@ import { BugCard } from './BugCard';
 import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { BUG_STATUS_LABELS, type Bug, type BugBoard as Board } from '@/lib/api-types';
+import { bugDropRejectReason, canDropBug } from '@/lib/bug-flow';
 
 const COLUMNS: { key: keyof Board; label: string; accent: string }[] = [
   { key: 'open', label: BUG_STATUS_LABELS.open, accent: 'var(--sev-critical)' },
@@ -52,11 +53,9 @@ export function BugBoard({
     setDragOverCol(null);
   };
 
-  /** 同列内不允许放置（状态未变） */
-  const isLegalDrop = (bugId: string, target: keyof Board): boolean => {
-    const bug = Object.values(board).flat().find((b) => b.id === bugId);
-    return !!bug && bug.status !== target;
-  };
+  const findBug = (bugId: string | null) => (bugId ? Object.values(board).flat().find((b) => b.id === bugId) : undefined);
+  /** 拖动中的缺陷可以落到哪些列：只有合法的下一步（重开要写原因，不能直接拖） */
+  const draggingBug = findBug(draggingId);
 
   const handleDrop = (target: keyof Board) => {
     const bugId = draggingRef.current;
@@ -68,8 +67,11 @@ export function BugBoard({
       setTimeout(() => setRejectCol(null), 300);
       return;
     }
-    if (!isLegalDrop(bugId, target)) {
+    const bug = findBug(bugId);
+    if (!bug || bug.status === target) return;
+    if (!canDropBug(bug.status, target)) {
       setRejectCol(target);
+      toast.error(bugDropRejectReason(bug.status, target));
       setTimeout(() => setRejectCol(null), 200);
       return;
     }
@@ -108,13 +110,15 @@ export function BugBoard({
     <div className="flex h-full gap-3 overflow-x-auto pb-2" data-testid="bug-board">
       {COLUMNS.map((col) => {
         const bugs = board[col.key] ?? [];
-        const isOver = dragOverCol === col.key;
+        const droppable = draggingBug ? canDropBug(draggingBug.status, col.key) : false;
+        const isOver = dragOverCol === col.key && droppable;
         return (
           <div
             key={col.key}
             data-testid={`board-column-${col.key}`}
             className={cn(
-              'flex min-h-32 w-[268px] shrink-0 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-colors',
+              'flex min-h-32 min-w-[220px] flex-1 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-[opacity,border-color]',
+              draggingBug && !droppable && draggingBug.status !== col.key && 'opacity-50',
               isOver && 'border-[var(--gold)] bg-[var(--gold-bg)]',
               rejectCol === col.key && 'animate-[vh-shake_160ms_var(--ease)]',
             )}

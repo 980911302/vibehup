@@ -213,6 +213,10 @@
 .vh-btn:active { transform: scale(0.98); }
 .vh-btn.ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border-strong); }
 .vh-btn.ghost:hover { background: var(--bg-elevated); color: var(--text-primary); }
+/* 危险操作：Tailwind 工具类在 @layer 内，压不过未分层的 .vh-btn，颜色必须走变体 */
+.vh-btn.danger { background: var(--danger); }
+.vh-btn.ghost.danger { background: transparent; color: var(--danger); }
+.vh-btn.ghost.danger:hover { background: var(--bg-elevated); color: var(--danger); }
 .vh-kbd {
   font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
   font-size: 10px; padding: 2px 6px; border-radius: 5px;

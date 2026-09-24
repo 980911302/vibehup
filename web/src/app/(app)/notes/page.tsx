@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { StickyNote } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useToast } from '@/lib/toast';
+import { useCanEdit } from '@/lib/auth';
 import { useHotkeys } from '@/lib/shortcuts';
 import { NoteWall } from '@/components/notes/NoteWall';
 
@@ -11,10 +12,11 @@ import { NoteWall } from '@/components/notes/NoteWall';
 export default function NotesPage() {
   const store = useVibeHub();
   const toast = useToast();
+  const canEdit = useCanEdit();
   const [composing, setComposing] = useState(false);
 
   // N 新建（随手记页内生效；与全局 C=新建缺陷不冲突）
-  useHotkeys([{ combo: 'n', description: '新建随手记', handler: () => setComposing(true) }]);
+  useHotkeys([{ combo: 'n', description: '新建随手记', handler: () => canEdit && setComposing(true) }]);
 
   const createNote = async (content: string, tags: string[]) => {
     await store.createNote(content, tags);

@@ -97,6 +97,12 @@ export async function createKey(input: CreateKeyInput): Promise<{ key: string; v
 }
 
 /** 密钥列表（掩码；不含明文与哈希） */
+/** 密钥创建人（MCP 建单时记为缺陷提出人）；密钥不存在或创建人已移除返回 null */
+export async function getKeyCreatorId(keyId: string): Promise<string | null> {
+  const key = await prisma.apiKey.findUnique({ where: { id: keyId }, select: { createdBy: true } });
+  return key?.createdBy ?? null;
+}
+
 export async function listKeys(): Promise<ApiKeyView[]> {
   const keys = await prisma.apiKey.findMany({ orderBy: { createdAt: 'desc' } });
   return keys.map(toView);

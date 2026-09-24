@@ -47,7 +47,7 @@ export function BatchBar({
             <option value="open">待处理</option>
             <option value="in_progress">进行中</option>
             <option value="resolved">已解决</option>
-            <option value="verified">待验证</option>
+            <option value="verified">已验证</option>
             <option value="closed">已关闭</option>
           </select>
 

@@ -5,6 +5,7 @@ import * as tasksService from '../services/tasks.js';
 import * as bugsService from '../services/bugs.js';
 import * as bugComments from '../services/bug-comments.js';
 import * as attachmentsService from '../services/attachments.js';
+import * as apiKeysService from '../services/api-keys.js';
 import { globalSearch } from '../services/search.js';
 import { config } from '../config.js';
 import { ValidationError, PayloadTooLargeError } from '../core/errors.js';
@@ -69,6 +70,8 @@ export async function createBug(ctx: McpContext, input: {
     expectedResult: input.expected_result,
     actualResult: input.actual_result,
     createdBy: 'ai',
+    // 提出人记为密钥创建人（「张磊的 Cursor」建的单算张磊提的）；本地无密钥模式为空
+    reporterId: ctx.apiKeyId ? await apiKeysService.getKeyCreatorId(ctx.apiKeyId) : null,
     attachmentIds: input.attachment_ids,
   });
   await bugComments.addComment({
