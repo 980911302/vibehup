@@ -1,4 +1,5 @@
 import { BUG_TRANSITIONS, type BugStatus } from '../services/bugs.js';
+import { allowedNextTaskStatuses } from '../services/tasks.js';
 
 /**
  * 状态流转协议（缺陷 / 任务）——MCP 侧唯一出处。
@@ -17,10 +18,14 @@ export const SERVER_INSTRUCTIONS = [
   '开始修 → in_progress；修完且自测通过 → resolved（resolution_notes 写根因、改动、自测方式，有提交就带 commit_hash）；',
   '验证通过 → verified（修复者自测不算验证；用户说「验证过了/没问题」时由当前 AI 代为流转）；',
   '修复已在最终环境生效或无需发布 → closed；验证不通过 → open 并填 reopen_reason；重复/不修/无法复现 → resolved 写明原因后 closed。',
-  '任务 todo → doing → done：开始做 → doing；做完并自测/验收通过 → done；受阻保持 doing 并在回复里说明。',
+  '任务 todo → doing → review → done，不能跳级：开始做 → doing；做完并自测通过 → review（待验证，等人验收）；',
+  '验收通过 → done（自己做的不算验收；用户说「验收过了/没问题」时由当前 AI 代为流转）；验收不通过 → doing 并填 reopen_reason；',
+  '不做了 → cancelled（未完成的任务都可以取消），取消的要重做 → todo；受阻保持 doing 并在回复里说明。',
   '每轮回复前自查：本轮碰过的 bug_/tsk_ 状态是否与实际一致，并在回复末尾列出流转记录。',
   '角色职责里「vibehub 由幕僚统一写 / 不写 vibehub」只指便签和新建记录，不包括状态流转：自己经手的缺陷和任务一律自己流转。',
   '新建缺陷/任务前先 search 查重。完整规范见技能 vibehub-mcp（SKILL.md，服务端 /skills/vibehub-mcp/SKILL.md）。',
+  '【团队技能】get_project_context 会列出本项目和全团队通用的技能（名称+描述）；要用时 download_skill 取回全文，按原目录结构写到 .claude/skills/<name>/；',
+  '沉淀出新的可复用流程时用 upload_skill 上传（同名即覆盖），删除用 delete_skill。删除缺陷/任务/便签/附件前先向用户确认。',
 ].join('\n');
 
 const BUG_NEXT_STEP: Record<BugStatus, string> = {
@@ -35,9 +40,12 @@ const BUG_NEXT_STEP: Record<BugStatus, string> = {
 };
 
 const TASK_NEXT_STEP: Record<string, string> = {
-  todo: '开始做时改为 doing',
-  doing: '做完并自测/验收通过后改为 done；受阻就保持 doing，并在回复里说明阻塞原因',
-  done: '已完成；发现没做完或返工时改回 doing',
+  todo: '开始做时改为 doing；不做了改为 cancelled',
+  doing: '做完并自测通过后改为 review（待验证）；受阻就保持 doing，并在回复里说明阻塞原因',
+  review:
+    '等待验收：通过改 done，不通过改回 doing 并填 reopen_reason；自己做的不算验收，用户明确说验收通过时可代为流转',
+  done: '已完成；发现没做完或返工时改回 doing 并填 reopen_reason',
+  cancelled: '已取消；要重新做时改回 todo',
 };
 
 export function bugNextStep(status: string): { allowed_next_statuses: string[]; next_step: string } {
@@ -52,11 +60,17 @@ export function taskNextStep(status: string): string {
   return TASK_NEXT_STEP[status] ?? '';
 }
 
+/** 任务流转提示：与 bugNextStep 对称，工具返回时一并送到 AI 眼前 */
+export function taskFlow(status: string): { allowed_next_statuses: string[]; next_step: string } {
+  return { allowed_next_statuses: allowedNextTaskStatuses(status), next_step: taskNextStep(status) };
+}
+
 /** get_project_context 的提醒：把「该流转却没流转」的存量摆到 AI 眼前 */
 export function contextReminders(counts: {
   inProgressBugs: number;
   awaitingVerification: number;
   doingTasks: number;
+  reviewTasks?: number;
 }): string[] {
   const reminders: string[] = [];
   if (counts.inProgressBugs > 0) {
@@ -68,7 +82,10 @@ export function contextReminders(counts: {
     );
   }
   if (counts.doingTasks > 0) {
-    reminders.push(`${counts.doingTasks} 个任务在 doing：做完的请改 done`);
+    reminders.push(`${counts.doingTasks} 个任务在 doing：做完并自测通过的请改 review（待验证）`);
+  }
+  if (counts.reviewTasks) {
+    reminders.push(`${counts.reviewTasks} 个任务待验证（review）：验收通过改 done，不通过改回 doing 并填 reopen_reason`);
   }
   reminders.push('谁经手谁流转，做完当场改状态；回复末尾列出本轮流转记录');
   return reminders;

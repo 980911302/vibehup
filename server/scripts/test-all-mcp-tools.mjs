@@ -1,5 +1,5 @@
 /**
- * 16 个 MCP 工具逐个实测（走 SSE 传输，与容器/IDE 交付形态一致）。
+ * 26 个 MCP 工具逐个实测（走 SSE 传输，与容器/IDE 交付形态一致）。
  *
  * 设计要点：
  * - 专用临时项目（TEST_PROJECT_SLUG），不碰用户「白泽团队」；跑完级联删除；
@@ -132,7 +132,7 @@ const toolNames = (list.result?.tools ?? []).map((t) => t.name);
 console.log(`── 工具清单（${toolNames.length} 个）──\n${toolNames.join(', ')}\n`);
 
 /* ============ 1. get_project_context ============ */
-console.log('【1/16】get_project_context — 冷启动读项目上下文');
+console.log('【1/26】get_project_context — 冷启动读项目上下文');
 {
   const r = await call('get_project_context', { project_slug: SLUG });
   check('成功返回且未报错', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -144,7 +144,7 @@ console.log('【1/16】get_project_context — 冷启动读项目上下文');
 }
 
 /* ============ 2. list_bugs ============ */
-console.log('\n【2/16】list_bugs — 列缺陷 + 分页整形');
+console.log('\n【2/26】list_bugs — 列缺陷 + 分页整形');
 {
   const r = await call('list_bugs', { project_slug: SLUG });
   check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -155,7 +155,7 @@ console.log('\n【2/16】list_bugs — 列缺陷 + 分页整形');
 }
 
 /* ============ 3. get_bug_detail ============ */
-console.log('\n【3/16】get_bug_detail — 详情 + 长文本 500 字符截断');
+console.log('\n【3/26】get_bug_detail — 详情 + 长文本 500 字符截断');
 {
   const r = await call('get_bug_detail', { bug_id: longBug.id });
   check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -165,7 +165,7 @@ console.log('\n【3/16】get_bug_detail — 详情 + 长文本 500 字符截断'
 }
 
 /* ============ 4. read_attachment_text ============ */
-console.log('\n【4/16】read_attachment_text — 日志分片读取');
+console.log('\n【4/26】read_attachment_text — 日志分片读取');
 {
   const r = await call('read_attachment_text', { attachment_id: logAtt.id });
   check('成功读到日志内容', !r.isError && r.text.includes('TypeError'), r.isError ? r.text.slice(0, 120) : '');
@@ -176,7 +176,7 @@ console.log('\n【4/16】read_attachment_text — 日志分片读取');
 }
 
 /* ============ 5. inspect_image_asset ============ */
-console.log('\n【5/16】inspect_image_asset — 读图元信息');
+console.log('\n【5/26】inspect_image_asset — 读图元信息');
 {
   const r = await call('inspect_image_asset', { attachment_id: imgAtt.id });
   check('成功返回图片信息', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -186,7 +186,7 @@ console.log('\n【5/16】inspect_image_asset — 读图元信息');
 }
 
 /* ============ 6. update_bug_status ============ */
-console.log('\n【6/16】update_bug_status — 状态回填 + 状态机校验');
+console.log('\n【6/26】update_bug_status — 状态回填 + 状态机校验');
 {
   const ok1 = await call('update_bug_status', { bug_id: longBug.id, status: 'in_progress' });
   check('open → in_progress 通过', !ok1.isError, ok1.isError ? ok1.text.slice(0, 160) : '');
@@ -202,7 +202,7 @@ console.log('\n【6/16】update_bug_status — 状态回填 + 状态机校验');
 }
 
 /* ============ 7. append_scratchpad ============ */
-console.log('\n【7/16】append_scratchpad — 写随手记 + 标签（需 note:write）');
+console.log('\n【7/26】append_scratchpad — 写随手记 + 标签（需 note:write）');
 {
   const r = await call('append_scratchpad', { project_slug: SLUG, content: '## 自检便签\n联调注意时区', tags: ['selftest', 'auth'] });
   check('成功创建便签', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -212,7 +212,7 @@ console.log('\n【7/16】append_scratchpad — 写随手记 + 标签（需 note:
 }
 
 /* ============ 8. list_notes ============ */
-console.log('\n【8/16】list_notes — 列便签');
+console.log('\n【8/26】list_notes — 列便签');
 {
   const r = await call('list_notes', { project_slug: SLUG });
   check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -222,7 +222,7 @@ console.log('\n【8/16】list_notes — 列便签');
 }
 
 /* ============ 9. search ============ */
-console.log('\n【9/16】search — 关键词 + 语义检索');
+console.log('\n【9/26】search — 关键词 + 语义检索');
 {
   const r = await call('search', { q: '长文本', project_slug: SLUG });
   check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -232,7 +232,7 @@ console.log('\n【9/16】search — 关键词 + 语义检索');
 }
 
 /* ============ 10. create_bug ============ */
-console.log('\n【10/16】create_bug — AI 建缺陷');
+console.log('\n【10/26】create_bug — AI 建缺陷');
 {
   const r = await call('create_bug', {
     project_slug: SLUG, title: 'MCP 工具自检：创建缺陷', severity: 'high',
@@ -246,7 +246,7 @@ console.log('\n【10/16】create_bug — AI 建缺陷');
 }
 
 /* ============ 11. add_bug_comment ============ */
-console.log('\n【11/16】add_bug_comment — 追加评论（AI 身份）');
+console.log('\n【11/26】add_bug_comment — 追加评论（AI 身份）');
 {
   const r = await call('add_bug_comment', { bug_id: globalThis.__newBugId, content: '自检评论：已按步骤复现' });
   check('成功追加评论', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -256,7 +256,7 @@ console.log('\n【11/16】add_bug_comment — 追加评论（AI 身份）');
 }
 
 /* ============ 12. upload_attachment ============ */
-console.log('\n【12/16】upload_attachment — base64 上传附件');
+console.log('\n【12/26】upload_attachment — base64 上传附件');
 {
   const r = await call('upload_attachment', {
     project_slug: SLUG, bug_id: globalThis.__newBugId,
@@ -274,7 +274,7 @@ console.log('\n【12/16】upload_attachment — base64 上传附件');
 }
 
 /* ============ 13. list_tasks ============ */
-console.log('\n【13/16】list_tasks — 列任务 + 状态过滤（需 task:read）');
+console.log('\n【13/26】list_tasks — 列任务 + 状态过滤（需 task:read）');
 {
   const r = await call('list_tasks', { project_slug: SLUG });
   check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
@@ -284,7 +284,7 @@ console.log('\n【13/16】list_tasks — 列任务 + 状态过滤（需 task:rea
 }
 
 /* ============ 14. create_task ============ */
-console.log('\n【14/16】create_task — AI 建任务（需 task:write）');
+console.log('\n【14/26】create_task — AI 建任务（需 task:write）');
 {
   const r = await call('create_task', { project_slug: SLUG, title: 'MCP 自检建的任务', description: '由 create_task 创建', priority: 'low' });
   check('成功建任务', !r.isError, r.isError ? r.text.slice(0, 140) : '');
@@ -298,7 +298,7 @@ console.log('\n【14/16】create_task — AI 建任务（需 task:write）');
 }
 
 /* ============ 15. update_task ============ */
-console.log('\n【15/16】update_task — 改任务状态/优先级（需 task:write）');
+console.log('\n【15/26】update_task — 改任务状态/优先级（需 task:write）');
 {
   const todo = await call('list_tasks', { project_slug: SLUG, status: 'todo' });
   let taskId = null;
@@ -315,18 +315,119 @@ console.log('\n【15/16】update_task — 改任务状态/优先级（需 task:w
 }
 
 /* ============ 16. purge_trash ============ */
-console.log('\n【16/16】purge_trash — 回收站清理（需 admin scope）');
+console.log('\n【16/26】purge_trash — 回收站清理（需 admin scope）');
 {
   const r = await call('purge_trash', {});
   check('admin scope 下成功执行', !r.isError && r.text.includes('purged'), r.isError ? r.text.slice(0, 120) : r.text.replace(/\s+/g, ' ').slice(0, 80));
   check('返回实际清理数量字段', /purged/.test(r.text));
 }
 
+/* ============ 17. get_task_detail ============ */
+console.log('\n【17/26】get_task_detail — 任务详情 + 可走的下一步（需 task:read）');
+let flowTaskId = null;
+{
+  const c = await call('create_task', { project_slug: SLUG, title: '详情与删除自检', description: 'D'.repeat(700), labels: ['selftest'] });
+  try { flowTaskId = JSON.parse(c.text).task?.id; } catch { /* ignore */ }
+  const r = await call('get_task_detail', { task_id: flowTaskId });
+  check('成功返回详情', !r.isError, r.isError ? r.text.slice(0, 140) : '');
+  check('带 allowed_next_statuses 与标签', r.json?.allowed_next_statuses?.includes('doing') && r.json?.labels?.includes('selftest'));
+  check('长描述默认截断', r.json?.description_truncated === true);
+  const full = await call('get_task_detail', { task_id: flowTaskId, full: true });
+  check('full=true 返回全文', full.json?.description?.length === 700);
+}
+
+/* ============ 18. 任务五态（经 update_task） ============ */
+console.log('\n【18/26】update_task 五态 — 不能跳级、打回要原因');
+{
+  const skip = await call('update_task', { task_id: flowTaskId, status: 'review' });
+  check('todo → review 跳级被拒', skip.isError && skip.text.includes('不能从'), skip.text.slice(0, 80).replace(/\s+/g, ' '));
+  await call('update_task', { task_id: flowTaskId, status: 'doing' });
+  const rv = await call('update_task', { task_id: flowTaskId, status: 'review' });
+  check('doing → review 成功', !rv.isError && rv.json?.task?.status === 'review');
+  const noReason = await call('update_task', { task_id: flowTaskId, status: 'doing' });
+  check('打回不写原因被拒', noReason.isError && noReason.text.includes('reopen_reason'));
+  const back = await call('update_task', { task_id: flowTaskId, status: 'doing', reopen_reason: '自检打回' });
+  check('写原因后打回成功', !back.isError && back.json?.task?.status === 'doing');
+}
+
+/* ============ 19. delete_task ============ */
+console.log('\n【19/26】delete_task — 删除任务（需 task:write）');
+{
+  const r = await call('delete_task', { task_id: flowTaskId });
+  check('删除成功', !r.isError && r.json?.ok === true, r.isError ? r.text.slice(0, 120) : '');
+  check('数据库已无该任务', (await prisma.task.findUnique({ where: { id: flowTaskId } })) === null);
+}
+
+/* ============ 20. delete_bug ============ */
+console.log('\n【20/26】delete_bug — 删除缺陷（需 bug:write）');
+{
+  const c = await call('create_bug', { project_slug: SLUG, title: '待删除的重复单' });
+  let bugId = null;
+  try { bugId = JSON.parse(c.text).bug?.id ?? JSON.parse(c.text).id; } catch { /* ignore */ }
+  const r = await call('delete_bug', { bug_id: bugId });
+  check('删除成功', !r.isError && r.json?.ok === true, r.isError ? r.text.slice(0, 120) : '');
+  check('数据库已无该缺陷', bugId && (await prisma.bug.findUnique({ where: { id: bugId } })) === null);
+}
+
+/* ============ 21/22. update_note / delete_note ============ */
+console.log('\n【21/26】update_note — 改便签（需 note:write）');
+let noteId = null;
+{
+  const a = await call('append_scratchpad', { project_slug: SLUG, content: '待修改', tags: ['selftest'] });
+  try { noteId = JSON.parse(a.text).id; } catch { /* ignore */ }
+  const r = await call('update_note', { note_id: noteId, content: '已修改', pinned: true });
+  check('修改成功', !r.isError && r.json?.note?.content === '已修改' && r.json?.note?.pinned === true, r.isError ? r.text.slice(0, 120) : '');
+}
+console.log('\n【22/26】delete_note — 删便签（需 note:write）');
+{
+  const r = await call('delete_note', { note_id: noteId });
+  check('删除成功', !r.isError && r.json?.ok === true);
+  check('数据库已无该便签', (await prisma.note.findUnique({ where: { id: noteId } })) === null);
+}
+
+/* ============ 23. delete_attachment ============ */
+console.log('\n【23/26】delete_attachment — 删附件（需 attachment:write）');
+{
+  const up = await call('upload_attachment', { project_slug: SLUG, file_name: 'tmp.log', file_type: 'text/plain', data_base64: Buffer.from('tmp').toString('base64') });
+  let attId = null;
+  try { attId = JSON.parse(up.text).attachment?.id; } catch { /* ignore */ }
+  const r = await call('delete_attachment', { attachment_id: attId });
+  check('删除成功', !r.isError && r.json?.ok === true, r.isError ? r.text.slice(0, 120) : '');
+}
+
+/* ============ 24-26. 技能：upload / list / download / delete ============ */
+console.log('\n【24/26】upload_skill + list_skills — 上传与查看（需 skill:write / context:read）');
+const SKILL_MD = '---\nname: selftest-skill\ndescription: MCP 自检用技能\n---\n\n# 自检\n';
+{
+  const up = await call('upload_skill', { project_slug: SLUG, skill_md: SKILL_MD, files: [{ path: 'scripts/hi.sh', content: 'echo hi' }] });
+  check('上传成功（created）', !up.isError && up.json?.action === 'created', up.isError ? up.text.slice(0, 140) : '');
+  const again = await call('upload_skill', { project_slug: SLUG, skill_md: SKILL_MD });
+  check('同名再传为覆盖（updated）', again.json?.action === 'updated');
+  const bad = await call('upload_skill', { project_slug: SLUG, skill_md: '# 没有 frontmatter' });
+  check('缺 frontmatter 人话报错', bad.isError && bad.text.includes('frontmatter'));
+  const l = await call('list_skills', { project_slug: SLUG });
+  check('list_skills 可见名称与描述', l.json?.skills?.some((x) => x.name === 'selftest-skill' && x.description === 'MCP 自检用技能'));
+}
+console.log('\n【25/26】download_skill — 下载全文');
+{
+  await call('upload_skill', { project_slug: SLUG, skill_md: SKILL_MD, files: [{ path: 'scripts/hi.sh', content: 'echo hi' }] });
+  const d = await call('download_skill', { project_slug: SLUG, name: 'selftest-skill' });
+  check('返回 SKILL.md 与附带文件', d.json?.skill_md?.includes('selftest-skill') && d.json?.files?.[0]?.content === 'echo hi');
+  check('给出安装目录', d.json?.install_dir === '.claude/skills/selftest-skill');
+}
+console.log('\n【26/26】delete_skill — 删除技能（需 skill:write）');
+{
+  const r = await call('delete_skill', { project_slug: SLUG, name: 'selftest-skill' });
+  check('删除成功', !r.isError && r.json?.ok === true);
+  check('数据库已无该技能', (await prisma.skill.count({ where: { name: 'selftest-skill', projectId: project.id } })) === 0);
+}
+
 /* ---------- 清单核对 ---------- */
 console.log('\n── 工具覆盖核对 ──');
-const covered = ['get_project_context','list_bugs','get_bug_detail','read_attachment_text','inspect_image_asset','update_bug_status','append_scratchpad','list_notes','search','create_bug','add_bug_comment','upload_attachment','list_tasks','create_task','update_task','purge_trash'];
+const covered = ['get_project_context','list_bugs','get_bug_detail','read_attachment_text','inspect_image_asset','update_bug_status','append_scratchpad','list_notes','search','create_bug','add_bug_comment','upload_attachment','list_tasks','create_task','update_task','purge_trash',
+  'get_task_detail','delete_task','delete_bug','update_note','delete_note','delete_attachment','list_skills','download_skill','upload_skill','delete_skill'];
 const missing = toolNames.filter((t) => !covered.includes(t));
-check('清单里 16 个工具全部被测到', missing.length === 0 && covered.length === 16, missing.length ? `漏测: ${missing.join(',')}` : '');
+check('清单里 26 个工具全部被测到', missing.length === 0 && covered.length === 26 && toolNames.length === 26, missing.length ? `漏测: ${missing.join(',')}` : '');
 
 /* ---------- 清理 ---------- */
 console.log('\n── 清理自检数据 ──');

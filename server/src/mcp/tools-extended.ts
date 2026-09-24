@@ -9,7 +9,7 @@ import { globalSearch } from '../services/search.js';
 import { config } from '../config.js';
 import { ValidationError, PayloadTooLargeError } from '../core/errors.js';
 import { DEFAULT_BUDGET, truncateText } from './token-budget.js';
-import { taskNextStep } from './workflow.js';
+import { taskFlow } from './workflow.js';
 
 /**
  * MCP 新增 7 工具（步骤 03 §3.2 矩阵）：
@@ -126,9 +126,9 @@ export async function uploadAttachment(ctx: McpContext, input: {
 }
 
 /** 13. list_tasks / create_task / update_task —— 任务协同 */
-export async function listTasks(_ctx: McpContext, input: { project_slug?: string; status?: string }) {
+export async function listTasks(_ctx: McpContext, input: { project_slug?: string; status?: string; label?: string }) {
   const project = await projectsService.resolveProject(input.project_slug);
-  const tasks = await tasksService.listTasks({ projectId: project.id, status: input.status });
+  const tasks = await tasksService.listTasks({ projectId: project.id, status: input.status, label: input.label });
   return {
     total: tasks.length,
     tasks: tasks.map((t) => ({
@@ -137,6 +137,7 @@ export async function listTasks(_ctx: McpContext, input: { project_slug?: string
       description: truncateText(t.description, DEFAULT_BUDGET.noteMax).value,
       priority: t.priority,
       status: t.status,
+      labels: t.labels,
       assignee_id: t.assigneeId,
     })),
   };
@@ -149,6 +150,7 @@ export async function createTask(_ctx: McpContext, input: {
   description?: string;
   priority?: string;
   status?: string;
+  labels?: string[];
   attachment_ids?: string[];
 }) {
   if (!input.title?.trim()) {
@@ -161,14 +163,15 @@ export async function createTask(_ctx: McpContext, input: {
     description: input.description,
     priority: input.priority,
     status: input.status,
+    labels: input.labels,
   });
   if (input.attachment_ids?.length) {
     await attachmentsService.linkMany(input.attachment_ids, 'task', task.id);
   }
   return {
     ok: true,
-    task: { id: task.id, title: task.title, status: task.status, priority: task.priority, project_slug: project.slug },
-    next_step: taskNextStep(task.status),
+    task: { id: task.id, title: task.title, status: task.status, priority: task.priority, labels: task.labels, project_slug: project.slug },
+    ...taskFlow(task.status),
   };
 }
 
@@ -178,6 +181,8 @@ export async function updateTask(_ctx: McpContext, input: {
   description?: string;
   status?: string;
   priority?: string;
+  labels?: string[];
+  reopen_reason?: string;
 }) {
   if (input.title !== undefined && !input.title.trim()) {
     throw new ValidationError('title 不能为空');
@@ -187,11 +192,13 @@ export async function updateTask(_ctx: McpContext, input: {
     description: input.description,
     status: input.status,
     priority: input.priority,
+    labels: input.labels,
+    reopenReason: input.reopen_reason,
   });
   return {
     ok: true,
-    task: { id: task.id, title: task.title, status: task.status, priority: task.priority },
-    next_step: taskNextStep(task.status),
+    task: { id: task.id, title: task.title, status: task.status, priority: task.priority, labels: task.labels },
+    ...taskFlow(task.status),
   };
 }
 

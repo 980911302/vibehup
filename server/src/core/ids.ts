@@ -16,6 +16,8 @@ export const ids = {
   note: () => randomId('nte'),
   attachment: () => randomId('att'),
   embedding: () => randomId('emb'),
+  skill: () => randomId('skl'),
+  skillFile: () => randomId('skf'),
 };
 
 export const randomIdProject = ids.project;

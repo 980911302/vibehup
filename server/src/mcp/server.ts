@@ -6,6 +6,8 @@ import * as tools from './tools.js';
 import * as ext from './tools-extended.js';
 import { guarded } from './guard.js';
 import { SERVER_INSTRUCTIONS } from './workflow.js';
+import { TOOL_SCOPES } from './tool-scopes.js';
+import { registerMoreTools } from './register-more.js';
 
 /**
  * VibeHub MCP Server（设计文档第 4 节 + 步骤 03 §3.2 工具矩阵）。
@@ -36,7 +38,20 @@ export const TOOL_NAMES = [
   'purge_trash',
   // 后补：AI 建任务（此前只能改不能建）
   'create_task',
+  // R80：任务详情、删除与便签修改、技能
+  'get_task_detail',
+  'delete_task',
+  'delete_bug',
+  'update_note',
+  'delete_note',
+  'delete_attachment',
+  'list_skills',
+  'download_skill',
+  'upload_skill',
+  'delete_skill',
 ] as const;
+
+const TASK_STATUS_ENUM = ['todo', 'doing', 'review', 'done', 'cancelled'] as const;
 
 const TOKEN_BUDGET_NOTE =
   '返回已按 Token 经济学校形：列表默认最多 20 条，has_more 为 true 时用分页参数继续；长文本自动截断到 500 字符，需要完整内容时用 read_attachment_text 分片读取。';
@@ -64,7 +79,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('get_project_context', 'context:read', (_ctx, args) =>
+    guarded('get_project_context', TOOL_SCOPES.get_project_context, (_ctx, args) =>
       tools.getProjectContext(args as { project_slug?: string }),
     ),
   );
@@ -85,7 +100,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('list_bugs', 'context:read', (_ctx, args) =>
+    guarded('list_bugs', TOOL_SCOPES.list_bugs, (_ctx, args) =>
       tools.listBugs(args as { project_slug?: string; status?: string; page?: number; page_size?: number }),
     ),
   );
@@ -100,7 +115,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('get_bug_detail', 'context:read', (_ctx, args) =>
+    guarded('get_bug_detail', TOOL_SCOPES.get_bug_detail, (_ctx, args) =>
       tools.getBugDetail(args as { bug_id: string }),
     ),
   );
@@ -119,7 +134,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('read_attachment_text', 'attachment:read', (_ctx, args) =>
+    guarded('read_attachment_text', TOOL_SCOPES.read_attachment_text, (_ctx, args) =>
       tools.readAttachmentText(args as {
         attachment_id: string;
         offset_line?: number;
@@ -146,7 +161,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('inspect_image_asset', 'attachment:read', (_ctx, args) =>
+    guarded('inspect_image_asset', TOOL_SCOPES.inspect_image_asset, (_ctx, args) =>
       tools.inspectImageAssetTool(args as {
         attachment_id: string;
         target_max_dimension?: number;
@@ -166,7 +181,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('list_notes', 'context:read', (ctx, args) =>
+    guarded('list_notes', TOOL_SCOPES.list_notes, (ctx, args) =>
       ext.listNotes(ctx, args as { project_slug?: string; limit?: number }),
     ),
   );
@@ -182,22 +197,23 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('search', 'context:read', (ctx, args) => ext.search(ctx, args as { q: string; limit?: number })),
+    guarded('search', TOOL_SCOPES.search, (ctx, args) => ext.search(ctx, args as { q: string; limit?: number })),
   );
 
   server.registerTool(
     'list_tasks',
     {
       title: '任务列表',
-      description: `拉取项目任务，可按状态过滤。${TOKEN_BUDGET_NOTE}`,
+      description: `拉取项目任务，可按状态、标签过滤；要看完整描述、附件和可走的下一步用 get_task_detail。${TOKEN_BUDGET_NOTE}`,
       inputSchema: {
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        status: z.enum(['todo', 'doing', 'done']).optional().describe('按状态过滤'),
+        status: z.enum(TASK_STATUS_ENUM).optional().describe('按状态过滤：todo 待办 / doing 进行中 / review 待验证 / done 已完成 / cancelled 已取消'),
+        label: z.string().optional().describe('按标签过滤'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    guarded('list_tasks', 'task:read', (ctx, args) =>
-      ext.listTasks(ctx, args as { project_slug?: string; status?: string }),
+    guarded('list_tasks', TOOL_SCOPES.list_tasks, (ctx, args) =>
+      ext.listTasks(ctx, args as { project_slug?: string; status?: string; label?: string }),
     ),
   );
 
@@ -220,7 +236,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    guarded('update_bug_status', 'bug:write', (ctx, args) =>
+    guarded('update_bug_status', TOOL_SCOPES.update_bug_status, (ctx, args) =>
       tools.updateBugStatus(args as Parameters<typeof tools.updateBugStatus>[0], { type: 'ai', id: ctx.apiKeyId }),
     ),
   );
@@ -242,7 +258,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    guarded('create_bug', 'bug:write', (ctx, args) =>
+    guarded('create_bug', TOOL_SCOPES.create_bug, (ctx, args) =>
       ext.createBug(ctx, args as Parameters<typeof ext.createBug>[1]),
     ),
   );
@@ -258,7 +274,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    guarded('add_bug_comment', 'bug:write', (ctx, args) =>
+    guarded('add_bug_comment', TOOL_SCOPES.add_bug_comment, (ctx, args) =>
       ext.addBugComment(ctx, args as { bug_id: string; content: string }),
     ),
   );
@@ -275,7 +291,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    guarded('append_scratchpad', 'note:write', (_ctx, args) =>
+    guarded('append_scratchpad', TOOL_SCOPES.append_scratchpad, (_ctx, args) =>
       tools.appendScratchpad(args as { content: string; project_slug?: string; tags?: string[] }),
     ),
   );
@@ -295,7 +311,7 @@ export function createMcpServer(): McpServer {
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    guarded('upload_attachment', 'attachment:write', (ctx, args) =>
+    guarded('upload_attachment', TOOL_SCOPES.upload_attachment, (ctx, args) =>
       ext.uploadAttachment(ctx, args as Parameters<typeof ext.uploadAttachment>[1]),
     ),
   );
@@ -305,18 +321,19 @@ export function createMcpServer(): McpServer {
     {
       title: '创建任务',
       description:
-        'AI 把拆出来的待办/验收遗留项建成任务（可关联已通过 upload_attachment 上传的附件）。建之前先 search 查重。状态缺省 todo、优先级缺省 medium；马上就要动手的可直接建成 doing。',
+        'AI 把拆出来的待办/验收遗留项建成任务（可关联已通过 upload_attachment 上传的附件、可带标签）。建之前先 search 查重。状态缺省 todo、优先级缺省 medium；马上就要动手的可直接建成 doing。',
       inputSchema: {
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
         title: z.string().describe('任务标题'),
         description: z.string().optional().describe('任务描述（支持 Markdown）'),
         priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级，缺省 medium'),
-        status: z.enum(['todo', 'doing', 'done']).optional().describe('初始状态，缺省 todo'),
+        status: z.enum(['todo', 'doing']).optional().describe('初始状态，缺省 todo'),
+        labels: z.array(z.string()).optional().describe('标签，如 ["前端","登录"]'),
         attachment_ids: z.array(z.string()).optional().describe('关联的附件 ID 列表'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    guarded('create_task', 'task:write', (ctx, args) =>
+    guarded('create_task', TOOL_SCOPES.create_task, (ctx, args) =>
       ext.createTask(ctx, args as Parameters<typeof ext.createTask>[1]),
     ),
   );
@@ -326,17 +343,19 @@ export function createMcpServer(): McpServer {
     {
       title: '更新任务',
       description:
-        '流转任务状态（也可改优先级、标题、描述，只改传入的字段），经手就要调：开始做 → doing；做完并自测/验收通过 → done；受阻保持 doing。description 是整段替换，list_tasks 返回的是截断后的描述，不要拿它原样回写。',
+        '流转任务状态（也可改优先级、标题、描述、标签，只改传入的字段），经手就要调。流转不能跳级：todo → doing → review → done；开始做 → doing；做完并自测通过 → review（待验证）；验收通过 → done（自己做的不算验收）；验收不通过 → doing 并填 reopen_reason；不做了 → cancelled，重做 → todo。description 是整段替换，list_tasks 返回的是截断后的描述，要改先用 get_task_detail(full: true) 取全文。',
       inputSchema: {
         task_id: z.string().describe('任务 ID'),
-        status: z.enum(['todo', 'doing', 'done']).optional().describe('目标状态'),
+        status: z.enum(TASK_STATUS_ENUM).optional().describe('目标状态（只能是当前状态可走的下一步，见 get_task_detail 的 allowed_next_statuses）'),
+        reopen_reason: z.string().optional().describe('打回（review/done → doing）时必填：验收没过的现象'),
+        labels: z.array(z.string()).optional().describe('标签（整组替换）'),
         priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级'),
         title: z.string().optional().describe('新标题'),
         description: z.string().optional().describe('新描述（整段替换）'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    guarded('update_task', 'task:write', (ctx, args) =>
+    guarded('update_task', TOOL_SCOPES.update_task, (ctx, args) =>
       ext.updateTask(ctx, args as Parameters<typeof ext.updateTask>[1]),
     ),
   );
@@ -349,9 +368,10 @@ export function createMcpServer(): McpServer {
       inputSchema: {},
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
-    guarded('purge_trash', 'admin', (ctx, args) => ext.purgeTrash(ctx, args)),
+    guarded('purge_trash', TOOL_SCOPES.purge_trash, (ctx, args) => ext.purgeTrash(ctx, args)),
   );
 
+  registerMoreTools(server);
   return server;
 }
 

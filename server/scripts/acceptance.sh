@@ -101,7 +101,7 @@ expect_contains "MCP SSE 无密钥 401" "curl -s ${BASE}/mcp/sse" '"UNAUTHORIZED
 cleanup
 SERVER_PID=""
 docker exec vibehub-test-db psql -U postgres -c \
-  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users" RESTART IDENTITY CASCADE' > /dev/null 2>&1 \
+  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","skill_files","skills" RESTART IDENTITY CASCADE' > /dev/null 2>&1 \
   && ok "冒烟数据已清理" || bad "冒烟数据清理失败"
 
 step "5/6 核心闭环 E2E（Playwright + MCP stdio，:${E2E_PORT}）"
@@ -109,7 +109,7 @@ E2E_BASE="http://127.0.0.1:${E2E_PORT}"
 
 # E2E 用全新库：残留 owner 会让新注册用户降级为 member，建项目 403（首用户才自动 Owner）
 docker exec vibehub-test-db psql -U postgres -q -c \
-  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings" RESTART IDENTITY CASCADE' > /dev/null 2>&1
+  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings","skill_files","skills" RESTART IDENTITY CASCADE' > /dev/null 2>&1
 rm -f tests/e2e/.test-owner.json   # 夹具的 Owner 凭据缓存（随库清空一起失效）
 
 # 静态产物新鲜度：缺 out/index.html 或关键页面早于源码则重建（不每次全量 build，门禁要快）
@@ -158,7 +158,7 @@ fi
 cleanup_e2e
 E2E_PID=""
 docker exec vibehub-test-db psql -U postgres -c \
-  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings" RESTART IDENTITY CASCADE' > /dev/null 2>&1
+  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings","skill_files","skills" RESTART IDENTITY CASCADE' > /dev/null 2>&1
 
 step "6/6 汇总"
 echo "  PASS=${PASS}  FAIL=${FAIL}"

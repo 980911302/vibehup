@@ -30,6 +30,7 @@ model Project {
   tasks       Task[]
   notes       Note[]
   attachments Attachment[]
+  skills      Skill[]
 
   @@index([slug])
   @@map("projects")
@@ -73,8 +74,11 @@ model Task {
   title       String
   description String?
   priority    String   @default("medium") // low | medium | high
-  status      String   @default("todo")   // todo | doing | done
+  status      String   @default("todo")   // todo | doing | review | done | cancelled
   assigneeId  String?  @map("assignee_id")
+  labels      String[] @default([])
+  reopenReason  String? @map("reopen_reason") // 最近一次打回（待验证/已完成 → 进行中）的原因
+  reopenedCount Int     @default(0) @map("reopened_count")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -268,4 +272,39 @@ model SystemSetting {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_settings")
+}
+
+/// 技能（Claude Code skill）：SKILL.md 正文 + 附带文件；projectId 为空 = 全团队通用
+model Skill {
+  id          String   @id
+  projectId   String?  @map("project_id")
+  name        String   // 取自 SKILL.md frontmatter，小写字母/数字/连字符
+  description String   // 取自 SKILL.md frontmatter
+  content     String   // SKILL.md 全文
+  source      String   @default("human") // human | ai（经 MCP 上传）
+  uploadedBy  String?  @map("uploaded_by") // 用户 id 或 MCP 密钥 id
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  project Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  files   SkillFile[]
+
+  @@index([projectId])
+  @@index([name])
+  @@map("skills")
+}
+
+/// 技能附带文件（脚本、参考文档等），路径相对技能根目录
+model SkillFile {
+  id        String   @id
+  skillId   String   @map("skill_id")
+  path      String
+  content   Bytes
+  size      Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, path])
+  @@map("skill_files")
 }

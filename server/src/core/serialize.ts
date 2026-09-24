@@ -1,4 +1,4 @@
-import type { Attachment, Bug, Note, Project, Task } from '@prisma/client';
+import type { Attachment, Bug, Note, Project, Skill, Task } from '@prisma/client';
 import { signAssetUrl } from './asset-sign.js';
 
 /**
@@ -54,7 +54,15 @@ export function serializeBug(b: Bug & { attachmentCount?: number; commentCount?:
   };
 }
 
-export function serializeTask(t: Task & { attachmentCount?: number }) {
+/**
+ * assigneeNames：负责人 id → 名字（任务表不建外键，由路由批量查出后传入）；
+ * allowedNext：状态机给出的可走下一步（由 services/tasks 计算，序列化层不依赖 service）。
+ */
+export function serializeTask(
+  t: Task & { attachmentCount?: number },
+  extra: { assigneeNames?: Map<string, string>; allowedNext?: string[] } = {},
+) {
+  const assigneeName = t.assigneeId ? extra.assigneeNames?.get(t.assigneeId) : undefined;
   return {
     id: t.id,
     project_id: t.projectId,
@@ -62,6 +70,12 @@ export function serializeTask(t: Task & { attachmentCount?: number }) {
     description: t.description,
     priority: t.priority,
     status: t.status,
+    labels: t.labels,
+    assignee_id: t.assigneeId,
+    assignee: t.assigneeId && assigneeName ? { id: t.assigneeId, name: assigneeName } : null,
+    reopen_reason: t.reopenReason,
+    reopened_count: t.reopenedCount,
+    allowed_next_statuses: extra.allowedNext,
     attachment_count: t.attachmentCount,
     created_at: t.createdAt.toISOString(),
     updated_at: t.updatedAt.toISOString(),
@@ -106,5 +120,27 @@ export function serializeAttachment(a: Attachment) {
     width: a.width,
     height: a.height,
     created_at: a.createdAt.toISOString(),
+  };
+}
+
+/** 技能：scope=project（挂在某项目下）| global（全团队通用） */
+export function serializeSkill(
+  s: Omit<Skill, 'content'> & { content?: string; fileCount?: number; totalSize?: number },
+  files?: { path: string; size: number; isText: boolean }[],
+) {
+  return {
+    id: s.id,
+    project_id: s.projectId,
+    scope: s.projectId ? 'project' : 'global',
+    name: s.name,
+    description: s.description,
+    source: s.source,
+    uploaded_by: s.uploadedBy,
+    file_count: files ? files.length : s.fileCount,
+    size: files ? files.reduce((n, f) => n + f.size, 0) : s.totalSize,
+    ...(s.content !== undefined ? { content: s.content } : {}),
+    ...(files ? { files: files.map((f) => ({ path: f.path, size: f.size, is_text: f.isText })) } : {}),
+    created_at: s.createdAt.toISOString(),
+    updated_at: s.updatedAt.toISOString(),
   };
 }

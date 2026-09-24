@@ -11,6 +11,7 @@ export const SCOPES = [
   'note:write',
   'task:read',
   'task:write',
+  'skill:write',
   'admin',
 ] as const;
 

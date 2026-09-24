@@ -7,7 +7,7 @@ import { prisma } from './core/prisma.js';
 /** TRUNCATE 全表（含外键级联），比逐表 deleteMany 快且干净 */
 export async function resetDb(): Promise<void> {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings" RESTART IDENTITY CASCADE',
+    'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings","skill_files","skills" RESTART IDENTITY CASCADE',
   );
 }
 
