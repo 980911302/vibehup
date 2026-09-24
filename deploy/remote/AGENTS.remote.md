@@ -24,7 +24,7 @@
 | 编排文件（**运行中容器用的这份**） | `~/vibehub/docker-compose.yml`（compose 项目名 `vibehub`，密钥直接写在 environment 里，权限 600） |
 | 源码目录里的编排 | `~/Downloads/vibehup/docker-compose.yml` + `.env`：**只作模板，不要在这里 `compose up`**——目录名是 `vibehup`，compose 项目名随之变成 `vibehup`，会挂上空卷 `vibehup_vibehub-*`，看起来像数据丢了，且与 `container_name: vibehub` 冲突 |
 | 容器名 | `vibehub` |
-| 镜像 | `vibehub:1.5`（arm64/linux；源码构建，见 §5；1.4 / 1.3 留作回滚） |
+| 镜像 | `vibehub:1.5`（arm64/linux；源码构建，见 §5；1.4 / 1.3 留作回滚）。**待升级 1.6**：按 §5「1.5 → 1.6 升级步骤」构建部署，完成后把本行改为 1.6 |
 | 对外端口 | `3210`（PG 的 5432 **只在容器内**，不对外暴露） |
 | 数据卷 | `vibehub_vibehub-pg` → 库 / `vibehub_vibehub-data` → 附件 |
 | 重启策略 | `unless-stopped` |
@@ -50,7 +50,7 @@
 - **后端**：Fastify + Prisma + PostgreSQL 16 + pgvector；分层严格单向 `routes → services → core`
   （routes 禁直连 Prisma；services 禁 import Fastify 对象）。API 与 MCP **平级共用 services**。
 - **前端**：Next.js **静态导出**（`output: 'export'`）到 `web/out/`，由 Fastify 直接托管，与 API 同源。
-- **MCP**：16 个工具（读取 7 + 写入 9），双传输——`stdio`（IDE 起子进程）与 `SSE`
+- **MCP**：16 个工具（读取 7 + 写入 9；**1.6 起 26 个**，见 §8），双传输——`stdio`（IDE 起子进程）与 `SSE`
   （`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=…`，Bearer 必需）。
 
 ```
@@ -115,7 +115,43 @@ cd ~/Downloads/vibehup && $DK build -t vibehub:1.6 .     # 在源码目录构建
 cd ~/vibehub && sed -i '' 's/image: vibehub:1.5/image: vibehub:1.6/' docker-compose.yml && $DK compose up -d
 ```
 
-> 版本记录：1.4 → **1.5**（2026-09-24）状态流转协议进 MCP（`server/src/mcp/workflow.ts`）：initialize 下发流转规则，
+### 1.5 → 1.6 升级步骤（2026-09-24 起可用）
+
+1.6 = GitHub `main`（R80 + R81；云端验证时为 `bb58036`）。**用干净克隆构建**，不动 `~/Downloads/vibehup` 里的本地改动（那里的 AGENTS.md 是本机版，直接 `git pull` 容易冲突）：
+
+```bash
+DK=/usr/local/bin/docker
+mkdir -p ~/vibehub-backups
+$DK exec vibehub pg_dump -U vibehub -d vibehub -Fc > ~/vibehub-backups/pg-$(date +%F-%H%M)-before-1.6.dump   # 1. 先备份
+rm -rf ~/vibehub-src-1.6 && git clone --depth 1 https://github.com/980911302/vibehup.git ~/vibehub-src-1.6   # 2. 干净源码
+cd ~/vibehub-src-1.6 && $DK build -t vibehub:1.6 .                                                       # 3. 构建（arm64 原生）
+cd ~/vibehub && cp docker-compose.yml docker-compose.yml.bak-1.5 \
+  && sed -i '' 's/image: vibehub:1.5/image: vibehub:1.6/' docker-compose.yml && $DK compose up -d        # 4. 换镜像拉起
+$DK ps                                                                                                   # 5. 等到 healthy（约半分钟）
+$DK logs vibehub --tail 100 | grep -iE "migration|迁移"                                                  #    应看到 3 个新迁移已应用
+$DK exec vibehub psql -U vibehub -d vibehub -Atc \
+  "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name DESC LIMIT 3"  #    应列出 bug_reporter / skills / task_labels_review
+```
+
+启动时自动应用 3 个迁移：`task_labels_review`（任务加标签/打回原因/打回次数）、`skills`（技能两张表）、`bug_reporter`（缺陷加提出人）。
+**只加列加表，不改不删存量数据，不碰向量列**：已在云端用 1.5 结构 + 存量数据（含 1024 维向量）实测升级，数据与向量逐字节不变，HNSW 索引保留。
+
+**启动时要能访问 `binaries.prisma.sh`**：构建阶段的 node slim 镜像里没有 OpenSSL，Prisma 探测不到版本、按 1.1 下载了引擎；
+运行期（OpenSSL 3）找不到对应的迁移引擎，于是每个新容器启动时现下载一次（1.3～1.5 一直如此，本机网络能通所以没暴露）。
+若 `docker logs` 卡在「应用数据库迁移」并报下载 `schema-engine` 失败，是网络问题：重试 `compose up -d`，或先回滚。根治见 §10。
+
+**升级后验收**：浏览器登录看板，顶栏应有「全部 / 指派给我 / 我提的 / 未指派」；任务页五列；左侧有「技能」。
+IDE 里重连 MCP，应看到 26 个工具（`node server/scripts/verify-mcp-key.mjs` 会断言 26）。存量缺陷的「提出人」显示「未记录」属正常（此前没记录）。
+
+**回滚**：`docker-compose.yml.bak-1.5` 拷回去再 `$DK compose up -d`。已实测 1.5 在升级后的库上能正常启动与写入（新迁移都是新增列/表）；
+唯一差异是 1.6 里改成「待验证 / 已取消」的任务在 1.5 的任务看板上不显示（1.5 只认待办/进行中/已完成三态）。要连数据一起回到升级前，用第 1 步的 dump 做 `pg_restore`。
+
+> 版本记录：1.5 → **1.6**（2026-09-24）R80：任务五态（待办/进行中/待验证/已完成/已取消）+ 标签 + 详情 + 删除；技能模块（Web 与 MCP 上传/下载/查看，挂项目或全团队通用）；
+> MCP 工具 16 → 26（补齐删除、任务详情、便签修改、技能四件套、`search`），新增 scope `skill:write`；各页共享当前项目。
+> R81：只读成员（viewer）真只读（缺陷/便签/附件写接口补角色校验）；缺陷详情全字段可改、只摆合法下一步、页内写重开原因、删除二次确认；
+> 记录缺陷提出人 + 看板「指派给我 / 我提的 / 未指派」；状态文案全中文（`verified` 显示为「已验证」）；CSV 导入缺陷 ID 前缀修正。
+>
+> 1.4 → **1.5**（2026-09-24）状态流转协议进 MCP（`server/src/mcp/workflow.ts`）：initialize 下发流转规则，
 > `get_project_context` 增加 `awaiting_verification`、`doing_tasks`、`reminders`，`get_bug_detail` / `update_bug_status` 返回
 > `allowed_next_statuses` 与 `next_step`，`update_bug_status` 新增 `reopen_reason`（此前 AI 无法把验证不过的缺陷退回）；
 > `deleteBug` 连带删除评论（`bug_comments` 无外键，原先会留孤儿）；技能改为 MD 文件 `skills/vibehub-mcp/SKILL.md`，
@@ -166,7 +202,7 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 - **测试库**：`vibehub-test-db`（本机另起的容器，破坏性——每用例 TRUNCATE 全表）。
   **不要**把测试指向生产库，那会清空真实数据。
 - **MCP 全工具自测**：`node scripts/test-all-mcp-tools.mjs`（需 `KEY=` 环境变量），
-  16 个工具逐个真调 + 数据库二次核对，期望 `PASS=54 FAIL=0`。
+  16 个工具逐个真调 + 数据库二次核对，期望 `PASS=54 FAIL=0`（1.6 起 26 个工具，期望 `PASS=81 FAIL=0`）。
 - **性能体检**：`node scripts/perf-probe.mjs <BASE> <email> <password>`。
 - 声称「完成/通过」前必须当场跑命令并引用输出，不接受「我觉得应该没问题」。
 
@@ -190,7 +226,8 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 
 - 密钥在 Web 端「密钥」页创建，**明文只显示一次**；默认 90 天过期。
 - scope 决定能调哪些工具：`context:read`（读上下文）、`bug:write`（回填状态）、
-  `attachment:read`/`attachment:write`、`note:write`、`task:read`/`task:write`、`admin`（清回收站）。
+  `attachment:read`/`attachment:write`、`note:write`、`task:read`/`task:write`、`admin`（清回收站）；
+  1.6 起另有 `skill:write`（上传/删除技能；查看与下载技能属 `context:read`）。删除类工具跟着对应写权限走。
   **建议按需最小授权**：日常「读上下文 + 回填」给 `context:read,attachment:read,bug:write` 足够。
 - **多项目时必须传 `project_slug`**（不传会报错并列出可选值——这是刻意设计，防止 AI 把内容写进别的项目）。
 
@@ -201,12 +238,13 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 - 别的机器：`curl -fsSL http://<地址>:3210/skills/install.sh | VIBEHUB_URL=http://<地址>:3210 bash`。
 - 规则的核心同时写在 `server/src/mcp/workflow.ts`（随 initialize 下发、写进工具描述与返回），**改流转规则时两处同步**。
 
-### 16 个工具
+### 工具清单（1.5 为 16 个；1.6 起 26 个，唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
 
 读取：`get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、
-`inspect_image_asset`、`list_notes`、`list_tasks`
+`inspect_image_asset`、`list_notes`、`list_tasks`；1.6 新增 `search`、`get_task_detail`、`list_skills`、`download_skill`
 写入：`update_bug_status`、`create_bug`、`add_bug_comment`、`append_scratchpad`、
-`upload_attachment`、`create_task`、`update_task`、`purge_trash`（需 admin）
+`upload_attachment`、`create_task`、`update_task`、`purge_trash`（需 admin）；
+1.6 新增 `delete_bug`、`update_note`、`delete_note`、`delete_attachment`、`delete_task`、`upload_skill`、`delete_skill`
 
 **易踩的参数坑**（实测确认）：
 - `upload_attachment` 不吃文件路径，必须 `data_base64` + `file_name` + `file_type`。
@@ -222,8 +260,8 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
    不要为了「方便」把明文提交进 git。
 2. **不建演示数据**：任何环境不得残留 seed/演示数据。
 3. **迁移只准 `prisma migrate` 生成**（raw SQL 仅限 pgvector 向量列，且需注释原因）。
-   ⚠️ 给带向量列的表新增 Prisma 关系时，`migrate dev` 生成的迁移会 **DROP 向量列**——
-   必须在迁移末尾补回 raw SQL，并同步修两库校验和。
+   ⚠️ `migrate dev` 每次都会在生成的迁移里带上 `DROP INDEX "Embedding_embedding_idx"` + `DROP COLUMN "embedding"`
+   （Prisma 不感知向量列）。与向量列无关的迁移**删去这两句并留注释**——删了再补回会清空全部语义索引。
 4. **响应必须序列化**：禁止裸出 Prisma 模型（camelCase 曾致前端崩溃）。
 5. **静态导出约束**：页面禁用 `next/navigation` 的 `redirect()/notFound()`；根路径用
    `window.location.replace` + `<meta refresh>`。Fastify 托管 out/ 必须 `extensions: ['html']`。
@@ -244,4 +282,7 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 - **单机单团队**：不支持多租户；多机部署需把 SSE 的 LISTEN 与限流换成共享存储（Redis）。
 - **语义检索**：已启用 DashScope；Key 写在 `.env`，更换 Key 需 `compose up -d` 重启。
   向量写路径已做优化——**只在标题/步骤/期望/实际变化时才重算**，拖拽改状态不再等外网。
+- **迁移引擎运行期下载**（2026-09-24 云端构建 1.6 时发现，1.3 起就存在）：见 §5「启动时要能访问 `binaries.prisma.sh`」。
+  根治办法是在 Dockerfile 的构建阶段装上 `openssl`（让 Prisma 按 OpenSSL 3 取引擎并打进镜像），改完需在本机重新构建验证。
+  另：`binaryTargets` 只含 arm64 目标，**x86 机器上构建的镜像查询引擎不对，跑不起来**；要换 x86 部署须加 `debian-openssl-3.0.x`。
 - **前端回归**统一走 Playwright（`server/tests/e2e/`），不用人工点点点。
