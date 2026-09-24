@@ -12,6 +12,7 @@ import { ShortcutsHelp } from '@/components/layout/ShortcutsHelp';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { ActivityPanel } from '@/components/activity/ActivityPanel';
+import { VibeHubProvider } from '@/hooks/use-vibehub';
 
 const ONBOARDED_KEY = 'vibehub_onboarded';
 
@@ -72,6 +73,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { combo: 'g f', description: '文件', handler: () => router.push('/files') },
     { combo: 'g n', description: '随手记', handler: () => router.push('/notes') },
     { combo: 'g t', description: '任务', handler: () => router.push('/tasks') },
+    { combo: 'g s', description: '技能', handler: () => router.push('/skills') },
     { combo: 'g p', description: '项目', handler: () => router.push('/projects') },
     { combo: 'g k', description: '密钥', handler: () => router.push('/keys') },
     { combo: 'g m', description: '成员', handler: () => router.push('/members') },
@@ -91,69 +93,71 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="vh-shell">
-      <header className="vh-topbar">
-        {/* 品牌（桌面端隐藏由侧边栏承担；仅移动端显示，见 globals.css .vh-topbar-brand） */}
-        <div className="vh-topbar-brand flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--brand)] text-white">
-            <FolderKanban size={15} />
+    <VibeHubProvider>
+      <div className="vh-shell">
+        <header className="vh-topbar">
+          {/* 品牌（桌面端隐藏由侧边栏承担；仅移动端显示，见 globals.css .vh-topbar-brand） */}
+          <div className="vh-topbar-brand flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--brand)] text-white">
+              <FolderKanban size={15} />
+            </div>
+            <span className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">VibeHub</span>
+            <i className="vh-gold-dot" />
           </div>
-          <span className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">VibeHub</span>
-          <i className="vh-gold-dot" />
+
+          <div className="flex-1" />
+
+          {/* 命令面板 */}
+          <button className="vh-btn ghost" onClick={() => setPaletteOpen(true)} data-testid="open-palette">
+            <Search size={14} />
+            <span className="hidden sm:inline">搜索</span>
+            <span className="vh-kbd">⌘K</span>
+          </button>
+
+          {/* AI 活动（卡片 36：全员可见的 AI 调用流） */}
+          <button
+            className="vh-icon-btn"
+            onClick={() => setActivityOpen(true)}
+            title="AI 活动——Agent 最近读取了哪些上下文"
+            data-testid="open-activity"
+          >
+            <Sparkles size={16} />
+          </button>
+
+          {/* 帮助 */}
+          <button className="vh-icon-btn" onClick={() => setHelpOpen(true)} title="快捷键帮助（?）">
+            <Keyboard size={16} />
+          </button>
+
+          {/* 主题切换 */}
+          <button
+            className="vh-icon-btn"
+            onClick={toggle}
+            title={theme === 'midnight' ? '切换到纸白主题' : '切换到暗色主题'}
+            data-testid="theme-toggle"
+          >
+            {theme === 'midnight' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </header>
+
+        <div className="vh-body">
+          <Sidebar />
+          <main className="vh-main">{children}</main>
         </div>
 
-        <div className="flex-1" />
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNewBug={() => setPaletteOpen(false)} />
+        <ShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
+        <OnboardingWizard open={onboardOpen} onOpenChange={setOnboardOpen} />
+        <ActivityPanel open={activityOpen} onClose={() => setActivityOpen(false)} />
 
-        {/* 命令面板 */}
-        <button className="vh-btn ghost" onClick={() => setPaletteOpen(true)} data-testid="open-palette">
-          <Search size={14} />
-          <span className="hidden sm:inline">搜索</span>
-          <span className="vh-kbd">⌘K</span>
-        </button>
-
-        {/* AI 活动（卡片 36：全员可见的 AI 调用流） */}
-        <button
-          className="vh-icon-btn"
-          onClick={() => setActivityOpen(true)}
-          title="AI 活动——Agent 最近读取了哪些上下文"
-          data-testid="open-activity"
-        >
-          <Sparkles size={16} />
-        </button>
-
-        {/* 帮助 */}
-        <button className="vh-icon-btn" onClick={() => setHelpOpen(true)} title="快捷键帮助（?）">
-          <Keyboard size={16} />
-        </button>
-
-        {/* 主题切换 */}
-        <button
-          className="vh-icon-btn"
-          onClick={toggle}
-          title={theme === 'midnight' ? '切换到纸白主题' : '切换到暗色主题'}
-          data-testid="theme-toggle"
-        >
-          {theme === 'midnight' ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
-      </header>
-
-      <div className="vh-body">
-        <Sidebar />
-        <main className="vh-main">{children}</main>
+        <style jsx global>{`
+          .vh-spinner {
+            width: 18px; height: 18px; border-radius: 50%;
+            border: 2px solid var(--border-strong); border-top-color: var(--brand);
+            display: inline-block; animation: vh-spin .8s linear infinite;
+          }
+        `}</style>
       </div>
-
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onNewBug={() => setPaletteOpen(false)} />
-      <ShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
-      <OnboardingWizard open={onboardOpen} onOpenChange={setOnboardOpen} />
-      <ActivityPanel open={activityOpen} onClose={() => setActivityOpen(false)} />
-
-      <style jsx global>{`
-        .vh-spinner {
-          width: 18px; height: 18px; border-radius: 50%;
-          border: 2px solid var(--border-strong); border-top-color: var(--brand);
-          display: inline-block; animation: vh-spin .8s linear infinite;
-        }
-      `}</style>
-    </div>
+    </VibeHubProvider>
   );
 }

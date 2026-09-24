@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FolderOpen, FolderPlus, Upload } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
+import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { FileGrid } from '@/components/files/FileGrid';
@@ -30,16 +31,17 @@ export default function FilesPage() {
 
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
 
-  // 我的文件（服务端 mine 过滤）
+  // 我的文件（服务端 mine 过滤，限当前项目——与顶栏的项目切换一致）
   const [mineAttachments, setMineAttachments] = useState<Attachment[]>([]);
+  const projectId = store.currentProject?.id;
   const loadMine = useCallback(async () => {
-    if (!user) return;
+    if (!user || !projectId) return;
     try {
-      setMineAttachments(await api.listAttachments({ mine: true }));
+      setMineAttachments(await api.listAttachments({ mine: true, projectId }));
     } catch {
       // 忽略：列表加载失败保留旧数据
     }
-  }, [user]);
+  }, [user, projectId]);
 
   useEffect(() => {
     void loadMine();
@@ -137,6 +139,7 @@ export default function FilesPage() {
     >
       {/* 顶栏 */}
       <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5">
+        <CurrentProjectSwitcher />
         <div className="flex gap-1 rounded-lg bg-[var(--bg-elevated)] p-0.5">
           {(['mine', 'all'] as const).map((t) => (
             <button

@@ -111,7 +111,7 @@ export default function AuthPage() {
             <div className="login-bento-card">
               <span className="login-bento-icon"><Bot size={18} strokeWidth={1.8} /></span>
               <b>AI 直读</b>
-              <p>15 个 MCP 工具：分片读日志、降采样读截图，Token 经济学校形。</p>
+              <p>26 个 MCP 工具：分片读日志、降采样读截图、下载团队技能，Token 经济学校形。</p>
             </div>
             <div className="login-bento-card">
               <span className="login-bento-icon"><RefreshCw size={18} strokeWidth={1.8} /></span>

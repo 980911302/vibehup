@@ -65,11 +65,58 @@ export interface Task {
   title: string;
   description: string | null;
   priority: 'low' | 'medium' | 'high';
-  status: 'todo' | 'doing' | 'done';
+  /** 待办 → 进行中 → 待验证 → 已完成，外加已取消（见 lib/task-flow.ts） */
+  status: 'todo' | 'doing' | 'review' | 'done' | 'cancelled';
+  labels: string[];
   assignee_id: string | null;
-  attachment_count: number;
+  assignee: { id: string; name: string } | null;
+  /** 最近一次打回的原因 */
+  reopen_reason: string | null;
+  reopened_count: number;
+  /** 服务端状态机给出的可走下一步 */
+  allowed_next_statuses?: Task['status'][];
+  attachment_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface TaskDetail extends Task {
+  attachments: Attachment[];
+}
+
+/** 技能（Claude Code skill）：scope=project 挂在某项目下，global 为全团队通用 */
+export interface Skill {
+  id: string;
+  project_id: string | null;
+  scope: 'project' | 'global';
+  name: string;
+  description: string;
+  source: 'human' | 'ai';
+  uploaded_by: string | null;
+  file_count: number;
+  size: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SkillDetail extends Skill {
+  content: string;
+  files: { path: string; size: number; is_text: boolean }[];
+}
+
+export interface SkillFileContent {
+  path: string;
+  size: number;
+  is_text: boolean;
+  content?: string;
+  content_base64?: string;
+}
+
+export interface SkillUpload {
+  project_id: string | null;
+  skill_md?: string;
+  files?: { path: string; content_base64: string }[];
+  zip_base64?: string;
 }
 
 export interface Note {
