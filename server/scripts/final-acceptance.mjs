@@ -36,9 +36,8 @@ const HD = (t) => ({ authorization: `Bearer ${t}` });   // DELETE 无 body，不
 
 // 生成测试 PNG
 async function makePng(color, text) {
-  const canvas = await import('node:canvas').catch(() => null);
-  // 无 canvas 依赖——用 sharp 造
-  const sharp = (await import('/Users/zhanglinlin/Downloads/工作区/vibehub/node_modules/sharp/lib/index.js')).default;
+  // 用 sharp 造测试图（server 的正式依赖；裸名 import 在 scripts/ 下可正常解析）
+  const sharp = (await import('sharp')).default;
   const svg = `<svg width="1200" height="800"><rect width="1200" height="800" fill="${color}"/><text x="60" y="420" font-family="sans-serif" font-size="90" fill="#fff">${text}</text></svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
