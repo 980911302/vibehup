@@ -1,17 +1,19 @@
 # VibeHub 构建驾驶舱（PROGRESS）```
-状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 定向解冻（已合并 main）+ R83 定向解冻（缺陷与任务加「验证中」、已验证为终点、已关闭只用于不修复、卡片显示谁在处理与多久并标出卡住的）已完成；卡片 51 / 39 已按 R78 彻底删除；R83 在分支 claude/relaxed-knuth-jzkfzg 待用户合并；交付镜像 1.6 待在 Mac 上构建；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
-下一步：先查 F0（验收库 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项（当前为 F1 补验）
-前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76/R77/R78，待用户合并）——每轮结束按 AGENTS.md §10 提交；
-      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据与试用数据（勿 TRUNCATE、勿写测试数据）；
-      起库脚本可自动拉起已停止的容器；服务已在跑（后端 :3210 连验收库、前端 dev :3211）；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 / R83 / R85 定向解冻；R80/R81/R83/R84 已合并 main；R85 统计页 /stats（只读聚合：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势）已完成，在分支 feat/stats-page 待用户合并；卡片 51 / 39 已按 R78 彻底删除；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
+下一步：R85 待用户验收（含是否合并 / 是否重建镜像）；先查 F0（容器 vibehub 库中 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项
+前置：仓库已纳入 git（main 含 R84；每轮结束按 AGENTS.md §10 提交，本次在 feat/stats-page）；
+      测试库 vibehub-test-db(55432，破坏性，只供测试/acceptance.sh)；
+      起库脚本可自动拉起已停止的容器；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB
 加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/09（冻结范围）→ 对应卡片的归属文档
-F0 查询（只读）：docker exec vibehub-dev-db psql -U vibehub -d vibehub -c
+F0 查询（只读）：docker exec vibehub psql -U vibehub -d vibehub -c
       "SELECT id, title, status FROM bugs WHERE 'trial' = ANY(labels) AND status IN ('open','in_progress') ORDER BY created_at"
 边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
       MCP 工具多项目时必须传 project_slug；MCP stdio 子进程必须显式传 DATABASE_URL（否则继承 server/.env 的 dev 库）
 R84 本机须知：服务已改为 Docker 单容器 vibehub（1.7，:3210，卷 vibehub_vibehub-pg / vibehub_vibehub-data），vibehub-dev-db 及其卷已按用户要求删除——
       F0 查询与 trial-metrics.sh 在本机改指向容器 vibehub（CONTAINER=vibehub DB_USER=vibehub DB_NAME=vibehub）；拉取含 schema 变更的代码后先 npx prisma generate
+R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI 记 MCP 密钥名），「今天」按北京时间（UTC+8）自然日，服务端 `services/stats-time.ts` 显式换算、不依赖宿主机时区；
+      测试夹具写日期时勿默认真实 `new Date()`（会与用例 mock 的 now 撞在同一天，计数随运行日期漂移）
 性能体检（只读，怀疑「点击慢」时先跑）：node server/scripts/perf-probe.mjs <BASE> <email> <password>
       日常使用入口用 :3210（生产形态静态产物）；:3211 是 next dev，首次访问页面有按需编译延迟，不代表产品慢
 ```
@@ -24,10 +26,10 @@ R84 本机须知：服务已改为 Docker 单容器 vibehub（1.7，:3210，卷 
 
 ## 1. 当前状态（每次运行结束更新）
 
-- **当前步骤**：🧊 **试用冻结期（R77 起）+ R80/R81/R83 定向解冻**——R80、R81 已合并；R83 按用户决定加「验证中」并让验证方的状态看得见（见 §3 R83 行）；其余新功能仍冻结，F0（试用反馈）常驻
-- **当前子任务**：R83 完成（分支 `claude/relaxed-knuth-jzkfzg`，待用户合并）；交付镜像 1.6（= main）待在 Mac 上按部署文档构建，合并后会包含 R83；**试用起始日：待用户开始实际使用时填写**
-- **环境状态**：双库容器在跑（dev 55433 持久卷 / test 55432 破坏性）；**服务已启动**——后端 :3210（连验收库）+ 前端 dev :3211（/api 代理 3210）；**交付镜像**：远端 Mac mini 运行 `vibehub:1.5`；`vibehub:1.6`（= main，R80+R81）已在云端预验证（R82），待在 Mac 上按 `deploy/remote/AGENTS.remote.md` §5「1.5 → 1.6 升级步骤」构建部署
-- **代码基线**：R83 后全绿：vitest 275/275 + web 单测 36/36 + E2E 13 用例 + 26 工具 MCP 自测 88/88 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**。R81 基线（历史）：vitest 253/253 + web 单测 32/32 + E2E 10 用例；R80 基线（历史）：vitest 243/243 + web 单测 26/26 + E2E 6 用例 + 26 工具 SSE 实测 PASS=81 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**（云端会话无 Docker，测试库改指本机 PG16+pgvector，其余步骤原样）。R78 基线（历史）：：vitest 188/188 + web 单测 18/18 + 冒烟 14/14 + E2E 3 用例 + 备份恢复演练 10/10 + 双端 tsc 0 错误 + next build 通过；`acceptance.sh` **PASS=19 FAIL=0**；git：main（R75 基线）→ fix/p0-review（R76/R77/R78 共 12 个提交，待用户合并）
+- **当前步骤**：🧊 **试用冻结期（R77 起）+ R80/R81/R83/R85 定向解冻**——R80、R81、R84 已合并；R83 按用户决定加「验证中」并让验证方的状态看得见（见 §3 R83 行）；R85 按用户决定加只读统计页 `/stats`（见 §3 R85 行）；其余新功能仍冻结，F0（试用反馈）常驻
+- **当前子任务**：R85 统计页完成（分支 `feat/stats-page`，基于含 R84 的 main，待用户合并）；交付镜像待在 Mac 上按部署文档构建；**试用起始日：待用户开始实际使用时填写**
+- **环境状态**：本机服务为 Docker 单容器 `vibehub`（1.7，见 §4 R84）；测试库容器 `vibehub-test-db` 在跑（55432 破坏性，门禁用）；`vibehub-dev-db` 与命名卷已删除，开发/验收改连容器内库；**交付镜像**：远端 Mac mini 运行 `vibehub:1.7`
+- **代码基线**：R85 后全绿：vitest **330/330** + web 单测 **42/42** + E2E **14 用例**（新增 stats MCP 闭环）+ 双端 tsc 0 错误 + next build 通过（路由表含 `/stats`）；`acceptance.sh` **PASS=19 FAIL=0**。R84 基线（历史）：vitest 285/285 + 27 工具 MCP 自测 94/94；R83 基线（历史）：vitest 275/275 + web 单测 36/36 + E2E 13 用例 + 26 工具 MCP 自测 88/88；R81 基线（历史）：vitest 253/253 + web 单测 32/32 + E2E 10 用例；R80 基线（历史）：vitest 243/243 + web 单测 26/26 + E2E 6 用例 + 26 工具 SSE 实测 PASS=81；以上各轮 `acceptance.sh` 均 **PASS=19 FAIL=0**。R78 基线（历史）：vitest 188/188 + web 单测 18/18 + 冒烟 14/14 + E2E 3 用例 + 备份恢复演练 10/10
 
 ## 2. 看板（工程进度）
 
@@ -324,25 +326,31 @@ R84 本机须知：服务已改为 Docker 单容器 vibehub（1.7，:3210，卷 
 | R84 | 试用反馈：MCP 传文件对 AI 不友好——`upload_attachment` 只收 base64（AI 手写 base64 膨胀 1/3 且易错：正式库 5 张 AI 上传的截图有 2 张已损坏无法解码）；`inspect_image_asset` 默认返回服务端路径（容器部署时 IDE 打不开），base64 又塞在 JSON 文本里模型看不到图 | `upload_attachment` 加 `content` 文本直传（与 `data_base64` 二选一，`file_type` 按扩展名推断，给 `bug_id` 以缺陷所在项目为准并校验存在）；新增 `create_upload_url` 签名直传（`curl -T`，10 分钟一次性，上传时复核签发密钥，令牌走 `?token=`）；`inspect_image_asset` 默认返回 MCP 图片内容块；工具 26 → 27（工具签名变更按 AGENTS.md §5 在此登记） | server/src/mcp/*、core/upload-grant.ts、core/mime.ts、routes/signed-upload.ts；AGENTS.md §5、计划 03、skills/vibehub-mcp、README、远端手册 |
 | R84 | 发现未修（登记待评审）：① 看板页 window 级 paste 监听与录缺陷对话框 onPaste 同时触发，一次粘贴上传两次（E2E 服务日志 6ms 内两次 `POST /api/upload`），缺陷里会出现重复截图；② 看板刚打开即粘贴时 currentProject 未就绪，对话框以空 project_id 上传 →「缺少 project_id 字段」（E2E core-loop 偶发 1/4，main 对照 0/1）；③ 正式库 2 张 AI 以 base64 上传的坏图（`att_xu4rp1zda0k4`、`att_2ji66u9p3q1e`）未清理，待用户决定 | 仅登记不施工 | web/src/app/(app)/board/page.tsx、components/bugs/CreateBugDialog.tsx；正式库附件 |
 | R84 | 本机环境变更：服务改为 Docker 单容器 vibehub（1.7），vibehub-dev-db 与卷已删除；拉取含 schema 变更的代码后本地 Prisma 客户端过期，测试报 PrismaClientValidationError（像业务 bug） | 起点指令补本机须知；教训入 vibehub-build | PROGRESS 起点指令 |
+| R85 | 计划 Task 4 的集成夹具把 `createdAt/updatedAt` 默认成真实 `new Date()`，而用例同时 mock 了 `now`——本机真实日期恰为 2026-09-25，与 mock 的「今天」撞在同一天，多出 3 行落进 today 窗口，断言 `bugs_created: 2` 失败 | 夹具默认值改固定旧时间戳 `FIXED_TS`（2026-09-01），并显式补齐「今天新建」的缺陷/任务行（含日界线前后）以维持断言语义；**不改断言迁就实现** | server/src/services/stats.test.ts |
+| R85 | 计划 Task 12 的 stats E2E 只注入 token，未锁定 `vibehub_current_project`；E2E Owner 名下已有多个项目，页面默认「当前项目」会落到别的项目上，今天数字随机为 0（断言 flaky） | init script 同时写入本用例 `project.id` 作为当前项目 | server/tests/e2e/stats.spec.ts |
+| R85 | 计划 Task 11 的页面把 `useToast()` 整个对象放进 `load` 的 `useCallback` 依赖；toast 上下文对象每次 Provider 重渲染都是新引用，请求失败→弹 toast→Provider 重渲染→`load` 变新→再请求，自我循环 | 改为解构稳定的 `error` 回调入依赖 | web/src/app/(app)/stats/page.tsx |
+| R85 | 计划 Task 8 只加侧栏入口与 `G D`，但全站导航另有两处 G 序列清单（帮助面板 `lib/shortcuts.ts`、⌘K 命令面板），漏改即三处漂移 | 同步补「统计」到帮助清单与 ⌘K | web/src/lib/shortcuts.ts、web/src/components/layout/CommandPalette.tsx |
 
 ---
 
 ## 5. 给下一次运行的起点指令（最重要，结束时必须更新）
 
 ```
-状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 定向解冻（已合并 main）+ R83 定向解冻（缺陷与任务加「验证中」、已验证为终点、已关闭只用于不修复、卡片显示谁在处理与多久并标出卡住的）已完成；卡片 51 / 39 已按 R78 彻底删除；R83 在分支 claude/relaxed-knuth-jzkfzg 待用户合并；交付镜像 1.6 待在 Mac 上构建；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
-下一步：先查 F0（验收库 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项（当前为 F1 补验）
-前置：仓库已纳入 git（main=R75 基线；fix/p0-review=R76/R77/R78，待用户合并）——每轮结束按 AGENTS.md §10 提交；
-      测试库 vibehub-test-db(55432)；dev 库 vibehub-dev-db(55433) 承载用户真实数据与试用数据（勿 TRUNCATE、勿写测试数据）；
-      起库脚本可自动拉起已停止的容器；服务已在跑（后端 :3210 连验收库、前端 dev :3211）；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 / R83 / R85 定向解冻；R80/R81/R83/R84 已合并 main；R85 统计页 /stats（只读聚合：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势）已完成，在分支 feat/stats-page 待用户合并；卡片 51 / 39 已按 R78 彻底删除；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
+下一步：R85 待用户验收（含是否合并 / 是否重建镜像）；先查 F0（容器 vibehub 库中 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项
+前置：仓库已纳入 git（main 含 R84；每轮结束按 AGENTS.md §10 提交，本次在 feat/stats-page）；
+      测试库 vibehub-test-db(55432，破坏性，只供测试/acceptance.sh)；
+      起库脚本可自动拉起已停止的容器；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB
 加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/09（冻结范围）→ 对应卡片的归属文档
-F0 查询（只读）：docker exec vibehub-dev-db psql -U vibehub -d vibehub -c
+F0 查询（只读）：docker exec vibehub psql -U vibehub -d vibehub -c
       "SELECT id, title, status FROM bugs WHERE 'trial' = ANY(labels) AND status IN ('open','in_progress') ORDER BY created_at"
 边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
       MCP 工具多项目时必须传 project_slug；MCP stdio 子进程必须显式传 DATABASE_URL（否则继承 server/.env 的 dev 库）
 R84 本机须知：服务已改为 Docker 单容器 vibehub（1.7，:3210，卷 vibehub_vibehub-pg / vibehub_vibehub-data），vibehub-dev-db 及其卷已按用户要求删除——
       F0 查询与 trial-metrics.sh 在本机改指向容器 vibehub（CONTAINER=vibehub DB_USER=vibehub DB_NAME=vibehub）；拉取含 schema 变更的代码后先 npx prisma generate
+R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI 记 MCP 密钥名），「今天」按北京时间（UTC+8）自然日，服务端 `services/stats-time.ts` 显式换算、不依赖宿主机时区；
+      测试夹具写日期时勿默认真实 `new Date()`（会与用例 mock 的 now 撞在同一天，计数随运行日期漂移）
 性能体检（只读，怀疑「点击慢」时先跑）：node server/scripts/perf-probe.mjs <BASE> <email> <password>
       日常使用入口用 :3210（生产形态静态产物）；:3211 是 next dev，首次访问页面有按需编译延迟，不代表产品慢
 ```
@@ -407,3 +415,4 @@ R84 本机须知：服务已改为 Docker 单容器 vibehub（1.7，:3210，卷 
 | R82 | 用户：「docker 镜像重建吧」。交付机是远端 Mac mini（arm64），云端无法触达，镜像只能在那边构建；本轮在云端做部署前验证：① **升级路径**：按 1.5 基线（347d2ee）迁移建库 + 灌入存量数据（缺陷/评论/任务含已删负责人/便签/附件/40 条 1024 维向量）→ 应用 3 个新迁移：数据全在、向量 md5 逐字节不变、HNSW 索引保留、`migrate diff` 仅余已知的向量列差异；**回滚**：1.5 的 `migrate deploy` 在升级后的库上 exit 0，1.5 形态写入正常；② **镜像**：main 导出的干净源码树构建（出网限制下改用 mirror.gcr.io 基底、npm 走代理；运行阶段 Debian 源被禁，node 取自官方镜像、supervisord 换等价启动脚本）→ 构建 0 错误 → 容器新库 8 个迁移全部应用、7s 就绪 → 冒烟 16 项（静态页/新版技能文件/SSE 401/提出人/中文跳级报错/viewer 403/任务标签/技能上传/迁移 8 条）+ `verify-mcp-key.mjs` 双传输 **PASS=14 FAIL=0**（26 工具）+ 浏览器登录看板无 JS 错误 | 升级路径 + 回滚实测通过；容器冒烟全过；MCP 14/14 | 用户在 Mac 上按升级步骤构建 `vibehub:1.6` 并部署。**技能治理**：① 远端部署文档补 1.5→1.6 步骤、26 工具清单、`skill:write`、向量列迁移新约定；② 登记 Prisma 引擎运行期下载的既有隐患（§4）；③ 无新契约 |
 | R83 | 用户：「没有验证中这个过程，已验证前面加一个验证中；已关闭有必要吗？产品定位是 AI 全自动化，验证的 agent 我看不到它的状态、不知道有没有在干活」。用户选定：已关闭只留给不修复的结局；任务也一起加验证中。① **状态机**：缺陷 已解决 → 验证中 → 已验证（终点），已关闭只用于重复/不修/无法复现、必须写 `resolution_notes`、可从待处理/进行中/已解决直接关，验证中可放回已解决，验证中打回在活动流记「验证不通过」；缺陷状态机迁到 `services/bug-flow.ts`（bugs.ts 重导出）；任务 待验证 → 验证中 → 已完成，验证中可放回待验证；② **谁在处理**：新迁移 `status_actor`（缺陷与任务加 status_changed_at / status_actor_type / status_actor_name），网页记用户名、MCP 记密钥名，序列化带 `status_actor`；③ **卡住判定**：验证中 >2 小时、进行中 >24 小时（`services/stale.ts` ↔ `lib/stale.ts`），卡片「谁 · 多久」行、卡住标黄；`get_project_context` 增加 `verifying_bugs` / `verifying_tasks` / `stale_items` 与对应提醒，`awaiting_verification` 只含已解决；④ **界面**：看板与任务页各六列（窄屏 1280 不横向滚动）、详情页只摆合法下一步并页内写重开/验证不通过/关闭原因、批量改状态不含关闭；⑤ MCP 下发规则、工具描述、枚举与技能 §2–4/§7 同步 | vitest 275/275（+22：状态机 14、MCP 上下文 5、网页操作人 3）+ web 单测 36/36 + E2E 13（新增 verifying.spec 3 条）+ `acceptance.sh` PASS=19 FAIL=0 + 26 工具 MCP 自测 **PASS=88 FAIL=0** + 升级路径（1.5 结构 + 存量数据 → 4 个迁移）与回滚复测通过 + 容器构建冒烟 5/5、MCP 双传输 14/14 + 演示库截图走查（1440 / 1280） | 等用户合并；合并后 Mac 上按部署文档 §5 构建 1.6 即包含本轮。**技能治理**：① vibehub-mcp 技能 §1–4、§7 与新流转一致；② AGENTS.md 增流转操作人契约、更新状态流转协议；③ 部署文档同步 1.6 内容与回滚差异 |
 | R84 | 人工会话（用户试用反馈「MCP 文件上传对 AI 不友好」→「现在给我改了」）：`upload_attachment` 文本直传 + `create_upload_url` 签名 curl 直传 + `inspect_image_asset` 默认返回图片块（工具 26 → 27）；随后把 PR #4 + 本轮构建为 vibehub:1.7 部署到本机 Docker（升级前 pg_dump + 附件卷备份至 ~/vibehub-backups） | file-io 10 项 TDD（RED→GREEN）；vitest 285/285；acceptance.sh PASS=19 FAIL=0（E2E 13；首跑 core-loop 偶发失败 1 次，main 对照通过、本分支连跑 3 次通过，判定为既有竞态并登记 §4）；test-all-mcp-tools 94/94（测试库，27 工具）；真实 `curl -T` 上传字节一致；1.7 容器：`status_actor` 迁移已应用、升级前后数据量一致（项目 1 / 缺陷 11 / 任务 57 / 便签 11 / 附件 5 / 技能 3 / 密钥 1）、SSE 27 工具、看图返回 image/jpeg 块（本会话经 MCP 实际看到截图） | 等用户合并 `fix/mcp-file-io`。**技能治理**：① 「拉 schema 变更后先 prisma generate」「Fastify 路径参数上限 100 字符」「全量测试勿设 LOG_LEVEL=silent」「判定回归前先在 main 对照」入 vibehub-build；② vibehub-mcp 技能更新传文件/看图指引；③ AGENTS.md §5 补 MCP 文件收发契约 |
+| R85 | 用户请求「拉一下最新的代码，然后把 docs/superpowers/plans/2026-09-25-stats-page.md 这个给我去完成了」→ 按该计划 13 个任务逐个 TDD 落地统计页：后端新增只读聚合 `GET /api/stats`（`services/stats.ts` 聚合 + `stats-time.ts` 北京时区日界线 + `stats-legacy.ts` 解析 R83 前老评论兜底；今天/还剩多少/现在谁在做什么/按密钥/最近 14 天五个分区，service 层内存计算、不新增表、不改任何写路径，全员含 viewer 可读），前端新增 `/stats` 页（侧栏「统计」+ `G D` + ⌘K 入口；`statsRevision` 同款刷新模式；`StatsActiveList`/`StatsTrendChart` 复用既有 token 与 flex/div 柱状图写法，不引新依赖） | `acceptance.sh` **PASS=19 FAIL=0**（vitest **330 passed**，较 R84 基线 285 +45；E2E **14 passed**，含新增 stats MCP 闭环）；web 单测 **42/42**（+6 `stats-view`）；双端 tsc 0 错误；`next build` 通过且路由表含 `/stats` | 待用户验收（分支 `feat/stats-page`，未合并）。**技能治理**：① 无新重复工作流（沿用 TDD→acceptance.sh 既有流程，不固化新技能）；② 既有技能与现实一致，无需更新；③ AGENTS.md §0 补 R85 定向解冻记录（无新错误码/新表/新跨功能约定，服务/路由/hook 分层与流转沿用现状）；④ 计划四处与现实不符已登记 §4 |
