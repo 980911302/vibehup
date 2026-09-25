@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { spawn } from 'node:child_process';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { createOwnerWithProject, gotoBoardWithSession, openCreateDialog } from './fixtures.js';
+import { createOwnerWithProject, gotoBoardWithSession, openCreateDialog, connectMcp } from './fixtures.js';
 
 /**
  * 核心闭环 E2E（卡片 F3）：截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷新。
@@ -10,7 +7,6 @@ import { createOwnerWithProject, gotoBoardWithSession, openCreateDialog } from '
  * 前置：**空测试库**（首注册用户才是 Owner，否则建项目 403）——acceptance.sh 已在启动 E2E 服务前清库。
  */
 
-const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const API_KEY_NAME = 'e2e-mcp-key';
 const TITLE = 'E2E 闭环缺陷：登录按钮点了没反应';
 
@@ -24,55 +20,6 @@ if (!process.env.DATABASE_URL) {
 /** 1x1 透明 PNG（真实图片字节，供 <img> 解码） */
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-
-interface McpClient {
-  call: (name: string, args?: Record<string, unknown>) => Promise<any>;
-  close: () => void;
-}
-
-/** MCP stdio 子进程客户端（与 IDE 同款传输；DATABASE_URL 必须与 HTTP 服务同库） */
-async function connectMcp(apiKey: string): Promise<McpClient> {
-  const child = spawn('npx', ['tsx', 'src/mcp-entry.ts'], {
-    cwd: SERVER_DIR,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, VIBEHUB_API_KEY: apiKey },
-  });
-  let buf = '';
-  let nextId = 1;
-  const pending = new Map<number, (v: any) => void>();
-  child.stdout.on('data', (chunk) => {
-    buf += chunk.toString();
-    let idx: number;
-    while ((idx = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 1);
-      if (!line) continue;
-      try {
-        const msg = JSON.parse(line);
-        if (msg.id !== undefined && pending.has(msg.id)) {
-          pending.get(msg.id)?.(msg);
-          pending.delete(msg.id);
-        }
-      } catch {
-        /* 非 JSON 行忽略（stdout 只应有 JSON-RPC） */
-      }
-    }
-  });
-  child.stderr.on('data', () => {});
-  const send = (method: string, params?: unknown) =>
-    new Promise<any>((resolve, reject) => {
-      const id = nextId++;
-      pending.set(id, resolve);
-      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
-      setTimeout(() => reject(new Error(`MCP ${method} 超时`)), 25_000);
-    });
-  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'e2e', version: '1' } });
-  child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
-  return {
-    call: (name, args = {}) => send('tools/call', { name, arguments: args }),
-    close: () => child.kill(),
-  };
-}
 
 test('截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷新', async ({ page }) => {
   const session = await createOwnerWithProject(`E2E 闭环项目 ${Date.now()}`);

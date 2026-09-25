@@ -1,4 +1,5 @@
 import { expect, request as pwRequest, type APIRequestContext, type Page } from '@playwright/test';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,4 +114,59 @@ export async function openCreateDialog(page: Page): Promise<void> {
 export async function openBugDetail(page: Page, title: string): Promise<void> {
   await page.getByTestId('bug-card').filter({ hasText: title }).first().click();
   await expect(page.getByTestId('bug-assignee-chip')).toBeVisible();
+}
+
+const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+export interface McpClient {
+  call: (name: string, args?: Record<string, unknown>) => Promise<any>;
+  close: () => void;
+}
+
+/**
+ * MCP stdio 子进程客户端（与 IDE 同款传输）。
+ * DATABASE_URL 必须与 HTTP 服务同库：父进程缺 DATABASE_URL 时会继承 server/.env 的 dev 库，
+ * 查不到测试库里的密钥 → 子进程 exit 1 → initialize 超时（历史踩坑）。
+ */
+export async function connectMcp(apiKey: string): Promise<McpClient> {
+  const child = spawn('npx', ['tsx', 'src/mcp-entry.ts'], {
+    cwd: SERVER_DIR,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, VIBEHUB_API_KEY: apiKey },
+  });
+  let buf = '';
+  let nextId = 1;
+  const pending = new Map<number, (v: any) => void>();
+  child.stdout.on('data', (chunk) => {
+    buf += chunk.toString();
+    let idx: number;
+    while ((idx = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line) continue;
+      try {
+        const msg = JSON.parse(line);
+        if (msg.id !== undefined && pending.has(msg.id)) {
+          pending.get(msg.id)?.(msg);
+          pending.delete(msg.id);
+        }
+      } catch {
+        /* 非 JSON 行忽略（stdout 只应有 JSON-RPC） */
+      }
+    }
+  });
+  child.stderr.on('data', () => {});
+  const send = (method: string, params?: unknown) =>
+    new Promise<any>((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, resolve);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+      setTimeout(() => reject(new Error(`MCP ${method} 超时`)), 25_000);
+    });
+  await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'e2e', version: '1' } });
+  child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+  return {
+    call: (name, args = {}) => send('tools/call', { name, arguments: args }),
+    close: () => child.kill(),
+  };
 }
