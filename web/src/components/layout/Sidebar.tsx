@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
+  BarChart3,
   ChevronDown,
   Lock,
   FolderKanban,
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { href: '/notes', label: '随手记', icon: StickyNote, combo: 'G N', group: 'primary' },
   { href: '/tasks', label: '任务', icon: ListChecks, combo: 'G T', group: 'primary' },
   { href: '/skills', label: '技能', icon: Puzzle, combo: 'G S', group: 'primary' },
+  { href: '/stats', label: '统计', icon: BarChart3, combo: 'G D', group: 'primary' },
   { href: '/projects', label: '项目', icon: FolderKanban, combo: 'G P', group: 'primary' },
   { href: '/keys', label: 'MCP 密钥', icon: KeyRound, combo: 'G K', adminOnly: true, group: 'more' },
   { href: '/members', label: '成员', icon: Users, combo: 'G M', adminOnly: true, group: 'more' },

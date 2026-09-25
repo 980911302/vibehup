@@ -27,6 +27,8 @@ export interface VibeHubStore {
   /** 任务 / 技能有变化（SSE 或轮询）时递增，对应页面据此重新拉取 */
   taskRevision: number;
   skillRevision: number;
+  /** 缺陷/任务有变化（SSE 或轮询）时递增，统计页据此重新拉取 */
+  statsRevision: number;
   selectProject: (projectId: string) => void;
   createProject: (name: string, slug?: string, description?: string) => Promise<Project>;
   refreshProjects: () => Promise<void>;
@@ -208,6 +210,7 @@ export function useVibeHubStore(): VibeHubStore {
   const [error, setError] = useState<string | null>(null);
   const [taskRevision, setTaskRevision] = useState(0);
   const [skillRevision, setSkillRevision] = useState(0);
+  const [statsRevision, setStatsRevision] = useState(0);
   const p = useProjects(accessToken, setError);
   const projectIdRef = useRef<string | null>(null);
   projectIdRef.current = p.currentProjectId;
@@ -226,8 +229,8 @@ export function useVibeHubStore(): VibeHubStore {
 
   const sseConnected = useLiveUpdates(accessToken, {
     onEvent: (type) => {
-      if (type.startsWith('bug.')) void d.refreshBoard();
-      if (type.startsWith('task.')) setTaskRevision((n) => n + 1);
+      if (type.startsWith('bug.')) { void d.refreshBoard(); setStatsRevision((n) => n + 1); }
+      if (type.startsWith('task.')) { setTaskRevision((n) => n + 1); setStatsRevision((n) => n + 1); }
       if (type.startsWith('skill.')) setSkillRevision((n) => n + 1);
       if (type.startsWith('note.')) void d.refreshNotes();
       if (type.startsWith('attachment.')) void d.refreshAttachments();
@@ -236,12 +239,13 @@ export function useVibeHubStore(): VibeHubStore {
       void d.refreshBoard();
       void d.refreshNotes();
       setTaskRevision((n) => n + 1);
+      setStatsRevision((n) => n + 1);
     },
   });
 
   const currentProject = p.projects.find((x) => x.id === p.currentProjectId) ?? null;
   return {
-    projects: p.projects, currentProject, loading: p.loading, sseConnected, error, taskRevision, skillRevision,
+    projects: p.projects, currentProject, loading: p.loading, sseConnected, error, taskRevision, skillRevision, statsRevision,
     selectProject: p.selectProject, createProject: p.createProject, refreshProjects: p.refreshProjects,
     board: d.board, notes: d.notes, noteTags: d.noteTags, attachments: d.attachments, templates: d.templates,
     refreshBoard: d.refreshBoard, refreshNotes: d.refreshNotes, refreshAttachments: d.refreshAttachments, refreshTemplates: d.refreshTemplates,

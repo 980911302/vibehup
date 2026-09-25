@@ -23,6 +23,7 @@ import { mcpSseRoutes } from './routes/mcp-sse.js';
 import { bugExtrasRoutes } from './routes/bug-extras.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
 import { systemRoutes } from './routes/system.js';
+import { statsRoutes } from './routes/stats.js';
 import { authenticate, requireRole } from './plugins/authenticate.js';
 
 async function ensureDirs(): Promise<void> {
@@ -109,6 +110,7 @@ export async function buildServer(opts: { loggerStream?: NodeJS.WritableStream }
     [searchRoutes, '/api/search'],
     [apiKeyRoutes, '/api/api-keys'],
     [systemRoutes, '/api/system'],
+    [statsRoutes, '/api/stats'],
   ] as const;
   for (const [routes, prefix] of guarded) {
     await app.register(async (scope) => {

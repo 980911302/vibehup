@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, FolderKanban, Image as ImageIcon, ListChecks, Moon, Puzzle, Search, Sparkles, StickyNote, Sun } from 'lucide-react';
+import { FileText, FolderKanban, Image as ImageIcon, ListChecks, Moon, Puzzle, BarChart3, Search, Sparkles, StickyNote, Sun } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useToast } from '@/lib/toast';
@@ -71,6 +71,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       { id: 'nav-notes', icon: StickyNote, label: '跳转：随手记', hint: 'G N', run: () => router.push('/notes') },
       { id: 'nav-tasks', icon: ListChecks, label: '跳转：任务', hint: 'G T', run: () => router.push('/tasks') },
       { id: 'nav-skills', icon: Puzzle, label: '跳转：技能', hint: 'G S', run: () => router.push('/skills') },
+      { id: 'nav-stats', icon: BarChart3, label: '跳转：统计', hint: 'G D', run: () => router.push('/stats') },
       { id: 'nav-projects', icon: FolderKanban, label: '跳转：项目', hint: 'G P', run: () => router.push('/projects') },
       { id: 'nav-keys', icon: FileText, label: '跳转：MCP 密钥', hint: 'G K', run: () => router.push('/keys') },
       { id: 'nav-members', icon: StickyNote, label: '跳转：成员', hint: 'G M', run: () => router.push('/members') },

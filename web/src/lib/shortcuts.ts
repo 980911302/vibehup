@@ -97,6 +97,7 @@ export const GLOBAL_HOTKEYS: { combo: string; description: string; group: string
   { group: '全局', combo: 'g n', description: '跳转随手记' },
   { group: '全局', combo: 'g t', description: '跳转任务' },
   { group: '全局', combo: 'g s', description: '跳转技能' },
+  { group: '全局', combo: 'g d', description: '跳转统计' },
   { group: '全局', combo: 'g p', description: '跳转项目' },
   { group: '全局', combo: 'g k', description: '跳转 MCP 密钥' },
   { group: '全局', combo: 'g m', description: '跳转成员' },
