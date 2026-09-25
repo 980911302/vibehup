@@ -27,6 +27,7 @@ export const SERVER_INSTRUCTIONS = [
   '新建缺陷/任务前先 search 查重。完整规范见技能 vibehub-mcp（SKILL.md，服务端 /skills/vibehub-mcp/SKILL.md）。',
   '【团队技能】get_project_context 会列出本项目和全团队通用的技能（名称+描述）；要用时 download_skill 取回全文，按原目录结构写到 .claude/skills/<name>/；',
   '沉淀出新的可复用流程时用 upload_skill 上传（同名即覆盖），删除用 delete_skill。删除缺陷/任务/便签/附件前先向用户确认。',
+  '【传文件】文本（日志片段/JSON/堆栈）用 upload_attachment 的 content 直接传；本地文件（截图/压缩包/大日志）先 create_upload_url，再在终端执行返回的 curl，文件不经过对话；看截图用 inspect_image_asset（默认直接返回图片）。',
 ].join('\n');
 
 const BUG_NEXT_STEP: Record<BugStatus, string> = {

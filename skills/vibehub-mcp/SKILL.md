@@ -105,10 +105,12 @@ VibeHub：bug_ab12 in_progress → resolved（commit 1a2b3c）；tsk_cd34 doing 
 | 「SKILL.md 需要以 --- 包起来的 frontmatter 开头」 | 上传技能时 `skill_md` 开头要有 `name` 和 `description` |
 | 「未指定 project_slug，且有多个进行中的项目」 | 按报错里列出的 slug 选当前仓库对应的项目 |
 | 提交号参数不生效 | 参数名是 `commit_hash`，不是 `git_commit_hash` |
-| 上传附件失败 | `upload_attachment` 不收文件路径，要传 `data_base64` + `file_name` + `file_type` |
+| 要上传日志/报错 | 文本直接用 `upload_attachment` 的 `content` 传原文，**不要**自己转 base64 |
+| 要上传本地文件（截图、压缩包、大日志） | 先 `create_upload_url`，再在终端执行返回的 curl（把 `<本地文件路径>` 换成实际路径）；文件不经过对话，链接 10 分钟内有效、只能用一次 |
+| 想看截图 | `inspect_image_asset` 默认直接返回图片；不要用 `return_mode: base64`（那是编码文本，看不到图） |
 | 便签在项目下查不到 | `append_scratchpad` 没传 `project_slug`，落成了全局便签 |
 
-## 8. 工具与权限（26 个）
+## 8. 工具与权限（27 个）
 
 | 工具 | 用途 | scope |
 |---|---|---|
@@ -122,7 +124,7 @@ VibeHub：bug_ab12 in_progress → resolved（commit 1a2b3c）；tsk_cd34 doing 
 | `list_tasks` / `get_task_detail` | 任务列表 / 详情（含可走的下一步） | task:read |
 | `create_task` / `update_task` / `delete_task` | 建任务 / 任务流转与修改 / 删任务 | task:write |
 | `append_scratchpad` / `update_note` / `delete_note` | 写 / 改 / 删便签 | note:write |
-| `upload_attachment` / `delete_attachment` | 上传 / 删除附件 | attachment:write |
+| `upload_attachment` / `create_upload_url` / `delete_attachment` | 上传（文本直传 / 申请 curl 直传链接）/ 删除附件 | attachment:write |
 | `upload_skill` / `delete_skill` | 上传 / 删除技能 | skill:write |
 | `purge_trash` | 清回收站（永久删除） | admin |
 

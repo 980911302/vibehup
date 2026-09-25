@@ -26,8 +26,8 @@ beforeEach(async () => {
 });
 
 describe('工具与权限', () => {
-  it('26 个工具，每个都声明了所需 scope；删除跟着对应写权限，技能读取只要 context:read', () => {
-    expect(TOOL_NAMES).toHaveLength(26);
+  it('27 个工具，每个都声明了所需 scope；删除跟着对应写权限，技能读取只要 context:read', () => {
+    expect(TOOL_NAMES).toHaveLength(27);
     expect(Object.keys(TOOL_SCOPES).sort()).toEqual([...TOOL_NAMES].sort());
     for (const scope of Object.values(TOOL_SCOPES)) expect(SCOPES).toContain(scope);
     expect(TOOL_SCOPES).toMatchObject({
@@ -41,6 +41,7 @@ describe('工具与权限', () => {
       download_skill: 'context:read',
       upload_skill: 'skill:write',
       delete_skill: 'skill:write',
+      create_upload_url: 'attachment:write',
     });
   });
 });

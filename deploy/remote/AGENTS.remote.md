@@ -142,7 +142,7 @@ $DK exec vibehub psql -U vibehub -d vibehub -Atc \
 若 `docker logs` 卡在「应用数据库迁移」并报下载 `schema-engine` 失败，是网络问题：重试 `compose up -d`，或先回滚。根治见 §10。
 
 **升级后验收**：浏览器登录看板，顶栏应有「全部 / 指派给我 / 我提的 / 未指派」，看板六列（含「验证中」）；任务页六列；左侧有「技能」。
-IDE 里重连 MCP，应看到 26 个工具（`node server/scripts/verify-mcp-key.mjs` 会断言 26）。存量缺陷的「提出人」显示「未记录」属正常（此前没记录）。
+IDE 里重连 MCP，应看到 26 个工具（1.7 起 27 个，`node server/scripts/verify-mcp-key.mjs` 按当前代码断言）。存量缺陷的「提出人」显示「未记录」属正常（此前没记录）。
 
 **回滚**：`docker-compose.yml.bak-1.5` 拷回去再 `$DK compose up -d`。已实测 1.5 在升级后的库上能正常启动与写入（新迁移都是新增列/表）；
 差异是 1.6 里进入新状态的记录在 1.5 看板上不显示：「待验证 / 验证中 / 已取消」的任务（1.5 只认待办/进行中/已完成），以及「验证中」的缺陷。要连数据一起回到升级前，用第 1 步的 dump 做 `pg_restore`。
@@ -205,7 +205,7 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 - **测试库**：`vibehub-test-db`（本机另起的容器，破坏性——每用例 TRUNCATE 全表）。
   **不要**把测试指向生产库，那会清空真实数据。
 - **MCP 全工具自测**：`node scripts/test-all-mcp-tools.mjs`（需 `KEY=` 环境变量），
-  16 个工具逐个真调 + 数据库二次核对，期望 `PASS=54 FAIL=0`（1.6 起 26 个工具，期望 `PASS=81 FAIL=0`）。
+  16 个工具逐个真调 + 数据库二次核对，期望 `PASS=54 FAIL=0`（1.6 起 26 个工具，期望 `PASS=81 FAIL=0`；1.7 起 27 个，期望 `PASS=94 FAIL=0`，库里须有至少两个项目才测得到多项目歧义）。
 - **性能体检**：`node scripts/perf-probe.mjs <BASE> <email> <password>`。
 - 声称「完成/通过」前必须当场跑命令并引用输出，不接受「我觉得应该没问题」。
 
@@ -241,16 +241,17 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 - 别的机器：`curl -fsSL http://<地址>:3210/skills/install.sh | VIBEHUB_URL=http://<地址>:3210 bash`。
 - 规则的核心同时写在 `server/src/mcp/workflow.ts`（随 initialize 下发、写进工具描述与返回），**改流转规则时两处同步**。
 
-### 工具清单（1.5 为 16 个；1.6 起 26 个，唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
+### 工具清单（1.5 为 16 个；1.6 起 26 个；1.7 起 27 个，唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
 
 读取：`get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、
 `inspect_image_asset`、`list_notes`、`list_tasks`；1.6 新增 `search`、`get_task_detail`、`list_skills`、`download_skill`
 写入：`update_bug_status`、`create_bug`、`add_bug_comment`、`append_scratchpad`、
 `upload_attachment`、`create_task`、`update_task`、`purge_trash`（需 admin）；
-1.6 新增 `delete_bug`、`update_note`、`delete_note`、`delete_attachment`、`delete_task`、`upload_skill`、`delete_skill`
+1.6 新增 `delete_bug`、`update_note`、`delete_note`、`delete_attachment`、`delete_task`、`upload_skill`、`delete_skill`；1.7 新增 `create_upload_url`
 
 **易踩的参数坑**（实测确认）：
-- `upload_attachment` 不吃文件路径，必须 `data_base64` + `file_name` + `file_type`。
+- 传文件（1.7 起）：文本用 `upload_attachment` 的 `content` 直接传；本地文件用 `create_upload_url` 拿 curl 命令直传，内容不经过对话。1.6 及以前 `upload_attachment` 只能传 `data_base64`。
+- 看截图（1.7 起）：`inspect_image_asset` 默认直接返回图片；1.6 及以前默认返回服务端路径（容器部署时打不开）。
 - `update_bug_status` 的参数是 **`commit_hash`**，不是 `git_commit_hash`。
 - 状态**不能跳级**：合法路径 `open → in_progress → resolved → verifying → verified`（1.6 起；验证方先改 verifying 再动手，verified 是终点）；`closed` 只用于重复/不修/无法复现，必须写 `resolution_notes`。
 - `append_scratchpad` 不传 `project_slug` 会落成**全局便签**（项目下查不到）。

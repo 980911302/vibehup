@@ -39,7 +39,7 @@
 | 项目切换 | 顶栏切换工作区，支持**中文/拼音/首字母模糊检索**（`yhzx` → 用户中心） |
 | 角色化导航 | 日常五项平铺，密钥/成员/设置收进「更多」折叠；非管理员见锁定态；「简洁模式」可隐藏次要入口 |
 | 实时同步 | SSE 推送（Web）+ **PG LISTEN/NOTIFY 跨进程通道**（MCP stdio 写入 <1s 可达）；5s 轮询仅作双保险 |
-| MCP Tools | **26 个工具**（读取 11 + 写入 15）：见下方工具矩阵 |
+| MCP Tools | **27 个工具**（读取 11 + 写入 16）：见下方工具矩阵 |
 | 双主题 | Midnight 暗色（默认）/ Daylight 纸白，全快捷键驱动（? 查看）；全站 Lucide 图标 |
 
 ## 快速开始（本地开发）
@@ -111,9 +111,9 @@ VibeHub 支持两种传输，密钥均在 Web 端「MCP 密钥」页创建：
 | 类别 | 工具 |
 | --- | --- |
 | 读取 | `get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、`inspect_image_asset`、`list_notes`、`search`、`list_tasks`、`get_task_detail`、`list_skills`、`download_skill` |
-| 写入 | `update_bug_status`、`create_bug`、`add_bug_comment`、`delete_bug`、`append_scratchpad`、`update_note`、`delete_note`、`upload_attachment`、`delete_attachment`、`create_task`、`update_task`、`delete_task`、`upload_skill`、`delete_skill`、`purge_trash` |
+| 写入 | `update_bug_status`、`create_bug`、`add_bug_comment`、`delete_bug`、`append_scratchpad`、`update_note`、`delete_note`、`upload_attachment`、`create_upload_url`、`delete_attachment`、`create_task`、`update_task`、`delete_task`、`upload_skill`、`delete_skill`、`purge_trash` |
 
-Token 经济学：列表默认 20 条 + `has_more`；长文本字段 500 字符截断并提示用 `read_attachment_text` 分片；图片默认降采样至 1080px；`upload_attachment` 让 AI 把自己抓到的日志/截图贴回工单。
+Token 经济学：列表默认 20 条 + `has_more`；长文本字段 500 字符截断并提示用 `read_attachment_text` 分片；图片默认降采样至 1080px。传文件对 AI 友好（R84）：文本（日志片段、JSON、堆栈）用 `upload_attachment` 的 `content` 直接传；本地文件（截图、压缩包、大日志）用 `create_upload_url` 拿一条 curl 命令直传，文件内容不经过对话；`inspect_image_asset` 默认直接返回图片，模型能看到截图。
 
 ## REST API 摘要
 
@@ -149,6 +149,7 @@ POST   /api/notes / PATCH / DELETE
 
 POST   /api/upload                         multipart 上传（files[] + project_id + entity_type）
 POST   /api/upload/base64                  剪贴板 Base64 兜底通道
+PUT    /api/uploads?token=                 签名直传（MCP create_upload_url 签发，10 分钟有效、只能用一次）
 GET    /api/attachments?project_id=&entity_type=&entity_id=&q=
 GET    /api/attachments/:id                附件元数据
 GET    /api/attachments/:id/raw            原文件下发（列表返回的 public_url 已带 exp+sig 签名，<img> 免令牌；否则需 Bearer）

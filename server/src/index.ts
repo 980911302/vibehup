@@ -13,6 +13,7 @@ import { taskRoutes } from './routes/tasks.js';
 import { skillRoutes } from './routes/skills.js';
 import { noteRoutes } from './routes/notes.js';
 import { attachmentRoutes, attachmentRawRoutes, uploadRoutes } from './routes/attachments.js';
+import { signedUploadRoutes } from './routes/signed-upload.js';
 import { eventRoutes } from './routes/events.js';
 import { activityRoutes } from './routes/activity.js';
 import { searchRoutes } from './routes/search.js';
@@ -119,6 +120,8 @@ export async function buildServer(opts: { loggerStream?: NodeJS.WritableStream }
   await app.register(eventRoutes, { prefix: '/api' });
   // 附件原文件：<img> 同样带不了 Authorization 头，路由内「签名链接或 Bearer」二选一（R76）
   await app.register(attachmentRawRoutes, { prefix: '/api/attachments' });
+  // 签名直传：AI 用 curl 把本地文件传上来，?token= 即授权（R84，见 routes/signed-upload.ts）
+  await app.register(signedUploadRoutes, { prefix: '/api/uploads' });
   await app.register(activityRoutes, { prefix: '/api/activity' });
   // MCP SSE 传输：API Key（Bearer）鉴权，不经 HTTP 用户守卫（容器化部署形态）
   await app.register(mcpSseRoutes, { prefix: '/mcp' });

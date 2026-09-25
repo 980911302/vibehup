@@ -11,8 +11,12 @@ import type { Scope } from './scopes.js';
  * scope 校验 → 执行 → Token 经济学校形 → 打点。错误一律转为 isError 结果，不穿协议层。
  */
 
+export type McpContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string };
+
 export interface ToolSuccess {
-  content: { type: 'text'; text: string }[];
+  content: McpContentBlock[];
   isError?: boolean;
   /** MCP SDK 的工具回调返回类型要求索引签名 */
   [key: string]: unknown;
@@ -20,6 +24,14 @@ export interface ToolSuccess {
 
 export function toolResult(data: unknown): ToolSuccess {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+}
+
+/**
+ * 工具要返回 MCP 原生内容块（如图片，R84）时返回它：guard 原样透传，
+ * 多模态客户端会把图片直接呈现给模型；其余返回值照常 JSON 化为文本。
+ */
+export class ToolContent {
+  constructor(readonly blocks: McpContentBlock[]) {}
 }
 
 export function toolError(message: string): ToolSuccess {
@@ -47,6 +59,11 @@ export function guarded(toolName: string, scope: Scope, fn: ToolFn) {
     const t0 = Date.now();
     try {
       const data = await fn(ctx, args);
+      if (data instanceof ToolContent) {
+        const bytesOut = data.blocks.reduce((n, b) => n + (b.type === 'text' ? Buffer.byteLength(b.text) : b.data.length), 0);
+        await recordToolCall(ctx, { tool: toolName, latencyMs: Date.now() - t0, bytesOut, result: 'ok' });
+        return { content: data.blocks };
+      }
       const shaped = enforceSizeBudget(data as never);
       const bytesOut = Buffer.byteLength(JSON.stringify(shaped));
       await recordToolCall(ctx, { tool: toolName, latencyMs: Date.now() - t0, bytesOut, result: 'ok' });
