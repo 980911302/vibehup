@@ -103,8 +103,8 @@ describe('create_upload_url：本地文件用 curl 直传，内容不经过对�
   it('返回上传链接与 curl 命令；SSE 会话用握手时的地址', async () => {
     await projectsService.createProject({ name: '链接' });
     const { ctx } = await keyedCtx();
-    const r = await mcpStore.run(ctx, () => ext.createUploadUrl(ctx, { file_name: 'screen.png' }), { origin: 'http://192.168.0.105:3210' });
-    expect(r.upload_url.startsWith('http://192.168.0.105:3210/api/uploads?token=')).toBe(true);
+    const r = await mcpStore.run(ctx, () => ext.createUploadUrl(ctx, { file_name: 'screen.png' }), { origin: 'http://10.0.0.8:3210' });
+    expect(r.upload_url.startsWith('http://10.0.0.8:3210/api/uploads?token=')).toBe(true);
     expect(r.method).toBe('PUT');
     expect(r.curl).toContain('curl');
     expect(r.curl).toContain('-T');

@@ -20,7 +20,7 @@ export const mcpStore = {
   get(): McpContext | null {
     return storage.getStore()?.ctx ?? null;
   },
-  /** SSE 握手时客户端访问本服务用的地址（如 http://192.168.0.105:3210），用于拼给 AI 的链接；stdio 无 */
+  /** SSE 握手时客户端访问本服务用的地址（如 http://10.0.0.8:3210），用于拼给 AI 的链接；stdio 无 */
   origin(): string | null {
     return storage.getStore()?.origin ?? null;
   },
