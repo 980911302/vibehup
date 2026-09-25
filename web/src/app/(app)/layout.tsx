@@ -74,6 +74,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { combo: 'g n', description: '随手记', handler: () => router.push('/notes') },
     { combo: 'g t', description: '任务', handler: () => router.push('/tasks') },
     { combo: 'g s', description: '技能', handler: () => router.push('/skills') },
+    { combo: 'g d', description: '统计', handler: () => router.push('/stats') },
     { combo: 'g p', description: '项目', handler: () => router.push('/projects') },
     { combo: 'g k', description: '密钥', handler: () => router.push('/keys') },
     { combo: 'g m', description: '成员', handler: () => router.push('/members') },
