@@ -18,7 +18,7 @@ import { recordToolCall } from './usage.js';
 import { paginate, truncateText, enforceSizeBudget } from './token-budget.js';
 import sharp from 'sharp';
 
-/** MCP 单测：26 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
+/** MCP 单测：27 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
 
 beforeEach(async () => {
   await resetDb();
@@ -26,8 +26,8 @@ beforeEach(async () => {
 });
 
 describe('工具矩阵', () => {
-  it('TOOL_NAMES = 26 个且与注册一致', async () => {
-    expect(TOOL_NAMES).toHaveLength(26);
+  it('TOOL_NAMES = 27 个且与注册一致', async () => {
+    expect(TOOL_NAMES).toHaveLength(27);
     const expected = [
       'get_project_context', 'list_bugs', 'get_bug_detail', 'read_attachment_text',
       'inspect_image_asset', 'update_bug_status', 'append_scratchpad',
@@ -35,6 +35,7 @@ describe('工具矩阵', () => {
       'upload_attachment', 'list_tasks', 'create_task', 'update_task', 'purge_trash',
       'get_task_detail', 'delete_task', 'delete_bug', 'update_note', 'delete_note', 'delete_attachment',
       'list_skills', 'download_skill', 'upload_skill', 'delete_skill',
+      'create_upload_url',
     ].sort();
     expect([...TOOL_NAMES].sort()).toEqual(expected);
     expect(createMcpServer()).toBeDefined();
@@ -232,10 +233,11 @@ describe('MCP 工具行为', () => {
     const att = await attachmentsService.createAttachment({
       projectId: p.id, entityType: 'general', fileName: 'big.png', fileType: 'image/png', fileSize: 100, storagePath: png.storagePath,
     });
-    const pathMode = await mcpTools.inspectImageAssetTool({ attachment_id: att.id });
+    // R84：默认改为返回图片内容块（见 file-io.test.ts），此处显式取 path 模式校验降采样
+    const pathMode = (await mcpTools.inspectImageAssetTool({ attachment_id: att.id, return_mode: 'path' })) as Record<string, unknown>;
     expect(pathMode.downscaled).toBe(true);
     expect(pathMode.width).toBe(1080);
-    const b64 = await mcpTools.inspectImageAssetTool({ attachment_id: att.id, target_max_dimension: 400, return_mode: 'base64' });
+    const b64 = (await mcpTools.inspectImageAssetTool({ attachment_id: att.id, target_max_dimension: 400, return_mode: 'base64' })) as Record<string, unknown>;
     expect(typeof b64.base64).toBe('string');
   });
 

@@ -18,6 +18,8 @@ import { mcpStore } from '../mcp/context-store.js';
 interface Session {
   transport: SSEServerTransport;
   ctx: McpContext;
+  /** 客户端访问本服务用的地址（拼上传链接等给 AI 的 URL，R84） */
+  origin: string;
 }
 
 /** sessionId → transport（进程内；单机单容器无需外部存储） */
@@ -46,7 +48,10 @@ export const mcpSseRoutes: FastifyPluginAsync = async (app) => {
     res.setHeader('X-Accel-Buffering', 'no');
     // endpoint 事件会由 transport 自动追加 ?sessionId=xxx
     const transport = new SSEServerTransport('/mcp/messages', res);
-    sessions.set(transport.sessionId, { transport, ctx });
+    // 以客户端连进来的地址为准（本机 127.0.0.1 / 局域网 IP / 反代域名），拼出的链接 AI 才访问得到
+    const proto = String(request.headers['x-forwarded-proto'] ?? request.protocol).split(',')[0].trim();
+    const origin = `${proto}://${request.headers.host ?? `127.0.0.1:${request.socket.localPort}`}`;
+    sessions.set(transport.sessionId, { transport, ctx, origin });
 
     const server = createMcpServer();
     await server.connect(transport);
@@ -72,12 +77,15 @@ export const mcpSseRoutes: FastifyPluginAsync = async (app) => {
           error: { code: 'SESSION_NOT_FOUND', message: '会话不存在或已断开，请重新建立 SSE 连接' },
         });
       }
-      await mcpStore.run(session.ctx, () =>
-        session.transport.handlePostMessage(
-          request.raw as IncomingMessage & { body?: unknown },
-          reply.raw as ServerResponse & { writeHead: unknown },
-          request.body as unknown,
-        ),
+      await mcpStore.run(
+        session.ctx,
+        () =>
+          session.transport.handlePostMessage(
+            request.raw as IncomingMessage & { body?: unknown },
+            reply.raw as ServerResponse & { writeHead: unknown },
+            request.body as unknown,
+          ),
+        { origin: session.origin },
       );
     });
 };

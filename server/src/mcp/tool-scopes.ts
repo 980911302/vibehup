@@ -26,6 +26,7 @@ export const TOOL_SCOPES = {
   update_note: 'note:write',
   delete_note: 'note:write',
   upload_attachment: 'attachment:write',
+  create_upload_url: 'attachment:write',
   delete_attachment: 'attachment:write',
   create_task: 'task:write',
   update_task: 'task:write',

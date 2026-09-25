@@ -10,6 +10,9 @@ import { globalSearch } from '../services/search.js';
 import { config } from '../config.js';
 import { ValidationError, PayloadTooLargeError } from '../core/errors.js';
 import { DEFAULT_BUDGET, truncateText } from './token-budget.js';
+import { mcpStore } from './context-store.js';
+import { signUploadGrant, UPLOAD_GRANT_TTL_SEC } from '../core/upload-grant.js';
+import { guessMimeType } from '../core/mime.js';
 import { taskFlow } from './workflow.js';
 
 /**
@@ -96,24 +99,46 @@ export async function addBugComment(ctx: McpContext, input: { bug_id: string; co
 }
 
 /** 12. upload_attachment —— AI 把日志/截图贴回工单 */
+/**
+ * 附件落在哪（R84）：给了 bug_id 就以缺陷所在项目为准（并校验缺陷存在，不留指向空缺陷的附件）；
+ * 否则按 project_slug 解析（多项目未传时报错并列出可选 slug）。
+ */
+async function resolveUploadTarget(bugId: string | undefined, projectSlug: string | undefined) {
+  if (bugId?.trim()) {
+    const bug = await bugsService.getBug(bugId.trim());
+    return { projectId: bug.projectId, entityType: 'bug' as const, entityId: bug.id };
+  }
+  const project = await projectsService.resolveProject(projectSlug);
+  return { projectId: project.id, entityType: 'general' as const, entityId: null };
+}
+
+/**
+ * 12. upload_attachment（R84 起 AI 友好）：文本（日志/JSON/堆栈）直接传 content，不用 base64；
+ * 很小的二进制仍可传 data_base64；本地文件请用 create_upload_url 走 curl，内容不经过对话。
+ */
 export async function uploadAttachment(ctx: McpContext, input: {
   project_slug?: string;
   bug_id?: string;
   file_name: string;
-  file_type: string;
-  data_base64: string;
+  file_type?: string;
+  content?: string;
+  data_base64?: string;
 }) {
-  const buffer = Buffer.from(input.data_base64, 'base64');
+  const hasText = typeof input.content === 'string';
+  if (hasText === (typeof input.data_base64 === 'string')) {
+    throw new ValidationError(
+      '请提供 content（文本原文）或 data_base64（很小的二进制）二者之一；本地文件请用 create_upload_url 拿到 curl 命令直接上传，内容不经过对话',
+    );
+  }
+  const buffer = hasText ? Buffer.from(input.content as string, 'utf8') : Buffer.from(input.data_base64 as string, 'base64');
   if (buffer.byteLength > config.maxUploadBytes) {
     throw new PayloadTooLargeError(`文件超过 ${config.maxUploadBytes} 字节限制`);
   }
-  const project = await projectsService.resolveProject(input.project_slug);
+  const target = await resolveUploadTarget(input.bug_id, input.project_slug);
   const attachment = await attachmentsService.uploadFromBuffer({
-    projectId: project.id,
-    entityType: input.bug_id ? 'bug' : 'general',
-    entityId: input.bug_id ?? null,
+    ...target,
     fileName: input.file_name,
-    fileType: input.file_type,
+    fileType: input.file_type?.trim() || guessMimeType(input.file_name, hasText ? 'text/plain' : 'application/octet-stream'),
     buffer,
     uploadedBy: ctx.apiKeyId ?? ctx.actorLabel,
   });
@@ -124,7 +149,7 @@ export async function uploadAttachment(ctx: McpContext, input: {
       file_name: attachment.fileName,
       file_type: attachment.fileType,
       file_size: attachment.fileSize,
-      url: attachment.publicUrl,
+      bug_id: target.entityId,
     },
   };
 }
@@ -211,4 +236,36 @@ export async function purgeTrash(_ctx: McpContext, _input: Record<string, unknow
   const { storage } = await import('../services/storage.js');
   const purged = await storage.purgeOlderThan(config.attachmentTrashDays);
   return { ok: true, purged };
+}
+
+/**
+ * create_upload_url（R84）：本地文件（截图、二进制、大文件）走签名直传——返回一条 curl 命令，
+ * AI 在终端执行即可把文件传到 VibeHub，文件内容不经过对话（不占 token、不会被模型抄错）。
+ * 链接基于 SSE 握手时客户端连进来的地址（stdio 回落本机端口），10 分钟有效、只能用一次。
+ */
+export async function createUploadUrl(ctx: McpContext, input: {
+  file_name: string;
+  file_type?: string;
+  bug_id?: string;
+  project_slug?: string;
+}) {
+  const fileName = input.file_name?.trim();
+  if (!fileName) throw new ValidationError('file_name 不能为空（带扩展名，如 screenshot.png、app.log）');
+  const target = await resolveUploadTarget(input.bug_id, input.project_slug);
+  const token = signUploadGrant({
+    ...target,
+    fileName,
+    fileType: input.file_type?.trim() || guessMimeType(fileName),
+    uploadedBy: ctx.apiKeyId ?? ctx.actorLabel,
+    apiKeyId: ctx.apiKeyId,
+  });
+  const uploadUrl = `${mcpStore.origin() ?? `http://127.0.0.1:${config.port}`}/api/uploads?token=${token}`;
+  return {
+    upload_url: uploadUrl,
+    method: 'PUT',
+    expires_in_sec: UPLOAD_GRANT_TTL_SEC,
+    curl: `curl -sS -T '<本地文件路径>' '${uploadUrl}'`,
+    next_step:
+      '在终端执行 curl（把 <本地文件路径> 换成实际路径）；返回 JSON 里的 attachment.id 就是附件 ID，可传给 create_bug 的 attachment_ids。链接 10 分钟内有效、只能用一次。',
+  };
 }

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fsp from 'node:fs/promises';
+import sharp from 'sharp';
 import { AppError } from '../core/errors.js';
 import * as projectsService from '../services/projects.js';
 import * as bugsService from '../services/bugs.js';
@@ -10,6 +11,7 @@ import * as attachmentsService from '../services/attachments.js';
 import { readTextSlice, isTextFile, inspectImageAsset } from '../services/assets.js';
 import { resolveLocalAttachment } from '../services/attachments.js';
 import { paginate, truncateText, DEFAULT_BUDGET } from './token-budget.js';
+import { ToolContent } from './guard.js';
 import { bugNextStep, contextReminders } from './workflow.js';
 import { isStale } from '../services/stale.js';
 
@@ -213,12 +215,20 @@ export async function readAttachmentText(input: {
   };
 }
 
-/** 5. inspect_image_asset —— 提取图像资产供多模态模型消费 */
+/** MCP 图片内容块普遍支持的格式；其余（avif/tiff/bmp…）转 PNG 再返回 */
+const IMAGE_BLOCK_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+/**
+ * 5. inspect_image_asset —— 让模型直接「看」截图（R84）。
+ * 默认 image：以 MCP 图片内容块返回（多模态客户端直接呈现给模型），附带尺寸等元信息；
+ * path：服务端本地路径，只在与服务同机的 stdio 场景有用（容器部署时 IDE 打不开）；
+ * base64：兼容旧用法（编码塞在 JSON 文本里，模型看不到图）。
+ */
 export async function inspectImageAssetTool(input: {
   attachment_id: string;
   target_max_dimension?: number;
-  return_mode?: 'path' | 'base64';
-}) {
+  return_mode?: 'image' | 'path' | 'base64';
+}): Promise<Record<string, unknown> | ToolContent> {
   const { attachment, filePath } = await resolveLocalAttachment(input.attachment_id);
   if (!attachment.fileType.startsWith('image/')) {
     throw new AppError(`附件不是图片: ${attachment.fileName}`, 400, 'NOT_IMAGE');
@@ -228,7 +238,7 @@ export async function inspectImageAssetTool(input: {
     targetMaxDimension: input.target_max_dimension ?? 1080,
   });
 
-  const result: Record<string, unknown> = {
+  const meta: Record<string, unknown> = {
     attachment_id: attachment.id,
     file_name: attachment.fileName,
     mime_type: info.mimeType,
@@ -238,22 +248,27 @@ export async function inspectImageAssetTool(input: {
     original_height: info.originalHeight,
     downscaled: info.downscaled,
     byte_size: info.byteSize,
-    file_path: info.filePath,
   };
-  const returnMode = input.return_mode ?? 'path';
-  if (returnMode === 'base64') {
-    const buffer = await fsp.readFile(info.filePath);
-    if (buffer.byteLength > MAX_BASE64_BYTES) {
-      throw new AppError(
-        `图片过大（${buffer.byteLength} 字节 > ${MAX_BASE64_BYTES}），请降低 target_max_dimension`,
-        413,
-        'TOO_LARGE',
-      );
-    }
-    result.base64 = buffer.toString('base64');
-  }
+  const returnMode = input.return_mode ?? 'image';
+  if (returnMode === 'path') return { ...meta, file_path: info.filePath };
 
-  return result;
+  const buffer = await fsp.readFile(info.filePath);
+  if (buffer.byteLength > MAX_BASE64_BYTES) {
+    throw new AppError(
+      `图片过大（${buffer.byteLength} 字节 > ${MAX_BASE64_BYTES}），请降低 target_max_dimension`,
+      413,
+      'TOO_LARGE',
+    );
+  }
+  if (returnMode === 'base64') return { ...meta, file_path: info.filePath, base64: buffer.toString('base64') };
+
+  const image = IMAGE_BLOCK_TYPES.has(info.mimeType)
+    ? { data: buffer, mimeType: info.mimeType }
+    : { data: await sharp(buffer).png().toBuffer(), mimeType: 'image/png' };
+  return new ToolContent([
+    { type: 'text', text: JSON.stringify({ ...meta, mime_type: image.mimeType }, null, 2) },
+    { type: 'image', data: image.data.toString('base64'), mimeType: image.mimeType },
+  ]);
 }
 
 /** 6. update_bug_status —— AI 修复完成后标记状态与回填提交 */

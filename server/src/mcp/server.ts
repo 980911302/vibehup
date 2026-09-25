@@ -52,6 +52,8 @@ export const TOOL_NAMES = [
   'download_skill',
   'upload_skill',
   'delete_skill',
+  // R84：本地文件签名直传（curl），内容不经过对话
+  'create_upload_url',
 ] as const;
 
 const TASK_STATUS_ENUM = TASK_STATUSES;
@@ -152,15 +154,16 @@ export function createMcpServer(): McpServer {
     {
       title: '检查图片资产',
       description:
-        '提取图像资产供多模态模型消费：自动缩放降采样至目标最大边长（默认 1080），返回本地绝对路径或 Base64 编码数据。',
+        '查看截图/图片：默认直接以图片返回（自动降采样到最大边 1080），你能直接看到画面，另附尺寸等元信息。' +
+        'path 只在与服务同机的 stdio 场景有用（返回服务端本地路径，容器部署时打不开）；base64 仅为兼容旧用法（编码塞在文本里，看不到图）。',
       inputSchema: {
         attachment_id: z.string().describe('附件 ID'),
         target_max_dimension: z.number().int().min(64).max(4096).optional().default(1080).describe('目标最大边长'),
         return_mode: z
-          .enum(['path', 'base64'])
+          .enum(['image', 'path', 'base64'])
           .optional()
-          .default('path')
-          .describe('path 返回本地绝对路径；base64 返回编码数据'),
+          .default('image')
+          .describe('image（默认）直接返回图片；path 返回服务端本地路径；base64 返回编码文本（旧用法）'),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -168,7 +171,7 @@ export function createMcpServer(): McpServer {
       tools.inspectImageAssetTool(args as {
         attachment_id: string;
         target_max_dimension?: number;
-        return_mode?: 'path' | 'base64';
+        return_mode?: 'image' | 'path' | 'base64';
       }),
     ),
   );
@@ -305,18 +308,43 @@ export function createMcpServer(): McpServer {
     {
       title: '上传附件',
       description:
-        'AI 把日志/截图贴回工单：base64 入，落盘并返回 attachment id 与访问 url（可被 create_bug 关联）。',
+        '把内容作为附件贴回工单，返回 attachment id（可传给 create_bug 的 attachment_ids）。' +
+        '文本（日志片段、JSON、报错堆栈）直接传 content，不要转 base64；data_base64 只适合很小的二进制。' +
+        '本地文件（截图、压缩包、较大的日志）请改用 create_upload_url：拿到 curl 命令在终端执行，文件内容不经过对话。' +
+        '给了 bug_id 就挂到该缺陷（以缺陷所在项目为准，可不传 project_slug）。',
       inputSchema: {
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        bug_id: z.string().optional().describe('关联到缺陷（缺省为 general）'),
-        file_name: z.string().describe('文件名（如 stacktrace.log）'),
-        file_type: z.string().describe('MIME 类型（如 text/plain、image/png）'),
-        data_base64: z.string().describe('文件内容 Base64'),
+        bug_id: z.string().optional().describe('关联到缺陷（缺省为项目通用附件）'),
+        file_name: z.string().describe('文件名，带扩展名（如 stacktrace.log、response.json）'),
+        file_type: z.string().optional().describe('MIME 类型，缺省按扩展名推断'),
+        content: z.string().optional().describe('文本原文（与 data_base64 二选一）'),
+        data_base64: z.string().optional().describe('二进制内容的 Base64（与 content 二选一，仅适合很小的文件）'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     guarded('upload_attachment', TOOL_SCOPES.upload_attachment, (ctx, args) =>
       ext.uploadAttachment(ctx, args as Parameters<typeof ext.uploadAttachment>[1]),
+    ),
+  );
+
+  server.registerTool(
+    'create_upload_url',
+    {
+      title: '申请上传链接',
+      description:
+        '上传本地文件（截图、日志文件、压缩包等，尤其是二进制或较大的文件）用它：返回一条 curl 命令，在终端执行即可把文件直接传到 VibeHub，' +
+        '文件内容不经过对话、不消耗 token。链接 10 分钟内有效、只能用一次；上传成功后终端输出里的 attachment.id 就是附件 ID。' +
+        '给了 bug_id 就挂到该缺陷。只有一小段文本时也可以直接用 upload_attachment 的 content。',
+      inputSchema: {
+        file_name: z.string().describe('文件名，带扩展名（如 screenshot.png、app.log）'),
+        file_type: z.string().optional().describe('MIME 类型，缺省按扩展名推断'),
+        bug_id: z.string().optional().describe('关联到缺陷（以缺陷所在项目为准）'),
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    guarded('create_upload_url', TOOL_SCOPES.create_upload_url, (ctx, args) =>
+      ext.createUploadUrl(ctx, args as Parameters<typeof ext.createUploadUrl>[1]),
     ),
   );
 
