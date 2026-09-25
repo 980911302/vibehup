@@ -7,7 +7,7 @@ import { pickInitialProject, readStoredProject, writeStoredProject } from '@/lib
 import { useLiveUpdates } from './vibehub-live';
 import type { Attachment, Bug, BugBoard, BugDetail, BugTemplate, Note, Project } from '@/lib/api-types';
 
-const EMPTY_BOARD: BugBoard = { open: [], in_progress: [], resolved: [], verified: [], closed: [] };
+const EMPTY_BOARD: BugBoard = { open: [], in_progress: [], resolved: [], verifying: [], verified: [], closed: [] };
 
 /**
  * 数据中枢（AGENTS.md 前端契约：页面只消费 hooks/use-vibehub.ts）。

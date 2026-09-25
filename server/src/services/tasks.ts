@@ -5,8 +5,9 @@ import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
 import { countAttachmentsFor } from './attachments.js';
+import { resolveStatusActor, type StatusActor } from './stale.js';
 
-export const TASK_STATUSES = ['todo', 'doing', 'review', 'done', 'cancelled'] as const;
+export const TASK_STATUSES = ['todo', 'doing', 'review', 'verifying', 'done', 'cancelled'] as const;
 export const TASK_PRIORITIES = ['low', 'medium', 'high'] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
@@ -15,20 +16,22 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   todo: '待办',
   doing: '进行中',
   review: '待验证',
+  verifying: '验证中',
   done: '已完成',
   cancelled: '已取消',
 };
 
 /**
- * 任务状态机（唯一真理源，MCP 侧经 workflow.ts 引用）：
- * 待办 → 进行中 → 待验证 → 已完成 为主干，不能跳级；
- * 待验证/已完成 → 进行中 = 打回（必须写原因）；进行中 → 待办 = 放回；
+ * 任务状态机（唯一真理源，MCP 侧经 workflow.ts 引用；前端 web/src/lib/task-flow.ts 为镜像）：
+ * 待办 → 进行中 → 待验证 → 验证中 → 已完成 为主干，不能跳级（R83：验证方接手先改「验证中」，看板上看得到有人在验）；
+ * 待验证/验证中/已完成 → 进行中 = 打回（必须写原因）；进行中 → 待办、验证中 → 待验证 = 放回；
  * 未完成的任务可取消，已取消只能重新打开回待办。
  */
 export const TASK_TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   todo: ['doing', 'cancelled'],
   doing: ['review', 'todo', 'cancelled'],
-  review: ['done', 'doing', 'cancelled'],
+  review: ['verifying', 'doing', 'cancelled'],
+  verifying: ['done', 'doing', 'review', 'cancelled'],
   done: ['doing'],
   cancelled: ['todo'],
 };
@@ -47,7 +50,7 @@ export function allowedNextTaskStatuses(status: string): TaskStatus[] {
 }
 
 function isReopen(from: TaskStatus, to: TaskStatus): boolean {
-  return to === 'doing' && (from === 'review' || from === 'done');
+  return to === 'doing' && (from === 'review' || from === 'verifying' || from === 'done');
 }
 
 function assertStatus(status: string): asserts status is TaskStatus {
@@ -91,7 +94,7 @@ export async function createTask(input: {
   status?: string;
   assigneeId?: string | null;
   labels?: string[];
-}): Promise<Task> {
+}, actor?: StatusActor): Promise<Task> {
   assertPriority(input.priority);
   if (input.status) {
     assertStatus(input.status);
@@ -112,6 +115,8 @@ export async function createTask(input: {
       status: input.status ?? 'todo',
       assigneeId: input.assigneeId ?? null,
       labels: normalizeLabels(input.labels ?? []),
+      statusChangedAt: new Date(),
+      ...(await resolveStatusActor(actor)),
     },
   });
   eventBus.publish({ type: 'task.created', projectId: task.projectId, taskId: task.id });
@@ -154,10 +159,16 @@ function buildTaskUpdate(existing: Task, patch: TaskPatch): Prisma.TaskUnchecked
   return data;
 }
 
-export async function updateTask(taskId: string, patch: TaskPatch): Promise<Task> {
+/** actor：流转时记「谁、什么时候」（R83：看板显示谁在处理、停了多久） */
+export async function updateTask(taskId: string, patch: TaskPatch, actor?: StatusActor): Promise<Task> {
   const existing = await prisma.task.findUnique({ where: { id: taskId } });
   if (!existing) throw new NotFoundError(`任务不存在: ${taskId}`);
-  const task = await prisma.task.update({ where: { id: taskId }, data: buildTaskUpdate(existing, patch) });
+  const data = buildTaskUpdate(existing, patch);
+  if (data.status !== undefined) {
+    data.statusChangedAt = new Date();
+    Object.assign(data, await resolveStatusActor(actor));
+  }
+  const task = await prisma.task.update({ where: { id: taskId }, data });
   eventBus.publish({
     type: 'task.updated',
     projectId: task.projectId,

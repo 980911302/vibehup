@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { PRIORITY_LABELS, SEVERITY_LABELS, type Bug } from '@/lib/api-types';
 import { BUG_STATUS_LABELS } from '@/lib/api-types';
-import { BUG_TRANSITIONS, bugNeedsReopenReason, bugTransitionLabel, type BugStatus } from '@/lib/bug-flow';
+import { BUG_TRANSITIONS, bugReasonKind, bugTransitionLabel, type BugStatus } from '@/lib/bug-flow';
+import { HandlingLine } from '@/components/activity/HandlingLine';
 import { LabelEditor } from '@/components/tasks/LabelEditor';
 
 /** 保存补丁并返回是否成功（失败由调用方 toast，不向外抛） */
@@ -21,33 +22,43 @@ export function Field({ label, children }: { label: string; children: React.Reac
   );
 }
 
-/** 只摆出合法的下一步；重开在页内写原因（不再用浏览器原生 prompt） */
+const REASON_FORM = {
+  reopen: { testId: 'bug-reopen-form', placeholder: '重开原因：还能复现的现象、在哪个环境', confirm: '确认重开' },
+  fail: { testId: 'bug-reopen-form', placeholder: '验证不通过的原因：哪一步、什么环境还能复现', confirm: '确认打回' },
+  close: { testId: 'bug-close-form', placeholder: '关闭原因：重复（写上缺陷号）/ 不修复 / 无法复现', confirm: '确认关闭' },
+} as const;
+
+/** 只摆出合法的下一步；重开 / 验证不通过 / 关闭 都在页内写原因（不再用浏览器原生 prompt） */
 export function BugStatusActions({ bug, disabled, save }: { bug: Bug; disabled: boolean; save: SaveBug }) {
-  const [reopenTo, setReopenTo] = useState<BugStatus | null>(null);
+  const [pending, setPending] = useState<BugStatus | null>(null);
   const [reason, setReason] = useState('');
   const from = bug.status;
 
   const go = async (to: BugStatus, why?: string) => {
-    const ok = await save({ status: to, ...(why ? { reopen_reason: why } : {}) }, `已改为「${BUG_STATUS_LABELS[to]}」`);
+    const kind = bugReasonKind(from, to);
+    const extra = !why ? {} : kind === 'close' ? { resolution_notes: why } : { reopen_reason: why };
+    const ok = await save({ status: to, ...extra }, `已改为「${BUG_STATUS_LABELS[to]}」`);
     if (ok) {
-      setReopenTo(null);
+      setPending(null);
       setReason('');
     }
   };
 
-  if (reopenTo) {
+  if (pending) {
+    const kind = bugReasonKind(from, pending);
+    const form = REASON_FORM[kind === 'close' ? 'close' : from === 'verifying' ? 'fail' : 'reopen'];
     return (
-      <div className="flex w-full flex-wrap items-center gap-2" data-testid="bug-reopen-form">
+      <div className="flex w-full flex-wrap items-center gap-2" data-testid={form.testId}>
         <input
           autoFocus
           className="h-8 min-w-0 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2.5 text-xs outline-none focus:border-[var(--brand)]"
-          placeholder="重开原因：还能复现的现象、在哪个环境"
+          placeholder={form.placeholder}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && reason.trim() && void go(reopenTo, reason.trim())}
+          onKeyDown={(e) => e.key === 'Enter' && reason.trim() && void go(pending, reason.trim())}
         />
-        <button className="vh-btn h-8 text-xs" disabled={!reason.trim()} onClick={() => void go(reopenTo, reason.trim())}>确认重开</button>
-        <button className="vh-btn ghost h-8 text-xs" onClick={() => setReopenTo(null)}>取消</button>
+        <button className="vh-btn h-8 text-xs" disabled={!reason.trim()} onClick={() => void go(pending, reason.trim())}>{form.confirm}</button>
+        <button className="vh-btn ghost h-8 text-xs" onClick={() => setPending(null)}>取消</button>
       </div>
     );
   }
@@ -55,11 +66,14 @@ export function BugStatusActions({ bug, disabled, save }: { bug: Bug; disabled: 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="rounded-md bg-[var(--brand-soft)] px-2 py-1 text-xs text-[var(--brand)]" data-testid="bug-status-chip">{BUG_STATUS_LABELS[from]}</span>
+      <HandlingLine item={bug} className="mr-1" />
       {!disabled && BUG_TRANSITIONS[from].map((to) => (
         <button
           key={to}
-          className="cursor-pointer rounded-md border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-elevated)]"
-          onClick={() => (bugNeedsReopenReason(from, to) ? setReopenTo(to) : void go(to))}
+          className={`cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors hover:bg-[var(--bg-elevated)] ${
+            to === 'closed' ? 'border-[var(--border-subtle)] text-[var(--text-tertiary)]' : 'border-[var(--border-strong)] text-[var(--text-secondary)]'
+          }`}
+          onClick={() => (bugReasonKind(from, to) ? setPending(to) : void go(to))}
           data-testid={`bug-to-${to}`}
         >
           {bugTransitionLabel(from, to)}

@@ -59,7 +59,9 @@
 | R80 | `list_skills` / `download_skill` | context:read | 查看技能（名称+描述）/ 下载全文；下载按 40K 字符分批，`pending` 文件带 `path` 再取，大文件按 `next_offset` 分段 |
 | R80 | `upload_skill` / `delete_skill` | skill:write（新 scope） | 同一范围（项目 / 通用）同名即覆盖 |
 
-**任务流转（R80）**：`todo → doing → review → done`，不能跳级；`review/done → doing` 为打回，必须带 `reopen_reason`；`doing → todo` 为放回；未完成的可 `cancelled`，取消后只能回 `todo`。规则唯一出处为 `server/src/services/tasks.ts` 的 `TASK_TRANSITIONS`，MCP 侧提示在 `workflow.ts`，技能说明在 `skills/vibehub-mcp/SKILL.md` §3。`get_project_context` 增加 `review_tasks` 与 `skills`（名称+描述）。
+**任务流转（R80，R83 加验证中）**：`todo → doing → review → verifying → done`，不能跳级；`review/verifying/done → doing` 为打回，必须带 `reopen_reason`；`doing → todo`、`verifying → review` 为放回；未完成的可 `cancelled`，取消后只能回 `todo`。
+
+**缺陷流转（R83）**：`open → in_progress → resolved → verifying → verified`，`verified` 是修复完成的终点；`closed` 只用于重复/不修/无法复现，必须带 `resolution_notes`，可从 `open/in_progress/resolved` 直接关；`verifying → resolved` 为放回。每次流转记录操作人（MCP 为密钥名）与时间；`get_project_context` 增加 `verifying_bugs` / `verifying_tasks`（带 `status_actor`、`status_changed_at`）与 `stale_items`（验证中 >2 小时、进行中 >24 小时），`awaiting_verification` 只含 `resolved`。规则唯一出处为 `server/src/services/tasks.ts` 的 `TASK_TRANSITIONS`，MCP 侧提示在 `workflow.ts`，技能说明在 `skills/vibehub-mcp/SKILL.md` §3。`get_project_context` 增加 `review_tasks` 与 `skills`（名称+描述）。
 
 ## 3.3 Token 经济学（`token-budget.ts` 契约）
 

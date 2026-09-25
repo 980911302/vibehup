@@ -11,6 +11,7 @@ import { readTextSlice, isTextFile, inspectImageAsset } from '../services/assets
 import { resolveLocalAttachment } from '../services/attachments.js';
 import { paginate, truncateText, DEFAULT_BUDGET } from './token-budget.js';
 import { bugNextStep, contextReminders } from './workflow.js';
+import { isStale } from '../services/stale.js';
 
 /**
  * MCP Tools 业务实现（设计文档第 4 节）。
@@ -31,30 +32,45 @@ function briefBug(bug: bugsService.BugWithMeta) {
     assignee_id: bug.assigneeId,
     attachment_count: bug.attachmentCount,
     updated_at: bug.updatedAt.toISOString(),
+    ...handledBy(bug),
+  };
+}
+
+/** 谁在处理、从什么时候开始（R83）：验证中/进行中的单子据此判断处理方是不是还在干活 */
+function handledBy(x: { statusActorName: string | null; statusChangedAt: Date | null; status: string }) {
+  return {
+    status_actor: x.statusActorName,
+    status_changed_at: x.statusChangedAt?.toISOString() ?? null,
+    ...(isStale(x.status, x.statusChangedAt) ? { stale: true } : {}),
   };
 }
 
 /** 1. get_project_context —— 冷启动：项目活跃状态简报 */
 export async function getProjectContext(input: { project_slug?: string }) {
   const project = await projectsService.resolveProject(input.project_slug);
-  const [board, tasks, doingTasks, reviewTasks, notes, skills] = await Promise.all([
+  const [board, tasks, doingTasks, reviewTasks, verifyingTasks, notes, skills] = await Promise.all([
     bugsService.getBugBoard(project.id, 20),
     tasksService.listTasks({ projectId: project.id, status: 'todo' }),
     tasksService.listTasks({ projectId: project.id, status: 'doing' }),
     tasksService.listTasks({ projectId: project.id, status: 'review' }),
+    tasksService.listTasks({ projectId: project.id, status: 'verifying' }),
     notesService.listNotes({ projectId: project.id, limit: 5 }),
     skillsService.listSkills({ projectId: project.id }),
   ]);
 
   const openBugs = [...board.open, ...board.in_progress].map(briefBug);
-  // 已修待验证 / 已验证待关闭：不摆出来，验证方就看不到该收尾的单子
-  const awaitingVerification = [...board.resolved, ...board.verified].map(briefBug);
-  const briefTask = (t: { id: string; title: string; priority: string; status: string }) => ({
+  // 已修待验证：不摆出来，验证方就看不到该接手的单子（R83 起「已验证」是终点，不再列入）
+  const awaitingVerification = board.resolved.map(briefBug);
+  const verifyingBugs = board.verifying.map(briefBug);
+  const briefTask = (t: tasksService.TaskWithMeta) => ({
     id: t.id,
     title: t.title,
     priority: t.priority,
     status: t.status,
+    ...handledBy(t),
   });
+  const staleBugs = [...board.in_progress, ...board.verifying].filter((b) => isStale(b.status, b.statusChangedAt));
+  const staleTasks = [...doingTasks, ...verifyingTasks].filter((t) => isStale(t.status, t.statusChangedAt));
 
   return {
     project: { id: project.id, name: project.name, slug: project.slug },
@@ -64,6 +80,8 @@ export async function getProjectContext(input: { project_slug?: string }) {
       todo_tasks: tasks.length,
       doing_tasks: doingTasks.length,
       review_tasks: reviewTasks.length,
+      verifying: verifyingBugs.length + verifyingTasks.length,
+      stale: staleBugs.length + staleTasks.length,
       recent_notes: notes.length,
       skills: skills.length,
     },
@@ -72,11 +90,17 @@ export async function getProjectContext(input: { project_slug?: string }) {
       awaitingVerification: awaitingVerification.length,
       doingTasks: doingTasks.length,
       reviewTasks: reviewTasks.length,
+      staleBugs: staleBugs.length,
+      staleTasks: staleTasks.length,
     }),
     open_bugs: openBugs.slice(0, DEFAULT_BUDGET.listLimit),
     awaiting_verification: awaitingVerification.slice(0, DEFAULT_BUDGET.listLimit),
     doing_tasks: doingTasks.slice(0, 20).map(briefTask),
     review_tasks: reviewTasks.slice(0, 20).map(briefTask),
+    // 验证中：谁在验、从什么时候开始；stale_items：处理中停留过久、可能已中断的
+    verifying_bugs: verifyingBugs.slice(0, DEFAULT_BUDGET.listLimit),
+    verifying_tasks: verifyingTasks.slice(0, 20).map(briefTask),
+    stale_items: [...staleBugs.map(briefBug), ...staleTasks.map(briefTask)].slice(0, DEFAULT_BUDGET.listLimit),
     todo_tasks: tasks.slice(0, 20).map(briefTask),
     // 团队技能：只给名称与描述，要用时 download_skill 取全文
     skills: skills.slice(0, DEFAULT_BUDGET.listLimit).map((s) => ({
@@ -241,7 +265,7 @@ export async function updateBugStatus(
     commit_hash?: string;
     reopen_reason?: string;
   },
-  actor?: { type: 'ai'; id?: string | null },
+  actor?: { type: 'ai'; id?: string | null; name?: string | null },
 ) {
   const bug = await bugsService.updateBug(input.bug_id, {
     status: input.status,

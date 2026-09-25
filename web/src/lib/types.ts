@@ -17,7 +17,7 @@ export interface Bug {
   expected_result: string | null;
   actual_result: string | null;
   severity: 'low' | 'normal' | 'high' | 'critical';
-  status: 'open' | 'in_progress' | 'resolved' | 'verified' | 'closed';
+  status: 'open' | 'in_progress' | 'resolved' | 'verifying' | 'verified' | 'closed';
   git_commit_hash: string | null;
   created_by: 'human' | 'ai';
   resolution_notes: string | null;
@@ -72,6 +72,7 @@ export interface BugBoard {
   open: Bug[];
   in_progress: Bug[];
   resolved: Bug[];
+  verifying: Bug[];
   verified: Bug[];
   closed: Bug[];
 }
@@ -100,6 +101,7 @@ export const BUG_STATUS_LABELS: Record<string, string> = {
   open: '待处理',
   in_progress: '进行中',
   resolved: '已解决',
+  verifying: '验证中',
   verified: '已验证',
   closed: '已关闭',
 };

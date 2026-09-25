@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { Task } from '@/lib/api-types';
 import { needsReopenReason, nextStatuses, transitionLabel, TASK_STATUS_LABELS, type TaskStatus } from '@/lib/task-flow';
+import { HandlingLine } from '@/components/activity/HandlingLine';
 
 interface TaskStatusActionsProps {
   task: Task;
@@ -33,7 +34,7 @@ export function TaskStatusActions({ task, disabled, onTransition }: TaskStatusAc
         <input
           autoFocus
           className="h-8 min-w-0 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2.5 text-xs outline-none focus:border-[var(--brand)]"
-          placeholder="打回原因：验收时发现了什么问题"
+          placeholder={from === 'verifying' ? '验证不通过的原因：哪里不符合预期' : '打回原因：验收时发现了什么问题'}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && reason.trim() && void run(reopenTo, reason.trim())}
@@ -51,6 +52,7 @@ export function TaskStatusActions({ task, disabled, onTransition }: TaskStatusAc
       <span className="rounded-md bg-[var(--brand-soft)] px-2 py-1 text-xs text-[var(--brand)]" data-testid="task-status-chip">
         {TASK_STATUS_LABELS[from]}
       </span>
+      <HandlingLine item={task} className="mr-1" />
       {!disabled && nextStatuses(task).map((to) => (
         <button
           key={to}

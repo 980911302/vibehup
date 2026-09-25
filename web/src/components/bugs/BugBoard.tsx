@@ -11,6 +11,7 @@ const COLUMNS: { key: keyof Board; label: string; accent: string }[] = [
   { key: 'open', label: BUG_STATUS_LABELS.open, accent: 'var(--sev-critical)' },
   { key: 'in_progress', label: BUG_STATUS_LABELS.in_progress, accent: 'var(--sev-high)' },
   { key: 'resolved', label: BUG_STATUS_LABELS.resolved, accent: 'var(--ok)' },
+  { key: 'verifying', label: BUG_STATUS_LABELS.verifying, accent: 'var(--gold)' },
   { key: 'verified', label: BUG_STATUS_LABELS.verified, accent: 'var(--brand)' },
   { key: 'closed', label: BUG_STATUS_LABELS.closed, accent: 'var(--text-tertiary)' },
 ];
@@ -28,7 +29,7 @@ interface BugBoardProps {
 }
 
 /**
- * 缺陷看板（UI 规范 §2.6）：五列 + 拖拽 + 多选。
+ * 缺陷看板（UI 规范 §2.6）：每个状态一列（R83 起六列，含验证中）+ 拖拽 + 多选。
  * 拖拽 ID 走 ref（R1 教训：React 状态批处理下 drop 时闭包会读到过期值）。
  */
 export function BugBoard({
@@ -117,7 +118,7 @@ export function BugBoard({
             key={col.key}
             data-testid={`board-column-${col.key}`}
             className={cn(
-              'flex min-h-32 min-w-[220px] flex-1 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-[opacity,border-color]',
+              'flex min-h-32 min-w-[150px] flex-1 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-[opacity,border-color]',
               draggingBug && !droppable && draggingBug.status !== col.key && 'opacity-50',
               isOver && 'border-[var(--gold)] bg-[var(--gold-bg)]',
               rejectCol === col.key && 'animate-[vh-shake_160ms_var(--ease)]',

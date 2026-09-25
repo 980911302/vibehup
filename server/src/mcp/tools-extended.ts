@@ -1,4 +1,4 @@
-import type { McpContext } from './context.js';
+import { mcpActor, type McpContext } from './context.js';
 import * as projectsService from '../services/projects.js';
 import * as notesService from '../services/notes.js';
 import * as tasksService from '../services/tasks.js';
@@ -72,6 +72,7 @@ export async function createBug(ctx: McpContext, input: {
     createdBy: 'ai',
     // 提出人记为密钥创建人（「张磊的 Cursor」建的单算张磊提的）；本地无密钥模式为空
     reporterId: ctx.apiKeyId ? await apiKeysService.getKeyCreatorId(ctx.apiKeyId) : null,
+    actor: mcpActor(ctx),
     attachmentIds: input.attachment_ids,
   });
   await bugComments.addComment({
@@ -147,7 +148,7 @@ export async function listTasks(_ctx: McpContext, input: { project_slug?: string
 }
 
 /** AI 把拆出来的工作项建成任务（可关联已上传附件）；与 Web「新建任务」同走 tasksService */
-export async function createTask(_ctx: McpContext, input: {
+export async function createTask(ctx: McpContext, input: {
   project_slug?: string;
   title: string;
   description?: string;
@@ -167,7 +168,7 @@ export async function createTask(_ctx: McpContext, input: {
     priority: input.priority,
     status: input.status,
     labels: input.labels,
-  });
+  }, mcpActor(ctx));
   if (input.attachment_ids?.length) {
     await attachmentsService.linkMany(input.attachment_ids, 'task', task.id);
   }
@@ -178,7 +179,7 @@ export async function createTask(_ctx: McpContext, input: {
   };
 }
 
-export async function updateTask(_ctx: McpContext, input: {
+export async function updateTask(ctx: McpContext, input: {
   task_id: string;
   title?: string;
   description?: string;
@@ -197,7 +198,7 @@ export async function updateTask(_ctx: McpContext, input: {
     priority: input.priority,
     labels: input.labels,
     reopenReason: input.reopen_reason,
-  });
+  }, mcpActor(ctx));
   return {
     ok: true,
     task: { id: task.id, title: task.title, status: task.status, priority: task.priority, labels: task.labels },

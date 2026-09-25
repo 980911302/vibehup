@@ -7,7 +7,7 @@ import { createOwnerWithProject, gotoBoardWithSession } from './fixtures.js';
 /**
  * R80 浏览器回归：
  * ① 当前项目跨页保持（功能巡检 B1：此前一换页就被重置）；
- * ② 任务五态 + 详情编辑 + 打回写原因 + 删除；
+ * ② 任务流转 + 详情编辑 + 打回写原因 + 删除；
  * ③ 技能：选文件夹上传 → 详情渲染 SKILL.md → 查看附带文件。
  */
 
@@ -30,7 +30,7 @@ test('当前项目跨页保持，刷新后仍记得', async ({ page }) => {
   await session.api.dispose();
 });
 
-test('任务：五列、详情改标签、提交验证、打回写原因、删除', async ({ page }) => {
+test('任务：六列、详情改标签、提交验证、打回写原因、删除', async ({ page }) => {
   const session = await createOwnerWithProject(`任务项目 ${Date.now()}`);
   const auth = { authorization: `Bearer ${session.token}` };
   const created = await session.api.post('/api/tasks', { headers: auth, data: { project_id: session.project.id, title: '接入企业微信扫码登录' } });
@@ -38,7 +38,7 @@ test('任务：五列、详情改标签、提交验证、打回写原因、删�
   await gotoBoardWithSession(page, session);
   await page.getByTestId('nav-tasks').click();
 
-  await expect(page.locator('[data-testid^="task-column-"]')).toHaveCount(5);
+  await expect(page.locator('[data-testid^="task-column-"]')).toHaveCount(6);
   await page.getByText('接入企业微信扫码登录').click();
   const detail = page.getByTestId('task-detail');
   await expect(detail).toBeVisible();

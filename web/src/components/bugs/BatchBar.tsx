@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Trash2, Tag, UserPlus, X } from 'lucide-react';
+import { BUG_STATUSES } from '@/lib/bug-flow';
+import { BUG_STATUS_LABELS } from '@/lib/api-types';
 
 /** 批量操作栏（步骤 07 §7.1：Excel 式批量，滑入动画） */
 export function BatchBar({
@@ -44,11 +46,10 @@ export function BatchBar({
             }}
           >
             <option value="" disabled>改状态</option>
-            <option value="open">待处理</option>
-            <option value="in_progress">进行中</option>
-            <option value="resolved">已解决</option>
-            <option value="verified">已验证</option>
-            <option value="closed">已关闭</option>
+            {/* 关闭要逐个写原因，不做批量（R83：已关闭只用于不修复的结局） */}
+            {BUG_STATUSES.filter((st) => st !== 'closed').map((st) => (
+              <option key={st} value={st}>{BUG_STATUS_LABELS[st]}</option>
+            ))}
           </select>
 
           <div className="flex items-center gap-1">

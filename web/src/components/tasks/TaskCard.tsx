@@ -3,6 +3,7 @@
 import { RotateCcw } from 'lucide-react';
 import type { Task } from '@/lib/api-types';
 import { cn } from '@/lib/utils';
+import { HandlingLine } from '@/components/activity/HandlingLine';
 
 export const PRIORITY_LABEL: Record<Task['priority'], string> = { low: '低', medium: '中', high: '高' };
 export const PRIORITY_COLOR: Record<Task['priority'], string> = {
@@ -22,7 +23,7 @@ interface TaskCardProps {
   onDragEnd: () => void;
 }
 
-/** 任务卡片：点击打开详情；标签、优先级、打回次数、负责人首字 */
+/** 任务卡片：点击打开详情；谁在处理·多久、标签、优先级、打回次数、负责人首字 */
 export function TaskCard({ task, dragging, draggable, onOpen, onDragStart, onDragEnd }: TaskCardProps) {
   const extra = task.labels.length - MAX_LABELS;
   return (
@@ -52,6 +53,7 @@ export function TaskCard({ task, dragging, draggable, onOpen, onDragStart, onDra
       {task.description && (
         <p className="mt-1 line-clamp-2 text-[11px] text-[var(--text-tertiary)]">{task.description}</p>
       )}
+      <HandlingLine item={task} className="mt-1.5" />
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]" title="优先级">
           <i className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: PRIORITY_COLOR[task.priority] }} />

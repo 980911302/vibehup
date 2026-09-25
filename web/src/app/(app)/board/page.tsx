@@ -16,7 +16,7 @@ import { BugContextMenu } from '@/components/bugs/BugContextMenu';
 import { BoardFilterPanel, WhoSegment } from '@/components/bugs/BoardFilterControls';
 import { activeFilterCount, filterBoard, type WhoFilter } from '@/lib/bug-filters';
 
-/** 缺陷看板页（步骤 07 §7.1）：筛选条 + 五列看板 + 批量栏 */
+/** 缺陷看板页（步骤 07 §7.1）：筛选条 + 看板（每个状态一列）+ 批量栏 */
 export default function BoardPage() {
   const store = useVibeHub();
   const { user } = useAuth();

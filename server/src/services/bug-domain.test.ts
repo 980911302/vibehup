@@ -27,13 +27,16 @@ describe('状态机', () => {
     expect(mid.status).toBe('in_progress');
     const done = await bugsService.updateBug(bug.id, { status: 'resolved' });
     expect(done.status).toBe('resolved');
-    // 非法：resolved → in_progress 允许（回流），但 closed → resolved 不允许
+    // 主干走到已验证（终点）；已验证 → 已解决 不允许，已关闭 → 已解决 也不允许
     const bug2 = await bugsService.createBug({ projectId: p.id, title: '状态机2' });
     await bugsService.updateBug(bug2.id, { status: 'in_progress' });
     await bugsService.updateBug(bug2.id, { status: 'resolved' });
+    await bugsService.updateBug(bug2.id, { status: 'verifying' });
     await bugsService.updateBug(bug2.id, { status: 'verified' });
-    await bugsService.updateBug(bug2.id, { status: 'closed' });
     await expect(bugsService.updateBug(bug2.id, { status: 'resolved' })).rejects.toThrow('不能从');
+    const bug3 = await bugsService.createBug({ projectId: p.id, title: '状态机3' });
+    await bugsService.updateBug(bug3.id, { status: 'closed', resolutionNotes: '重复' });
+    await expect(bugsService.updateBug(bug3.id, { status: 'resolved' })).rejects.toThrow('不能从');
   });
 
   it('resolved → open 需 reason；带 reason 后 reopenedCount+1 且评论流记录', async () => {
@@ -73,10 +76,10 @@ describe('状态机', () => {
   });
 
   it('BUG_TRANSITIONS 覆盖文档状态机全部边', () => {
-    expect(BUG_TRANSITIONS.open).toEqual(['in_progress']);
-    expect(BUG_TRANSITIONS.resolved).toContain('verified');
-    expect(BUG_TRANSITIONS.resolved).toContain('open');
-    expect(BUG_TRANSITIONS.verified).toContain('open');
+    expect(BUG_TRANSITIONS.open).toEqual(['in_progress', 'closed']);
+    expect(BUG_TRANSITIONS.resolved).toEqual(['verifying', 'in_progress', 'open', 'closed']);
+    expect(BUG_TRANSITIONS.verifying).toEqual(['verified', 'in_progress', 'open', 'resolved']);
+    expect(BUG_TRANSITIONS.verified).toEqual(['in_progress', 'open']);
     expect(BUG_TRANSITIONS.closed).toEqual(['open']);
   });
 });

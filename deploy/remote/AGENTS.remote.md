@@ -117,7 +117,7 @@ cd ~/vibehub && sed -i '' 's/image: vibehub:1.5/image: vibehub:1.6/' docker-comp
 
 ### 1.5 → 1.6 升级步骤（2026-09-24 起可用）
 
-1.6 = GitHub `main`（R80 + R81；云端验证时为 `bb58036`）。**用干净克隆构建**，不动 `~/Downloads/vibehup` 里的本地改动（那里的 AGENTS.md 是本机版，直接 `git pull` 容易冲突）：
+1.6 = GitHub `main`（R80 + R81 + R83）。**用干净克隆构建**，不动 `~/Downloads/vibehup` 里的本地改动（那里的 AGENTS.md 是本机版，直接 `git pull` 容易冲突）：
 
 ```bash
 DK=/usr/local/bin/docker
@@ -128,28 +128,31 @@ cd ~/vibehub-src-1.6 && $DK build -t vibehub:1.6 .                              
 cd ~/vibehub && cp docker-compose.yml docker-compose.yml.bak-1.5 \
   && sed -i '' 's/image: vibehub:1.5/image: vibehub:1.6/' docker-compose.yml && $DK compose up -d        # 4. 换镜像拉起
 $DK ps                                                                                                   # 5. 等到 healthy（约半分钟）
-$DK logs vibehub --tail 100 | grep -iE "migration|迁移"                                                  #    应看到 3 个新迁移已应用
+$DK logs vibehub --tail 100 | grep -iE "migration|迁移"                                                  #    应看到 4 个新迁移已应用
 $DK exec vibehub psql -U vibehub -d vibehub -Atc \
-  "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name DESC LIMIT 3"  #    应列出 bug_reporter / skills / task_labels_review
+  "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name DESC LIMIT 4"  #    应列出 status_actor / bug_reporter / skills / task_labels_review
 ```
 
-启动时自动应用 3 个迁移：`task_labels_review`（任务加标签/打回原因/打回次数）、`skills`（技能两张表）、`bug_reporter`（缺陷加提出人）。
-**只加列加表，不改不删存量数据，不碰向量列**：已在云端用 1.5 结构 + 存量数据（含 1024 维向量）实测升级，数据与向量逐字节不变，HNSW 索引保留。
+启动时自动应用 4 个迁移：`task_labels_review`（任务加标签/打回原因/打回次数）、`skills`（技能两张表）、`bug_reporter`（缺陷加提出人）、`status_actor`（缺陷与任务加「最近一次流转的时间与操作人」）。
+**只加列加表，不改不删存量数据，不碰向量列**：已在云端用 1.5 结构 + 存量数据（含 1024 维向量）实测升级（含 R83 共 4 个迁移），数据与向量逐字节不变，HNSW 索引保留；容器新库 9 个迁移全部应用、8 秒就绪。
+存量「已关闭」的缺陷保持不变；R83 起「已关闭」只用于不修复的结局，「已验证」就是修复完成的终点。
 
 **启动时要能访问 `binaries.prisma.sh`**：构建阶段的 node slim 镜像里没有 OpenSSL，Prisma 探测不到版本、按 1.1 下载了引擎；
 运行期（OpenSSL 3）找不到对应的迁移引擎，于是每个新容器启动时现下载一次（1.3～1.5 一直如此，本机网络能通所以没暴露）。
 若 `docker logs` 卡在「应用数据库迁移」并报下载 `schema-engine` 失败，是网络问题：重试 `compose up -d`，或先回滚。根治见 §10。
 
-**升级后验收**：浏览器登录看板，顶栏应有「全部 / 指派给我 / 我提的 / 未指派」；任务页五列；左侧有「技能」。
+**升级后验收**：浏览器登录看板，顶栏应有「全部 / 指派给我 / 我提的 / 未指派」，看板六列（含「验证中」）；任务页六列；左侧有「技能」。
 IDE 里重连 MCP，应看到 26 个工具（`node server/scripts/verify-mcp-key.mjs` 会断言 26）。存量缺陷的「提出人」显示「未记录」属正常（此前没记录）。
 
 **回滚**：`docker-compose.yml.bak-1.5` 拷回去再 `$DK compose up -d`。已实测 1.5 在升级后的库上能正常启动与写入（新迁移都是新增列/表）；
-唯一差异是 1.6 里改成「待验证 / 已取消」的任务在 1.5 的任务看板上不显示（1.5 只认待办/进行中/已完成三态）。要连数据一起回到升级前，用第 1 步的 dump 做 `pg_restore`。
+差异是 1.6 里进入新状态的记录在 1.5 看板上不显示：「待验证 / 验证中 / 已取消」的任务（1.5 只认待办/进行中/已完成），以及「验证中」的缺陷。要连数据一起回到升级前，用第 1 步的 dump 做 `pg_restore`。
 
 > 版本记录：1.5 → **1.6**（2026-09-24）R80：任务五态（待办/进行中/待验证/已完成/已取消）+ 标签 + 详情 + 删除；技能模块（Web 与 MCP 上传/下载/查看，挂项目或全团队通用）；
 > MCP 工具 16 → 26（补齐删除、任务详情、便签修改、技能四件套、`search`），新增 scope `skill:write`；各页共享当前项目。
 > R81：只读成员（viewer）真只读（缺陷/便签/附件写接口补角色校验）；缺陷详情全字段可改、只摆合法下一步、页内写重开原因、删除二次确认；
 > 记录缺陷提出人 + 看板「指派给我 / 我提的 / 未指派」；状态文案全中文（`verified` 显示为「已验证」）；CSV 导入缺陷 ID 前缀修正。
+> R83：缺陷与任务都加「验证中」（缺陷 已解决 → 验证中 → 已验证，已验证为终点；已关闭只用于重复/不修/无法复现且必须写原因；任务 待验证 → 验证中 → 已完成）；
+> 每次流转记下谁（MCP 记密钥名）、什么时候，卡片显示「谁 · 多久」，验证中 >2 小时、进行中 >24 小时标黄，`get_project_context` 增加 `verifying_bugs` / `verifying_tasks` / `stale_items`。
 >
 > 1.4 → **1.5**（2026-09-24）状态流转协议进 MCP（`server/src/mcp/workflow.ts`）：initialize 下发流转规则，
 > `get_project_context` 增加 `awaiting_verification`、`doing_tasks`、`reminders`，`get_bug_detail` / `update_bug_status` 返回
@@ -249,7 +252,7 @@ bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
 **易踩的参数坑**（实测确认）：
 - `upload_attachment` 不吃文件路径，必须 `data_base64` + `file_name` + `file_type`。
 - `update_bug_status` 的参数是 **`commit_hash`**，不是 `git_commit_hash`。
-- 状态**不能跳级**：合法路径 `open → in_progress → resolved → verified → closed`。
+- 状态**不能跳级**：合法路径 `open → in_progress → resolved → verifying → verified`（1.6 起；验证方先改 verifying 再动手，verified 是终点）；`closed` 只用于重复/不修/无法复现，必须写 `resolution_notes`。
 - `append_scratchpad` 不传 `project_slug` 会落成**全局便签**（项目下查不到）。
 
 ---

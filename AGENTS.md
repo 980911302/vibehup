@@ -14,6 +14,8 @@
 > **R80（用户决定，定向解冻）**：用户在查看功能巡检后明确要求施工以下功能，按其决定落地——任务五态（待办/进行中/待验证/已完成/已取消）+ 标签 + 可点开的详情 + 删除；技能模块（Skills：上传/下载/查看，挂项目或全团队通用）；MCP 增删改补全（26 工具）；任务/随手记/文件/技能页共享当前项目并带切换器。除此之外的新功能仍按冻结规则处理。
 >
 > **R81（用户决定，定向解冻）**：功能巡检第一批（只读成员真只读、拖拽跳级给提示、卡片显示截止日期、删除二次确认并去掉假「撤销」、状态文案全中文、文本查看器、粘贴孤儿附件）+ 第二批 1、2（缺陷详情全字段可改 / 只摆合法下一步 / 页内写重开原因；记录提出人 +「指派给我 / 我提的 / 未指派」筛选）。第三批（通知、AI 活动流可读化、技能版本、跨项目「我的待办」）留待试用后再定。
+>
+> **R83（用户决定，定向解冻）**：产品定位是让 AI 全自动干活，验证的 AI 接手后人看不到它在不在干——缺陷与任务都加「验证中」（缺陷 已解决 → 验证中 → 已验证，任务 待验证 → 验证中 → 已完成）；「已验证」是缺陷修复的终点，「已关闭」只留给重复 / 不修 / 无法复现且必须写原因；每次流转记下「谁、什么时候」，卡片显示「谁 · 多久」，停留过久标黄并经 MCP 提醒。
 
 ## 1. 权威文档索引（施工前必读）
 
@@ -51,7 +53,8 @@
 - 状态码：200/201/204/400/401/403/404/409/413/429。
 - **multipart 上传顺序无关契约（R53）**：`/api/upload` 的文件 part 与 project_id 等字段到达顺序客户端不保证，路由必须两段式（遍历落盘收集 → 字段齐后建记录），禁止「文件先到就抛缺少字段」（容器 curl 实测抓到，已有回归用例）。
 - **只读成员契约（R81）**：所有内容写接口（缺陷含批量/评论/导入、便签、附件上传与删除、任务、技能）一律挂 `requireRole(...WRITER_ROLES)`（`plugins/authenticate.ts` 唯一出处：owner/admin/member），viewer 只读；保存视图属个人偏好，viewer 可用。viewer 的 403 文案须告诉他找管理员改角色。前端写入口统一按 `useCanEdit()` 隐藏/禁用（`lib/auth.tsx`），不得各页自行判断角色。
-- **缺陷提出人契约（R81）**：`bugs.reporter_id`（外键 → users，删用户 SetNull）记录「谁提的」：Web/REST 取登录用户，CSV 导入取导入人，MCP 取密钥创建人（stdio 无密钥 = 不记录）；看板/列表/详情响应统一带 `reporter{id,name}` 与 `assignee{id,name}`（service 层 `WITH_PEOPLE`）；成员页「建单」数按 `reporter_id` 计。缺陷状态对人一律说中文（`BUG_STATUS_LABELS`：待处理/进行中/已解决/已验证/已关闭；`verified` 是「已验证」不是「待验证」），报错文案与活动流「状态变更」同此。
+- **缺陷提出人契约（R81）**：`bugs.reporter_id`（外键 → users，删用户 SetNull）记录「谁提的」：Web/REST 取登录用户，CSV 导入取导入人，MCP 取密钥创建人（stdio 无密钥 = 不记录）；看板/列表/详情响应统一带 `reporter{id,name}` 与 `assignee{id,name}`（service 层 `WITH_PEOPLE`）；成员页「建单」数按 `reporter_id` 计。缺陷状态对人一律说中文（`BUG_STATUS_LABELS`：待处理/进行中/已解决/验证中/已验证/已关闭；`verified` 是「已验证」不是「待验证」），报错文案与活动流「状态变更」同此。
+- **流转操作人契约（R83）**：缺陷与任务每次状态变化写 `status_changed_at` + `status_actor_type`（user/ai）+ `status_actor_name`（用户名 / MCP 密钥名的快照），新建时也写；只改字段不刷新。响应统一带 `status_changed_at` 与 `status_actor{type,name}`（历史数据为 null，界面用 `updated_at` 近似时长）。「卡住」阈值：验证中 >2 小时、进行中（缺陷 in_progress / 任务 doing）>24 小时——服务端 `services/stale.ts` 与前端 `lib/stale.ts` 是同一份阈值的两处镜像，改一处必须同改。看板接口的列一律取自状态机（`BUG_STATUSES`），**禁止**手写列名（R83 加列时手写列表把「验证中」静默丢掉，已有用例）。
 - **任务 / 技能接口契约（R80）**：写接口（POST/PATCH/DELETE）限 owner/admin/member，viewer 只读；任务 PATCH 字段 snake_case 映射（`assignee_id/labels/reopen_reason`），响应带 `labels/assignee/reopen_reason/reopened_count/allowed_next_statuses`，`GET /api/tasks/:id` 带附件。技能上传 `POST /api/skills` 收 JSON：`skill_md` + `files[{path, content_base64|content}]` 或 `zip_base64`（二选一），`project_id` 缺省/null = 全团队通用；同一范围同名即覆盖（201 新建 / 200 覆盖）；`GET /api/skills/:id/download` 返回 `<name>/SKILL.md + 附带文件` 的 zip。
 - **登录防暴力契约（R78）**：`/auth/login` 按「邮箱 + 客户端 IP」滑动窗口计数**失败**尝试（成功即清零），达阈值返回 429 `RATE_LIMITED` + 人话提示 + `Retry-After` 头；阈值/窗口由 `LOGIN_MAX_ATTEMPTS`（默认 5）/`LOGIN_THROTTLE_WINDOW_MS`（默认 15 分钟）控制；实现为进程内 Map（单容器部署成立，多副本须换共享存储）；客户端 IP 取 `X-Forwarded-For` 首段、缺省直连地址。**不得**因限流把正确密码也永久拒绝（窗口过期自动放行，已有用例锁定）。
 
@@ -71,7 +74,7 @@
 ## 5. MCP 契约
 
 - 26 工具（读取 11 + 写入 15）契约见 `docs/计划/03` §3.2.1，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`，每个工具所需 scope 唯一出处是 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES`；工具签名不得随意变更，变更须登记 PROGRESS §4。**删除类工具（R80 用户决定）**：`delete_bug/delete_task/delete_note/delete_attachment/delete_skill` 跟着对应数据的写权限走，不单设删除权限；工具描述要求 AI 删除前先向用户确认。
-- **状态流转协议（R79 新增，`server/src/mcp/workflow.ts` 是 MCP 侧唯一出处）**：缺陷 `open → in_progress → resolved → verified → closed`、任务 `todo → doing → review → done`（R80：外加 `cancelled`；`review/done → doing` 为打回须带 `reopen_reason`，任务规则唯一出处是 `services/tasks.ts` 的 `TASK_TRANSITIONS`），**不能跳级**。规则不靠 AI 自己想起来加载技能，而是三处随协议一起送到每个连上来的 AI：① `initialize` 的 `instructions`（`SERVER_INSTRUCTIONS`）；② 工具描述（`update_bug_status` / `create_task` 等）；③ 工具返回值（`get_bug_detail` / `get_task_detail` / `create_task` / `update_task` 带 `allowed_next_statuses` + `next_step`）。`get_project_context` 额外返回 `reminders`（该流转却没流转的存量）、`awaiting_verification`、`review_tasks` 与 `skills`（名称+描述）。**改流转规则时必须同步** `workflow.ts`、`skills/vibehub-mcp/SKILL.md` 第 2–4 节、`docs/计划/03`。
+- **状态流转协议（R79 新增，`server/src/mcp/workflow.ts` 是 MCP 侧唯一出处）**：缺陷 `open → in_progress → resolved → verifying → verified`（R83：`verified` 是修复完成的终点；`closed` 只用于重复/不修/无法复现，必须带 `resolution_notes`，可从 open/in_progress/resolved 直接关；回流到 open/in_progress 须带 `reopen_reason`；缺陷规则唯一出处是 `services/bug-flow.ts`）、任务 `todo → doing → review → verifying → done`（R80：外加 `cancelled`；`review/verifying/done → doing` 为打回须带 `reopen_reason`，`verifying → review` 为放回；任务规则唯一出处是 `services/tasks.ts` 的 `TASK_TRANSITIONS`），**不能跳级**；验证方接手先改 `verifying`，看板和 `get_project_context`（`verifying_bugs/verifying_tasks/stale_items`）据此显示谁在验、验了多久。前端 `lib/bug-flow.ts` / `lib/task-flow.ts` 是镜像。规则不靠 AI 自己想起来加载技能，而是三处随协议一起送到每个连上来的 AI：① `initialize` 的 `instructions`（`SERVER_INSTRUCTIONS`）；② 工具描述（`update_bug_status` / `create_task` 等）；③ 工具返回值（`get_bug_detail` / `get_task_detail` / `create_task` / `update_task` 带 `allowed_next_statuses` + `next_step`）。`get_project_context` 额外返回 `reminders`（该流转却没流转的存量）、`awaiting_verification`、`review_tasks` 与 `skills`（名称+描述）。**改流转规则时必须同步** `workflow.ts`、`skills/vibehub-mcp/SKILL.md` 第 2–4 节、`docs/计划/03`。
 - 每个工具经 `guard(scope, fn)`：scope 校验 → 执行 → `recordToolCall` 打点 → Token 经济学校形。
 - **MCP 上下文传递契约（R69）**：上下文一律经 `mcpStore`（AsyncLocalStorage）传递——SSE 路由在握手 keyed ctx 内 `run()` 消息处理；`guard` 取 store 上下文、无 store 才回落 env 解析（stdio）。**禁止**在 HTTP 进程里对每次调用单独 `resolveMcpContext()`——无 VIBEHUB_API_KEY 环境变量会静默落到 local 全权：scope 校验被绕过（限权密钥可调写操作）+ 用量打点 api_key_id 为 NULL。
 - Token 经济学：列表默认 20 条 + has_more；长文本字段 500 字符截断并提示；图片默认降采样 1080；base64 需显式声明且 ≤4MB。
@@ -109,7 +112,7 @@
 
 - 测试库 = 一次性 pg 容器（`scripts/test-db.sh`，`TEST_DATABASE_URL` 指向 55432），与生产同引擎；禁 sqlite 分支。
 - 每个 bugfix 先写复现用例；services 行覆盖 ≥80%。
-- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项 + Playwright E2E + 日志脱敏实证）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R81 为 vitest 253 + E2E 10），以脚本当次输出为准。**门禁起服务防残留（R81）**：`npx tsx` 是三层进程，只 kill npx 会留下真正监听端口的 node，下一轮门禁就连上旧服务测旧代码却照样 PASS（本轮实测抓到）；脚本用 `kill_tree` 杀整棵进程树，起服务前端口已有应答直接判失败。
+- **门禁契约**：后端提交前必须 `bash scripts/acceptance.sh` 退出码 0（tsc + vitest 全量用例 + HTTP 冒烟 14 项 + Playwright E2E + 日志脱敏实证）；该脚本是唯一权威门禁，个人判断不作为通过依据。用例数随 TDD 增长（R83 为 vitest 275 + E2E 13，另 web 单测 36、26 工具 MCP 自测 88 项），以脚本当次输出为准。**门禁起服务防残留（R81）**：`npx tsx` 是三层进程，只 kill npx 会留下真正监听端口的 node，下一轮门禁就连上旧服务测旧代码却照样 PASS（本轮实测抓到）；脚本用 `kill_tree` 杀整棵进程树，起服务前端口已有应答直接判失败。
 - 声称"完成/通过"前必须当场跑验证命令并引用输出（verification-before-completion 技能同此要求）。
 
 ## 9. 技能治理契约（Skill Governance）

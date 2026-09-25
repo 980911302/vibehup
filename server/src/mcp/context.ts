@@ -17,6 +17,13 @@ export interface McpContext {
   scopes: ReadonlySet<string>;
   /** 审计标签：'local' 或 'cursor-main(vhk_live_7Kd9)' */
   actorLabel: string;
+  /** 看板上显示的操作人名（密钥名，如「Cursor-验证」）；R83 起记在流转记录上 */
+  actorName?: string;
+}
+
+/** MCP 写入的操作人：看板据此显示「谁在处理」 */
+export function mcpActor(ctx: McpContext): { type: 'ai'; id: string | null; name: string } {
+  return { type: 'ai', id: ctx.apiKeyId, name: ctx.actorName ?? (ctx.mode === 'local' ? '本地 AI' : 'AI') };
 }
 
 export class McpContextError extends Error {
@@ -29,7 +36,7 @@ export class McpContextError extends Error {
 export async function resolveMcpContext(env: NodeJS.ProcessEnv = process.env): Promise<McpContext> {
   const rawKey = env.VIBEHUB_API_KEY?.trim();
   if (!rawKey) {
-    return { mode: 'local', apiKeyId: null, scopes: LOCAL_SCOPES, actorLabel: 'local' };
+    return { mode: 'local', apiKeyId: null, scopes: LOCAL_SCOPES, actorLabel: 'local', actorName: '本地 AI' };
   }
   return loadKeyedContext(rawKey);
 }
@@ -78,6 +85,7 @@ function toKeyedContext(key: (ApiKey & { creator: { status: string } | null }) |
     apiKeyId: key.id,
     scopes: new Set<string>(key.scopes),
     actorLabel: `${key.name}(${key.keyPrefix})`,
+    actorName: key.name,
   };
 }
 

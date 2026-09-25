@@ -68,9 +68,10 @@ describe('缺陷与任务', () => {
     const t = await tasksService.createTask({ projectId: p.id, title: '任务', priority: 'high', assigneeId: 'usr_1' });
     expect(t.assigneeId).toBe('usr_1');
     await expect(tasksService.createTask({ projectId: p.id, title: 'x', priority: 'urgent' })).rejects.toThrow('priority');
-    // 五态流转不能跳级：待办 → 进行中 → 待验证 → 已完成
+    // 流转不能跳级：待办 → 进行中 → 待验证 → 验证中 → 已完成
     await tasksService.updateTask(t.id, { status: 'doing' });
     await tasksService.updateTask(t.id, { status: 'review' });
+    await tasksService.updateTask(t.id, { status: 'verifying' });
     const done = await tasksService.updateTask(t.id, { status: 'done' });
     expect(done.status).toBe('done');
   });

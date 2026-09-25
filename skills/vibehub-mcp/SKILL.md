@@ -5,33 +5,35 @@ description: 用 VibeHub MCP 读写团队的缺陷（bug_ 开头）、任务（t
 
 # VibeHub：缺陷与任务的状态流转
 
-**看板上的状态就是团队看到的事实。** 修好了没改 resolved，别人看到的就是「还没修」；验证过了没关单，它就永远挂在待验证。所以：
+**看板上的状态就是团队看到的事实。** 修好了没改 resolved，别人看到的就是「还没修」；开始验证却没改 verifying，别人就不知道有没有人在验；验证过了没改 verified，它就永远挂在验证中。所以：
 
 > **动手就改状态，做完当场流转，不等人提醒。每轮回复前自查一遍。**
 
 ## 1. 开工
 
-1. `get_project_context(project_slug="白泽团队")`：看 `reminders`（该流转却还没流转的存量，照做）、`open_bugs`、`awaiting_verification`（待验证或待关闭）、`doing_tasks`、`review_tasks`（待验收）、`todo_tasks`，以及 `skills`（本项目和全团队通用的技能，只有名称和描述）。
+1. `get_project_context(project_slug="白泽团队")`：看 `reminders`（该流转却还没流转的存量，照做）、`open_bugs`、`awaiting_verification`（已解决、等人验证）、`verifying_bugs` / `verifying_tasks`（验证中：`status_actor` 是谁在验，`status_changed_at` 是从什么时候开始）、`stale_items`（处理中停留过久、处理方可能已中断的）、`doing_tasks`、`review_tasks`（待验收）、`todo_tasks`，以及 `skills`（本项目和全团队通用的技能，只有名称和描述）。
 2. 系统里只有一个项目时可以不传 `project_slug`；有多个项目时必须传，不要猜。
 3. 看细节：`get_bug_detail` / `get_task_detail`（都会给出 `allowed_next_statuses` 和 `next_step`）、`list_tasks`、`search`。附件用 `read_attachment_text` / `inspect_image_asset`。
 
-## 2. 缺陷：open → in_progress → resolved → verified → closed
+## 2. 缺陷：open → in_progress → resolved → verifying → verified
 
-不能跳级，一次只走一步，需要时连续调用。每次 `update_bug_status` 都会返回 `next_step`，照着做。
+不能跳级，一次只走一步，需要时连续调用。**verified 就是修复完成的终点**，不用再关。每次 `update_bug_status` 都会返回 `next_step`，照着做。
+每次流转都会记下是谁（MCP 记密钥名）、什么时候；看板卡片上显示「谁 · 多久」，验证中超过 2 小时、进行中超过 24 小时会标黄。
 
 | 什么时候 | 谁来 | 怎么调 |
 |---|---|---|
 | 开始定位或修复 | 修的人 | `status=in_progress`（**开工第一件事**） |
 | 修完、自测通过 | 修的人 | `status=resolved`，`resolution_notes` 写**根因、改了什么、怎么自测的**；有提交就带 `commit_hash`，没提交就写明改动在哪个分支、哪些文件 |
-| 按复现步骤验证，不再复现 | 验证方：幕僚、报告人或验收方 | `status=verified`，`resolution_notes` 写在哪个环境、怎么验的 |
-| 验证通过，并且修复已在最终环境生效或不需要发布 | 验证方或幕僚 | `status=closed`。验证时就在最终环境的，verified 之后紧接着 closed |
-| 在测试环境验证通过，但生产还没发 | 验证方 | 停在 `verified`；发布后由运维或幕僚改 `closed` |
-| 验证没通过 | 验证方 | `status=open`，**必须**填 `reopen_reason`（写清楚现象） |
-| 重复、不修、无法复现 | 幕僚或经手人 | `in_progress` → `resolved`（`resolution_notes` 写「重复：bug_xxx」「不修复：原因」或「无法复现：试过的步骤」）→ `closed` |
+| 开始验证 | 验证方：幕僚、报告人或验收方 | `status=verifying`（**先改再动手**，团队靠它知道有人在验） |
+| 按复现步骤验证，不再复现 | 验证方 | `status=verified`，`resolution_notes` 写在哪个环境、怎么验的 |
+| 验证没通过 | 验证方 | `status=in_progress`（或 `open`），**必须**填 `reopen_reason`（写清楚现象；活动流记为「验证不通过」） |
+| 验不了、要交给别人 | 验证方 | `status=resolved`（放回待验证，不用写原因） |
+| 重复、不修、无法复现 | 幕僚或经手人 | `status=closed`，**必须**在 `resolution_notes` 写原因（「重复：bug_xxx」「不修复：原因」「无法复现：试过的步骤」）；可从 open / in_progress / resolved 直接关。**closed 只用于这种不修复的结局** |
+| 已验证 / 已关闭的问题又出现 | 发现的人 | `status=open` 或 `in_progress`，**必须**填 `reopen_reason` |
 
-**自测不算验证。** 修的人停在 resolved。用户明确说「验证过了」「没问题了」「可以关了」时，由当前 AI 代为流转 verified，符合条件的再改 closed。
+**自测不算验证。** 修的人停在 resolved。用户明确说「验证过了」「没问题了」时，由当前 AI 代为流转：先 `verifying` 再 `verified`。
 
-## 3. 任务：todo → doing → review → done（外加 cancelled）
+## 3. 任务：todo → doing → review → verifying → done（外加 cancelled）
 
 不能跳级，一次只走一步。每次 `update_task` 都会返回 `allowed_next_statuses` 和 `next_step`，照着做。
 
@@ -39,12 +41,14 @@ description: 用 VibeHub MCP 读写团队的缺陷（bug_ 开头）、任务（t
 |---|---|---|
 | 开始做 | 做的人 | `update_task(status=doing)` |
 | 做完，自测通过 | 做的人 | `update_task(status=review)`（待验证，等人验收） |
-| 验收通过 | 验收方；用户说「验收过了」「没问题」时由当前 AI 代为流转 | `update_task(status=done)` |
+| 开始验收 | 验收方 | `update_task(status=verifying)`（**先改再动手**） |
+| 验收通过 | 验收方；用户说「验收过了」「没问题」时由当前 AI 代为流转（先 verifying 再 done） | `update_task(status=done)` |
 | 验收没通过 / 已完成的要返工 | 验收方 | `update_task(status=doing)`，**必须**填 `reopen_reason`（写清楚哪里不行） |
+| 验不了、要交给别人 | 验收方 | `update_task(status=review)`（放回待验证） |
 | 做到一半被卡住 | 做的人 | 保持 `doing`，在回复里说明卡在哪、等谁 |
 | 不做了 | 经手人（先和用户确认） | `update_task(status=cancelled)`；以后要重做改回 `todo` |
 | 做的过程中拆出新的待办 | 做的人 | `create_task`（马上要做的可以直接建成 `doing`，可带 `labels`） |
-| 验收类任务 | 验收方 | 验收做完就走到 `review` → `done`；没过的项用 `create_bug` 建缺陷 |
+| 验收类任务 | 验收方 | 验收做完就走到 `review` → `verifying` → `done`；没过的项用 `create_bug` 建缺陷 |
 
 **自己做的不算验收。** 做的人停在 `review`。
 
@@ -54,8 +58,8 @@ description: 用 VibeHub MCP 读写团队的缺陷（bug_ 开头）、任务（t
 
 1. 本轮碰过哪些 `bug_` / `tsk_`？每个的状态和实际情况一致吗？
 2. 开始修的缺陷改 `in_progress` 了吗？修完的改 `resolved`、写了 `resolution_notes` 吗？
-3. 开始做的任务改 `doing` 了吗？做完的改 `review` 了吗？用户说验收过了的改 `done` 了吗？
-4. 用户说验证过了的，改 `verified` / `closed` 了吗？
+3. 开始做的任务改 `doing` 了吗？做完的改 `review` 了吗？开始验收的改 `verifying` 了吗？验收过了的改 `done` 了吗？
+4. 开始验证的缺陷改 `verifying` 了吗？验证过了的改 `verified` 了吗？验证中停在那里没结论的（`stale_items`）处理了吗？
 5. 在回复末尾列出流转记录，例如：
 
 ```
@@ -83,16 +87,20 @@ VibeHub：bug_ab12 in_progress → resolved（commit 1a2b3c）；tsk_cd34 doing 
 - 新建缺陷或任务前先 `search` 查重，确认是新问题再建。缺陷要写清复现步骤、期望结果和实际结果。
 - 工具返回 scope 或权限错误时，如实报告缺哪个权限，不要绕过。
 - `purge_trash` 会永久删除文件，只有用户明确要求清理回收站时才调。
-- `delete_bug` / `delete_task` / `delete_note` / `delete_attachment` / `delete_skill` 删除后不可恢复：除非用户明确要求删除，否则先向用户确认。缺陷的不修、重复、无法复现走状态流转（resolved 写原因后 closed），不要删。
+- `delete_bug` / `delete_task` / `delete_note` / `delete_attachment` / `delete_skill` 删除后不可恢复：除非用户明确要求删除，否则先向用户确认。缺陷的不修、重复、无法复现走状态流转（改 closed 并在 resolution_notes 写原因），不要删。
 - MCP 密钥、密码、token 不要写进任何记录、代码或日志。
 
 ## 7. 常见报错
 
 | 报错 | 原因 / 做法 |
 |---|---|
-| 「不能从「待处理」直接改为「已解决」，可以改为：进行中」 | 不能跳级：先调一次 `in_progress`，再调 `resolved`（报错里的中文状态名对应：待处理 open / 进行中 in_progress / 已解决 resolved / 已验证 verified / 已关闭 closed） |
+| 「不能从「待处理」直接改为「已解决」，可以改为：进行中 / 已关闭」 | 不能跳级：先调一次 `in_progress`，再调 `resolved`（报错里的中文状态名对应：待处理 open / 进行中 in_progress / 已解决 resolved / 验证中 verifying / 已验证 verified / 已关闭 closed） |
+| 「不能从「已解决」直接改为「已验证」，可以改为：验证中 …」 | 验证要先改 `verifying` 再改 `verified` |
+| 「已验证就是修复完成的终点，不用再关闭」 | verified 之后不用再改 closed；closed 只用于不修复的结局 |
+| 「关闭缺陷需要写明原因（resolution_notes）」 | 关闭要在 `resolution_notes` 写重复 / 不修复 / 无法复现的原因 |
 | 「从「已解决」重开到「待处理」需要填写重开原因（reopen_reason）」 | 回流要带 `reopen_reason` |
 | 「不能从「待办」直接改为「待验证」」 | 任务也不能跳级：先 `doing`，做完再 `review` |
+| 「不能从「待验证」直接改为「已完成」，可以改为：验证中 …」 | 验收要先改 `verifying` 再改 `done` |
 | 「从「待验证」打回「进行中」需要写明原因」 | 任务打回要带 `reopen_reason` |
 | 「SKILL.md 需要以 --- 包起来的 frontmatter 开头」 | 上传技能时 `skill_md` 开头要有 `name` 和 `description` |
 | 「未指定 project_slug，且有多个进行中的项目」 | 按报错里列出的 slug 选当前仓库对应的项目 |

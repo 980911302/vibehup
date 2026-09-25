@@ -85,7 +85,7 @@ export function BugDetailDialog({ bugId, canEdit, onClose, onChanged, onOpenText
               <BugStatusActions bug={bug} disabled={!canEdit} save={save} />
               <BugMetaFields bug={bug} canEdit={canEdit} members={members} save={save} />
               <BugTextFields bug={bug} canEdit={canEdit} save={save} />
-              {bug.resolution_notes && <Field label="修复说明"><p className="whitespace-pre-wrap text-sm">{bug.resolution_notes}</p></Field>}
+              {bug.resolution_notes && <Field label={bug.status === 'closed' ? '关闭原因' : '修复说明'}><p className="whitespace-pre-wrap text-sm">{bug.resolution_notes}</p></Field>}
               {bug.git_commit_hash && (
                 <Field label="修复 Commit"><code className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs">{bug.git_commit_hash}</code></Field>
               )}
