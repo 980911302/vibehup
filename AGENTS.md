@@ -73,7 +73,7 @@
 
 ## 5. MCP 契约
 
-- 26 工具（读取 11 + 写入 15）契约见 `docs/计划/03` §3.2.1，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`，每个工具所需 scope 唯一出处是 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES`；工具签名不得随意变更，变更须登记 PROGRESS §4。**删除类工具（R80 用户决定）**：`delete_bug/delete_task/delete_note/delete_attachment/delete_skill` 跟着对应数据的写权限走，不单设删除权限；工具描述要求 AI 删除前先向用户确认。
+- 27 工具（读取 11 + 写入 16）契约见 `docs/计划/03` §3.2.1，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`，每个工具所需 scope 唯一出处是 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES`；工具签名不得随意变更，变更须登记 PROGRESS §4。**删除类工具（R80 用户决定）**：`delete_bug/delete_task/delete_note/delete_attachment/delete_skill` 跟着对应数据的写权限走，不单设删除权限；工具描述要求 AI 删除前先向用户确认。
 - **状态流转协议（R79 新增，`server/src/mcp/workflow.ts` 是 MCP 侧唯一出处）**：缺陷 `open → in_progress → resolved → verifying → verified`（R83：`verified` 是修复完成的终点；`closed` 只用于重复/不修/无法复现，必须带 `resolution_notes`，可从 open/in_progress/resolved 直接关；回流到 open/in_progress 须带 `reopen_reason`；缺陷规则唯一出处是 `services/bug-flow.ts`）、任务 `todo → doing → review → verifying → done`（R80：外加 `cancelled`；`review/verifying/done → doing` 为打回须带 `reopen_reason`，`verifying → review` 为放回；任务规则唯一出处是 `services/tasks.ts` 的 `TASK_TRANSITIONS`），**不能跳级**；验证方接手先改 `verifying`，看板和 `get_project_context`（`verifying_bugs/verifying_tasks/stale_items`）据此显示谁在验、验了多久。前端 `lib/bug-flow.ts` / `lib/task-flow.ts` 是镜像。规则不靠 AI 自己想起来加载技能，而是三处随协议一起送到每个连上来的 AI：① `initialize` 的 `instructions`（`SERVER_INSTRUCTIONS`）；② 工具描述（`update_bug_status` / `create_task` 等）；③ 工具返回值（`get_bug_detail` / `get_task_detail` / `create_task` / `update_task` 带 `allowed_next_statuses` + `next_step`）。`get_project_context` 额外返回 `reminders`（该流转却没流转的存量）、`awaiting_verification`、`review_tasks` 与 `skills`（名称+描述）。**改流转规则时必须同步** `workflow.ts`、`skills/vibehub-mcp/SKILL.md` 第 2–4 节、`docs/计划/03`。
 - 每个工具经 `guard(scope, fn)`：scope 校验 → 执行 → `recordToolCall` 打点 → Token 经济学校形。
 - **MCP 上下文传递契约（R69）**：上下文一律经 `mcpStore`（AsyncLocalStorage）传递——SSE 路由在握手 keyed ctx 内 `run()` 消息处理；`guard` 取 store 上下文、无 store 才回落 env 解析（stdio）。**禁止**在 HTTP 进程里对每次调用单独 `resolveMcpContext()`——无 VIBEHUB_API_KEY 环境变量会静默落到 local 全权：scope 校验被绕过（限权密钥可调写操作）+ 用量打点 api_key_id 为 NULL。
@@ -83,6 +83,7 @@
 - **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效（SSE 长连接由 guard 每次调用按 ID 复核密钥状态与 scope，R76）；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。
 - **成员与密钥联动（R76）**：密钥校验连带检查创建人状态——账号禁用则其密钥随之停用（可逆，恢复账号即恢复）；移除成员在同一事务内先吊销其创建的全部密钥再删用户（`createdBy` 为 SetNull，否则离职人员密钥继续有效）。
 - **项目解析契约（R76）**：工具未传 `project_slug` 时，仅当只有一个进行中（未归档）项目才自动选择，否则 `VALIDATION_ERROR` 并列出可选 slug；**禁止**按 MCP 服务进程 cwd 猜项目或静默回落到最近更新的项目（容器内 cwd=/app、stdio 为 vibehub/server，均与 IDE 工作区无关，会把 AI 写入落进别的项目）。
+- **MCP 文件收发契约（R84，试用反馈）**：AI 传文件不经过对话、看图直接看到。① `upload_attachment`：文本传 `content`（原文，禁止要求 AI 转 base64），`data_base64` 仅作很小的二进制，二者必须且只能给一个；`file_type` 缺省按扩展名推断（`core/mime.ts`）；给了 `bug_id` 以缺陷所在项目为准并校验存在。② `create_upload_url`（attachment:write）：签发 `PUT /api/uploads?token=…`（`core/upload-grant.ts`：HMAC 以 `upload:` 前缀与 JWT 共用密钥、10 分钟、nonce 一次性），AI 在终端执行返回的 `curl -T`；链接地址取 SSE 握手时客户端连入的地址（`mcpStore.origin()`，stdio 回落本机端口）；上传时复核签发密钥（撤销/过期/降权即失效）；**令牌必须走查询参数**（Fastify 路径参数上限 100 字符，令牌更长会 414），访问日志沿用 `?token=` 脱敏。③ `inspect_image_asset` 默认 `return_mode=image`，经 guard 的 `ToolContent` 透传 MCP 图片内容块（png/jpeg/gif/webp，其余转 PNG）；`path` 只对同机 stdio 有意义，`base64` 仅兼容旧用法（塞在文本里，模型看不到图）。
 
 ## 6. 前端契约
 

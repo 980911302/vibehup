@@ -45,7 +45,7 @@
 
 > 说明：13 号含两个工具函数名，合计 14 个可调用工具。
 
-### 3.2.1 后续扩充（现行 26 个：读取 11 + 写入 15）
+### 3.2.1 后续扩充（现行 27 个：读取 11 + 写入 16）
 
 > 现行清单以 `server/src/mcp/server.ts` 的 `TOOL_NAMES` 为唯一出处，每个工具所需 scope 以 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES` 为唯一出处。
 
@@ -58,6 +58,8 @@
 | R80 | `update_note` | note:write | 改内容 / 标签 / 置顶 |
 | R80 | `list_skills` / `download_skill` | context:read | 查看技能（名称+描述）/ 下载全文；下载按 40K 字符分批，`pending` 文件带 `path` 再取，大文件按 `next_offset` 分段 |
 | R80 | `upload_skill` / `delete_skill` | skill:write（新 scope） | 同一范围（项目 / 通用）同名即覆盖 |
+| R84 | `create_upload_url` | attachment:write | 试用反馈：本地文件签名直传——返回 curl 命令，AI 在终端执行，文件内容不经过对话；10 分钟有效、只能用一次 |
+| R84 | （改）`upload_attachment` / `inspect_image_asset` | — | 上传新增 `content` 文本直传（与 `data_base64` 二选一，`file_type` 可推断，`bug_id` 定项目）；看图默认返回 MCP 图片内容块，模型直接看到截图 |
 
 **任务流转（R80，R83 加验证中）**：`todo → doing → review → verifying → done`，不能跳级；`review/verifying/done → doing` 为打回，必须带 `reopen_reason`；`doing → todo`、`verifying → review` 为放回；未完成的可 `cancelled`，取消后只能回 `todo`。
 
