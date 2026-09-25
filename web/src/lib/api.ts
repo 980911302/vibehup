@@ -22,6 +22,8 @@ import type {
 } from './api-types';
 import { ApiError, BASE, currentAccessToken, parseError, rawRequest, request, setTokenAccessors } from './http';
 import { taskApi, skillApi } from './api-more';
+import type { StatsResponse } from './stats-types';
+import { scopeParam } from './stats-view';
 
 export { ApiError, setTokenAccessors };
 
@@ -219,6 +221,9 @@ export const api = {
   getSettings: () => request<Record<string, string>>('/system'),
   updateSettings: (body: Record<string, string>) =>
     request<Record<string, string>>('/system', { method: 'PATCH', body: JSON.stringify(body) }),
+
+  // ============ 统计（R85，全员可读） ============
+  stats: (params: { projectId: string | null }) => request<StatsResponse>(`/stats?project_id=${scopeParam(params.projectId)}`),
 
   // ============ AI 活动（卡片 36，全员可读） ============
   recentActivity: () => request<ActivityItem[]>('/activity/recent'),
