@@ -74,9 +74,9 @@ npm run dev:web
 
 ## 连接 IDE Agent（MCP）
 
-VibeHub 支持两种传输，密钥均在 Web 端「MCP 密钥」页创建：
+VibeHub 支持三种连接方式，远程连接的密钥均在 Web 端「MCP 密钥」页创建：
 
-**方式一：SSE（Docker 部署默认）**
+**方式一：SSE（IDE / 兼容客户端）**
 
 ```json
 {
@@ -89,7 +89,11 @@ VibeHub 支持两种传输，密钥均在 Web 端「MCP 密钥」页创建：
 }
 ```
 
-**方式二：stdio（同机开发/源码部署）**
+**方式二：Streamable HTTP（ChatGPT Work / MCP Events）**
+
+将服务通过 HTTPS 反向代理对外提供 `/mcp`，在 ChatGPT Work 的自定义 MCP 插件中填入该 HTTPS 地址，并用 Bearer 密钥完成连接。连接后，在 Work 对话中说明要订阅的 VibeHub 事件和收到事件后的处理方式。MCP Events 通过 PG LISTEN/NOTIFY 接收 Web 与独立 MCP 进程产生的业务事件；回调地址必须为 HTTPS，签名密钥会加密后存库。旧 `/mcp/sse` 仍供现有 IDE 配置使用。
+
+**方式三：stdio（同机开发/源码部署）**
 
 ```json
 {

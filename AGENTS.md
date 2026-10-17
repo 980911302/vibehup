@@ -19,6 +19,8 @@
 >
 > **R85（用户决定，定向解冻）**：统计页 `/stats`——今天产出多少（修复完成的缺陷/完成的任务/新增）、还剩多少（含未验证）、现在谁在做什么（经手人=最近一次改状态的人，AI 为 MCP 密钥名）、按密钥归集、最近 14 天趋势；只读，全员可见，不改任何写路径。规格见 `docs/计划/07-功能页面规格.md` §7.16。
 
+> **R87（用户决定，定向解冻）**：为 ChatGPT Work 增加 MCP Events；Streamable HTTP `/mcp` 与 MCP Events 订阅/推送，保留 `/mcp/sse` 兼容；MCP 密钥 Admin+ 可查看/复制。仅 keyed MCP context 可发现/订阅，订阅需 `context:read` 或 `admin`；回调 HTTPS 公网地址，签名密钥加密存储。实现细节见 `docs/计划/03-MCP核心能力.md` §3.6.1。
+
 ## 1. 权威文档索引（施工前必读）
 
 | 文档 | 作用 |
@@ -84,8 +86,10 @@
 - scope 枚举：`context:read / attachment:read / attachment:write / bug:write / note:write / task:read / task:write / skill:write / admin`（`skill:write` 为 R80 新增：上传/删除技能；查看与下载技能属 `context:read`）；新建密钥默认仅 `context:read`。
 - **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效（SSE 长连接由 guard 每次调用按 ID 复核密钥状态与 scope，R76）；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。
 - **成员与密钥联动（R76）**：密钥校验连带检查创建人状态——账号禁用则其密钥随之停用（可逆，恢复账号即恢复）；移除成员在同一事务内先吊销其创建的全部密钥再删用户（`createdBy` 为 SetNull，否则离职人员密钥继续有效）。
+- **MCP 密钥查看（R87）**：密钥仍以 SHA-256 哈希鉴权，并额外保存 AES-256-GCM 密文供 Admin+ 明确查看/复制；明文只放前端内存，刷新即清除。加密密钥由 `JWT_SECRET` 派生，更换 `JWT_SECRET` 后历史密文不可解；旧密钥没有密文时只能轮换。
 - **项目解析契约（R76）**：工具未传 `project_slug` 时，仅当只有一个进行中（未归档）项目才自动选择，否则 `VALIDATION_ERROR` 并列出可选 slug；**禁止**按 MCP 服务进程 cwd 猜项目或静默回落到最近更新的项目（容器内 cwd=/app、stdio 为 vibehub/server，均与 IDE 工作区无关，会把 AI 写入落进别的项目）。
 - **MCP 文件收发契约（R84，试用反馈）**：AI 传文件不经过对话、看图直接看到。① `upload_attachment`：文本传 `content`（原文，禁止要求 AI 转 base64），`data_base64` 仅作很小的二进制，二者必须且只能给一个；`file_type` 缺省按扩展名推断（`core/mime.ts`）；给了 `bug_id` 以缺陷所在项目为准并校验存在。② `create_upload_url`（attachment:write）：签发 `PUT /api/uploads?token=…`（`core/upload-grant.ts`：HMAC 以 `upload:` 前缀与 JWT 共用密钥、10 分钟、nonce 一次性），AI 在终端执行返回的 `curl -T`；链接地址取 SSE 握手时客户端连入的地址（`mcpStore.origin()`，stdio 回落本机端口）；上传时复核签发密钥（撤销/过期/降权即失效）；**令牌必须走查询参数**（Fastify 路径参数上限 100 字符，令牌更长会 414），访问日志沿用 `?token=` 脱敏。③ `inspect_image_asset` 默认 `return_mode=image`，经 guard 的 `ToolContent` 透传 MCP 图片内容块（png/jpeg/gif/webp，其余转 PNG）；`path` 只对同机 stdio 有意义，`base64` 仅兼容旧用法（塞在文本里，模型看不到图）。
+- **MCP Events（R87）**：远程 Work 连接使用 Streamable HTTP `/mcp`（`/mcp/sse` 保持兼容）；`server/discover` 与 `events/list|subscribe|unsubscribe` 只允许 Bearer keyed context，订阅要求 `context:read` 或 `admin`。回调仅 HTTPS 公网地址；验证 DNS 后固定到已验证 IP，禁止重定向；签名密钥 AES-GCM 加密存储。投递只含扁平实体 ID / 项目 ID / 可选状态，订阅持久化于 PostgreSQL；事件通过 PG LISTEN/NOTIFY 覆盖跨进程 MCP 写入。管理页可在 Admin+ 角色下查看/复制密钥，密钥明文只存 AES-256-GCM 密文且前端仅临时保存在内存。
 
 ## 6. 前端契约
 

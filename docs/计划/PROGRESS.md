@@ -1,6 +1,6 @@
 # VibeHub 构建驾驶舱（PROGRESS）```
-状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 / R83 / R85 定向解冻；R80/R81/R83/R84 已合并 main；R85 统计页 /stats（只读聚合：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势）已完成并经 PR #6 合入 main（合并提交 6a8e398）；卡片 51 / 39 已按 R78 彻底删除；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
-下一步：R85 已合并 main，待用户验收效果（是否重建镜像仍未定）；先查 F0（容器 vibehub 库中 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 / R83 / R85 / R87 定向解冻；R80/R81/R83/R84 已合并 main；R85 统计页 /stats（只读聚合：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势）已完成并经 PR #6 合入 main（合并提交 6a8e398）；R87 MCP Events 已部署到远端 Linux 服务，HTTP 健康检查通过、两条迁移已应用；ChatGPT Work 接入待配置 HTTPS 域名；卡片 51 / 39 已按 R78 彻底删除；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
+下一步：为远端服务配置 HTTPS 域名后，在 ChatGPT Work 建立 `/mcp` 连接并验证事件回调；完成后先查 F0（容器 vibehub 库中 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项
 前置：仓库已纳入 git（main 含 R85，合并提交 6a8e398；每轮结束按 AGENTS.md §10 提交）；
       测试库 vibehub-test-db(55432，破坏性，只供测试/acceptance.sh)；
       起库脚本可自动拉起已停止的容器；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB
@@ -51,7 +51,9 @@ R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI
 
 ### 进行中
 
-（无）
+| # | 卡片 | 归属 | 验收 |
+|---|---|---|---|
+| R87 | ChatGPT Work MCP Events + MCP 密钥查看/复制 | 03 | Streamable HTTP + MCP Events methods；数据库持久订阅；回调 HTTPS/签名验证；Admin+ 可查看密钥；协议与传输检查 |
 
 
 ### 已完成
@@ -245,6 +247,7 @@ R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI
 
 | 时间 | 问题 | 决策/调整 | 影响范围 |
 | --- | --- | --- | --- |
+| R87 | 用户在试用冻结期要求接入 ChatGPT Work，并提供现有 VibeHub MCP 凭证供连接验证 | 按用户请求定向解冻，增加 Streamable HTTP / MCP Events，并提供 Admin+ 密钥查看/复制；普通 MCP 工具签名与 `/mcp/sse` 兼容性保持 | MCP 传输、订阅持久化、业务事件投递、密钥管理、README 与 MCP 契约 |
 | R1 | 计划文档 §1.3.0 写 pg17/5432/dev，但 pg17 镜像需长时间拉取，本机已有 pgvector/pgvector:pg16 | 用 pg16（00-总览技术栈声明允许 16/17）；容器名 vibehub-test-db、端口 55432、密码 test，与步骤 05 的 scripts/test-db.sh 约定对齐 | 测试库/开发库连接串；部署镜像规格以 03 规范 §2 的 pg17 为准不变（构建时拉取） |
 | R1 | core/password.ts（v2 预备模块）util.promisify(scrypt) 不支持 options 参数，tsc 报错阻塞验证门禁 | 改为手动 new Promise 包装 scryptCb（属卡片 6 内容，因阻塞本轮验证提前修） | core/password.ts；卡片 6 接线时直接复用 |
 | R1 | Docker 守护进程未运行 | `open -a Docker` 自愈成功（3s 就绪），无需人工介入 | 环境；后续轮次 exec 前先 docker info 探活 |
@@ -333,13 +336,15 @@ R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI
 
 | R86（文档对账） | **用户要求「文档按最真实代码更新」**。全库排查出 6 类事实漂移：① 工具数仍写 14/15/26，而 `TOOL_NAMES` 与运行时 `tools/list` 均为 **27**；② 缺陷/任务仍写「五列」，R83 已是六列（缺陷多「验证中」、任务多「验证中」）；③ `core/errors.ts` 实有 `BAD_REQUEST`/`CONFLICT`，文档却列了代码中从未出现的 `INVALID_TRANSITION`；④ README：卷名写 `vibehub-db`（实际 `vibehub-pg`）、表数 14（实际 16 个 model）、基底写 pg17（实际默认 pg16）、用例数 243/12（实际 330/42）、`/api/bugs/board` 分组缺 `verifying`；⑤ `规范/03` 的 Dockerfile 仍是「3 阶段 + apt 装 nodejs」旧稿（实际 4 阶段 + Node 22 官方 tarball），entrypoint 仍写「等 PG→建扩展→migrate」五步（R53 已下沉 `dist/bootstrap.js`），supervisord 命令写 `dist/index.js`（实际 `dist/bootstrap.js`）；⑥ REST 摘要缺 auth/users/api-keys/system/stats/activity 六个路由族 | 以代码为唯一真相源逐份订正，全部替换带唯一性断言（0 误伤）：`README.md` 15 处、`AGENTS.md` §3 错误码枚举与状态码、`docs/计划/03` 6 处（并声明 §3.2 为原始签约、§3.2.1 为现行）、`00-总览`/`05`/`08`/`规范 00` 工具数与表述、`docs/规范/03` 的 Dockerfile/supervisord/entrypoint/compose 四段按实际文件重写。**历史日志不改写**（§3 运行日志与既有 §4 行保留当时事实）；代码零变更、行为零变更 | README、AGENTS、docs/计划/{00,03,05,08,PROGRESS}、docs/规范/{00,03} 共 8 份；代码与运行时不涉及 |
 
+| R87 | 按用户要求接入 ChatGPT Work MCP Events：新增 Streamable HTTP `/mcp`、事件发现/列表/订阅/取消订阅、PostgreSQL 持久订阅与 PG LISTEN/NOTIFY webhook 投递；回调 challenge 验证、HTTPS 公网 DNS 固定、HMAC 签名和签名密钥 AES-GCM 加密；MCP 密钥支持 Admin+ 查看/复制，面板补 Work URL 与 Bearer 凭证 | 本地 Web build 通过；本地及远端 Server build（Prisma generate + tsc）通过；远端 11 条迁移 up to date；重启后 health 200、`/mcp` 与 `/mcp/sse` 缺密钥均 401；未运行测试 | 已部署；当前远端仅 HTTP，ChatGPT Work 要求 HTTPS，待配置域名/TLS 后验证 Work 连接与事件回调；本轮前 DB dump 可读且附件目录已归档；对话中暴露的 MCP 密钥应撤销并轮换 |
+
 ---
 
 ## 5. 给下一次运行的起点指令（最重要，结束时必须更新）
 
 ```
-状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 / R83 / R85 定向解冻；R80/R81/R83/R84 已合并 main；R85 统计页 /stats（只读聚合：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势）已完成并经 PR #6 合入 main（合并提交 6a8e398）；卡片 51 / 39 已按 R78 彻底删除；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
-下一步：R85 已合并 main，待用户验收效果（是否重建镜像仍未定）；先查 F0（容器 vibehub 库中 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项
+状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 / R83 / R85 / R87 定向解冻；R80/R81/R83/R84 已合并 main；R85 统计页 /stats（只读聚合：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势）已完成并经 PR #6 合入 main（合并提交 6a8e398）；R87 MCP Events 已部署到远端 Linux 服务，HTTP 健康检查通过、两条迁移已应用；ChatGPT Work 接入待配置 HTTPS 域名；卡片 51 / 39 已按 R78 彻底删除；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
+下一步：给远端 Linux 服务配置 HTTPS 域名，随后连接 ChatGPT Work 验证 R87 MCP Events；完成后先查 F0（容器 vibehub 库中 trial 标签未关闭缺陷，有则优先处理）；无则执行 §2 冻结期清单最上方未完成项
 前置：仓库已纳入 git（main 含 R85，合并提交 6a8e398；每轮结束按 AGENTS.md §10 提交）；
       测试库 vibehub-test-db(55432，破坏性，只供测试/acceptance.sh)；
       起库脚本可自动拉起已停止的容器；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB

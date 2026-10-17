@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { z as z4 } from 'zod/v4';
 import { AppError } from '../core/errors.js';
 import * as tools from './tools.js';
 import * as ext from './tools-extended.js';
@@ -8,7 +10,9 @@ import { guarded } from './guard.js';
 import { SERVER_INSTRUCTIONS } from './workflow.js';
 import { TOOL_SCOPES } from './tool-scopes.js';
 import { registerMoreTools } from './register-more.js';
-import { mcpActor } from './context.js';
+import { mcpActor, refreshKeyedContext, resolveMcpContext } from './context.js';
+import { mcpStore } from './context-store.js';
+import { MCP_EVENT_METHODS, MCP_EVENT_PROTOCOL_VERSION, handleMcpEventMethod } from './events.js';
 import { BUG_STATUSES } from '../services/bug-flow.js';
 import { TASK_STATUSES } from '../services/tasks.js';
 
@@ -64,13 +68,31 @@ const TOKEN_BUDGET_NOTE =
 /** 经 resolveProject 解析项目的工具共用（R76：不再按 MCP 服务进程 cwd 猜项目） */
 const PROJECT_SLUG_DESC = '项目 slug（Web 端「项目」页可复制）；多项目时必填，只有一个进行中项目时可省略';
 
+// MCP Events 使用的协议版本尚未进入 SDK 的静态版本表；保留 SDK 其余版本并补上该日期版本。
+if (!(SUPPORTED_PROTOCOL_VERSIONS as string[]).includes(MCP_EVENT_PROTOCOL_VERSION)) {
+  (SUPPORTED_PROTOCOL_VERSIONS as string[]).push(MCP_EVENT_PROTOCOL_VERSION);
+}
+
 export function createMcpServer(): McpServer {
   const server = new McpServer(
     { name: 'vibehub', version: '0.2.0' },
     {
       instructions: SERVER_INSTRUCTIONS,
+      capabilities: { events: {} } as never,
     },
   );
+
+  for (const method of MCP_EVENT_METHODS) {
+    server.server.assertCanSetRequestHandler(method);
+    server.server.setRequestHandler(
+      z4.object({ method: z4.literal(method), params: z4.record(z4.string(), z4.unknown()).optional() }).passthrough(),
+      async (request) => {
+        const initial = mcpStore.get() ?? await resolveMcpContext();
+        const ctx = await refreshKeyedContext(initial);
+        return handleMcpEventMethod(method, request.params ?? {}, ctx) as Promise<never>;
+      },
+    );
+  }
 
   // ============ 读取类 ============
 

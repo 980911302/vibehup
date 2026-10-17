@@ -29,7 +29,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 访问地址 | Web/API/MCP 统一 `http://<ZeroTier IP>:3210` 或 `http://<公网IP>:3210`（安全组已放行 3210） |
+| 访问地址 | Web/API/MCP SSE 为 `http://<ZeroTier IP>:3210` 或 `http://<公网IP>:3210`（安全组已放行 3210）；ChatGPT Work Streamable HTTP 为 `/mcp`，需另配 HTTPS 域名与 TLS 后方可连接 |
 | 代码目录 | **`/app`**（monorepo：`server/` + `web/` + `skills/`） |
 | 进程管理 | **systemd**：`vibehub.service`（`enabled`，开机自启；异常 5s 自动重启） |
 | 启动命令 | `node dist/bootstrap.js`，工作目录 `/app/server` |
@@ -67,7 +67,7 @@ systemd: vibehub.service
        ├─ 等 PG 就绪（pg_isready，最多 60s）
        ├─ CREATE EXTENSION IF NOT EXISTS vector
        ├─ prisma migrate deploy --schema=/app/prisma/schema.prisma
-       └─ 起 Fastify：API + 静态页 + SSE(:3210) + MCP SSE(/mcp/*)
+       └─ 起 Fastify：API + 静态页 + SSE(:3210) + MCP SSE(/mcp/*) + Streamable HTTP/MCP Events (/mcp)
                                     │
                                     └─ 127.0.0.1:5432 → 宿主机 PostgreSQL 16 + pgvector
                                        （另监听 ZeroTier IP，供内网直连，见 §8）
@@ -190,7 +190,7 @@ tar czf /root/vibehub-backups/data-$(date +%F).tar.gz -C /var/lib/vibehub/data .
 
 ## 8. MCP 接入（现行 27 个工具）
 
-服务已在跑，用 **SSE** 接入：
+IDE Agent 使用 **SSE** 接入：
 
 ```json
 {
@@ -209,6 +209,7 @@ tar czf /root/vibehub-backups/data-$(date +%F).tar.gz -C /var/lib/vibehub/data .
 - scope 决定能调哪些工具：`context:read`、`bug:write`、`attachment:read`/`attachment:write`、
   `note:write`、`task:read`/`task:write`、`skill:write`、`admin`（清回收站）。
   日常「读上下文 + 回填」给 `context:read,attachment:read,bug:write` 足够。
+- ChatGPT Work 使用 Streamable HTTP `https://<域名>/mcp`，并配置 Bearer MCP 密钥。服务端现支持 `server/discover`、`events/list`、`events/subscribe`、`events/unsubscribe`；webhook callback 必须是 HTTPS 公网地址。当前机器仍只监听 HTTP 3210，需先配置域名/TLS 反向代理再连接 Work。
 - 技能安装到本机 Claude Code / Codex：`bash skills/install.sh`，或远程
   `curl -fsSL http://<地址>:3210/skills/install.sh | VIBEHUB_URL=http://<地址>:3210 bash`。
 
@@ -281,8 +282,8 @@ tar czf /root/vibehub-backups/data-$(date +%F).tar.gz -C /var/lib/vibehub/data .
 
 | 验收项 | 结果 |
 | --- | --- |
-| 迁移 | **9 个全部应用**（`init` → `status_actor`） |
-| 表数量 | **17** 张（16 个 model + `_prisma_migrations`） |
+| 迁移 | **11 个全部应用**（新增 `add_key_cipher`、`mcp_event_subscriptions`） |
+| 表数量 | **18** 张（17 个 model + `_prisma_migrations`） |
 | `/api/health` | **200**，约 10 ms |
 | 页面 `/` `/login` `/board` `/stats` `/skills` | 全 **200** |
 | 静态资源 `/skills/install.sh`、`/skills/vibehub-mcp/SKILL.md` | 全 **200** |
@@ -290,6 +291,7 @@ tar czf /root/vibehub-backups/data-$(date +%F).tar.gz -C /var/lib/vibehub/data .
 | 注册开关关闭后注册 | **403**（「系统已关闭自助注册」） |
 | MCP `initialize` + `tools/list` | 协议 `2024-11-05`，serverInfo `vibehub 0.2.0`，**27 个工具** |
 | MCP 无效/缺失密钥 | **401** |
+| Streamable HTTP `/mcp` 缺失密钥 | **401**；当前远端尚无 HTTPS 域名，Work 真连接待 TLS 配置后验收 |
 | 故障重启恢复 | **约 4 秒** |
 | 应用内存 | **约 139 MB** |
 | 磁盘占用 | 约 6.6 G / 40 G |

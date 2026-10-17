@@ -163,6 +163,12 @@ POST /mcp/messages        JSON-RPC 消息（session_id 由 SSE 握手分配）
 
 密钥创建向导（步骤 07 密钥页）最后一屏根据部署形态二选一生成对应 JSON，一键复制。
 
+### 3.6.1 MCP Events（R87）
+
+ChatGPT Work 通过 Streamable HTTP `/mcp` 连接；旧 `/mcp/sse` 保持兼容 IDE 客户端。事件名来自 `core/events.ts` 的 VibeEvent，筛选条件目前支持 `project_id`；负载仅发送 `project_id`、`entity_id` 与可选 `status`，不推送实体正文。Work 提供的 callback URL 必须是 HTTPS 公网地址，服务端先做 challenge 验证，再以 Standard Webhooks HMAC 签名投递。
+
+订阅保存在 `mcp_event_subscriptions`，签名密钥以 `JWT_SECRET` 派生的 AES-256-GCM 加密。事件投递经 PG LISTEN/NOTIFY，覆盖 Web 服务与独立 stdio MCP 进程的业务写入；过期、撤销或已停用创建人的密钥不再收到事件。服务通过 `server/discover` 声明 MCP Events 版本，提供 `events/list`、`events/subscribe`、`events/unsubscribe`。
+
 ## 3.7 验收标准
 
 - [ ] `tools/list` 返回与 `TOOL_NAMES` 等长的工具数（**现行 27**；原始签约 14 为历史基线）；每个 description 含 Token 经济学说明

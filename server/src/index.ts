@@ -20,6 +20,8 @@ import { searchRoutes } from './routes/search.js';
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { mcpSseRoutes } from './routes/mcp-sse.js';
+import { mcpHttpRoutes } from './routes/mcp-http.js';
+import { startMcpEventDelivery } from './services/mcp-event-delivery.js';
 import { bugExtrasRoutes } from './routes/bug-extras.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
 import { systemRoutes } from './routes/system.js';
@@ -127,6 +129,10 @@ export async function buildServer(opts: { loggerStream?: NodeJS.WritableStream }
   await app.register(activityRoutes, { prefix: '/api/activity' });
   // MCP SSE 传输：API Key（Bearer）鉴权，不经 HTTP 用户守卫（容器化部署形态）
   await app.register(mcpSseRoutes, { prefix: '/mcp' });
+  // MCP Streamable HTTP + MCP Events：供 ChatGPT Work 等远程 MCP 客户端使用
+  await app.register(mcpHttpRoutes);
+  const stopMcpEventDelivery = await startMcpEventDelivery();
+  app.addHook('onClose', async () => stopMcpEventDelivery());
 
   app.get('/api/health', async () => ({
     status: 'ok',
