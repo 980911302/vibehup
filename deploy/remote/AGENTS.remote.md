@@ -1,17 +1,27 @@
-# AGENTS.md — VibeHub 工程契约（本机部署版）
+# AGENTS.md — VibeHub 运维手册（Linux 原生部署版）
 
-> 本文件是这份代码所在机器的**契约层与运维手册**。任何 Agent（或人）在本机改动 VibeHub 之前，
-> 先读本文件；改动后按 §9 更新本文件对应章节。
-> 部署机器：**Mac mini M4（arm64 / macOS）**，服务以 Docker 单容器形态常驻。
+> 本文件是**这台部署机上**的运维手册与不可违背约定。任何 Agent（或人）在这台机器改动 VibeHub 前先读本文件，
+> 改动完成后按 §11 更新对应章节，保持本文件与实物一致。
+>
+> **部署形态：Linux 原生部署**（systemd + 宿主机 PostgreSQL），**不是容器**。原因见 §3。
+>
+> ⚠️ 本文件随代码进公开仓库，因此：**不写真实公网 IP、不写任何密码 / 密钥 / JWT_SECRET**。
+> 真实值只有两个地方：服务器上的 `/etc/vibehub/env`（权限 600）与云厂商控制台。
 
 ---
 
-## 1. 这个项目是什么
+## 1. 这台机器是什么
 
-人类在 Web 端**粘贴截图即录缺陷**；AI 通过 **MCP** 直读项目上下文并回填修复状态。
-团队单机版：不做多租户，不建 organizations 表，角色挂在用户上（owner / admin / member / viewer）。
-
-一句话闭环：**人贴截图录单 → AI 用 MCP 读上下文 → 修复后回填状态与 commit → 看板实时自动刷新**。
+| 项 | 值 |
+| --- | --- |
+| 机型 | 云厂商 ECS，KVM 虚拟化 |
+| 系统 | Ubuntu 24.04 LTS（内核 6.8） |
+| CPU | 2 vCPU（通用型共享核） |
+| 内存 | **768 MiB + 2 GiB swap**（swap 见 §7，原本没有，必须保留） |
+| 磁盘 | 40 GiB（SSD 级，实测写 130 MB/s / 读 112 MB/s） |
+| 带宽 | 下行约 10 Mbps / **上行约 2 Mbps**（上行是硬约束） |
+| 网络 | 内网 `<内网IP>` / 公网 `<公网IP>` / ZeroTier `<ZeroTier IP>`（虚拟内网入口） |
+| 定位 | 单人/小团队的**私有研发上下文服务**，不对外做公开站点 |
 
 ---
 
@@ -19,274 +29,267 @@
 
 | 项 | 值 |
 | --- | --- |
-| 访问地址 | **http://&lt;服务器地址&gt;:3210**（部署时按实际填；本文件公开，故不写真实地址） |
-| 代码目录 | `~/Downloads/vibehup/`（本文件所在目录；`~` 为部署账号家目录） |
-| 编排文件（**运行中容器用的这份**） | `~/vibehub/docker-compose.yml`（compose 项目名 `vibehub`，密钥直接写在 environment 里，权限 600） |
-| 源码目录里的编排 | `~/Downloads/vibehup/docker-compose.yml` + `.env`：**只作模板，不要在这里 `compose up`**——目录名是 `vibehup`，compose 项目名随之变成 `vibehup`，会挂上空卷 `vibehup_vibehub-*`，看起来像数据丢了，且与 `container_name: vibehub` 冲突 |
-| 容器名 | `vibehub` |
-| 镜像 | `vibehub:1.5`（arm64/linux；源码构建，见 §5；1.4 / 1.3 留作回滚）。**待升级 1.6**：按 §5「1.5 → 1.6 升级步骤」构建部署，完成后把本行改为 1.6 |
-| 对外端口 | `3210`（PG 的 5432 **只在容器内**，不对外暴露） |
-| 数据卷 | `vibehub_vibehub-pg` → 库 / `vibehub_vibehub-data` → 附件 |
-| 重启策略 | `unless-stopped` |
-| 初始 Owner | 由 `deploy/remote/bootstrap-owner.cjs` 创建，邮箱与密码经 `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD` 传入（脚本无默认值）；**首次登录后改密** |
-| 语义检索 | **已开启**（DashScope `text-embedding-v3`，1024 维） |
+| 访问地址 | Web/API/MCP 统一 `http://<ZeroTier IP>:3210` 或 `http://<公网IP>:3210`（安全组已放行 3210） |
+| 代码目录 | **`/app`**（monorepo：`server/` + `web/` + `skills/`） |
+| 进程管理 | **systemd**：`vibehub.service`（`enabled`，开机自启；异常 5s 自动重启） |
+| 启动命令 | `node dist/bootstrap.js`，工作目录 `/app/server` |
+| Node | **v22.14.0**，官方 tarball 解到 `/usr/local`（非 apt，版本可控） |
+| 数据库 | **宿主机** PostgreSQL **16 + pgvector**（不是容器内的 PG）；库/角色均为 `vibehub` |
+| 配置 | `/etc/vibehub/env`（600）——`DATABASE_URL` / `PGPASSWORD` / `JWT_SECRET` / `EMBEDDING_*` 等**唯一来源** |
+| 附件目录 | `/var/lib/vibehub/data`（`DATA_DIR`） |
+| 日志 | `/var/log/vibehub.log`（systemd `append:`，已配 logrotate 见 §7） |
+| 对外端口 | **仅 3210**（HTTP + SSE + MCP SSE）；**5432 不监听公网** |
+| 前端产物 | `/app/web/out`（Next 静态导出，**在你本机构建后上传**，见 §6） |
+| 注册开关 | **`REGISTRATION_OPEN=false`**（公网可达，必须保持关闭，见 §10） |
 
-> **本机 docker 的非交互 SSH 坑**：`docker` 不在默认 PATH 里。远程执行一律用绝对路径
-> `/usr/local/bin/docker`，否则报 `command not found`。
+> 首账号（Owner）由 `deploy/remote/bootstrap-owner.cjs` 创建，邮箱/密码经 `BOOTSTRAP_EMAIL` / `BOOTSTRAP_PASSWORD` 传入，
+> 脚本无默认值。凭据只记在你自己的密码管理器里，**不进本文件**。
 
 ---
 
-## 3. 架构与目录
+## 3. 为什么是原生部署而不是单容器
 
-单容器内由 supervisord 拉起两个进程：
+项目标准交付形态是 Docker 单容器（见 `docs/规范/03-容器化部署规范.md`），**但这台机器不适合**：
 
-```
-容器 vibehub
-├── postgres 16 + pgvector        （supervisord priority 10, user=postgres）
-└── node dist/bootstrap.js         （priority 20）
-       └─ 等 PG 就绪 → CREATE EXTENSION vector → prisma migrate deploy → 起 Fastify
-```
+1. **`docker build` 会 OOM**：镜像构建阶段要跑 `npm ci`（server + web）与 `next build`，实测峰值 1.5–2 GB，而本机只有 768 MiB 可用内存 + 2 GiB swap，构建几乎必然被杀。
+2. **省掉一个 PostgreSQL**：容器方案里 PG 跑在容器内（约 250 MB RSS）；本机复用宿主机 PG，只跑 Node 一个进程。
+3. **实测收益**：应用常驻 **约 139 MB**，远低于容器方案（含 PG 约 400 MB+），768 MiB 机器上差别是「能跑」与「常崩」。
 
-- **后端**：Fastify + Prisma + PostgreSQL 16 + pgvector；分层严格单向 `routes → services → core`
-  （routes 禁直连 Prisma；services 禁 import Fastify 对象）。API 与 MCP **平级共用 services**。
-- **前端**：Next.js **静态导出**（`output: 'export'`）到 `web/out/`，由 Fastify 直接托管，与 API 同源。
-- **MCP**：16 个工具（读取 7 + 写入 9；**1.6 起 26 个**，见 §8），双传输——`stdio`（IDE 起子进程）与 `SSE`
-  （`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=…`，Bearer 必需）。
+代价：**前端构建必须在开发机构建后上传**（产物是纯静态文件，与 CPU 架构无关，见 §6）。
+
+---
+
+## 4. 目录与进程拓扑
 
 ```
-vibehup/
-├── AGENTS.md            ← 本文件
-├── docker-compose.yml   单容器编排（用 .env 注入密钥）
-├── Dockerfile           四阶段构建（server → 生产依赖树 → web 静态导出 → pgvector 基底）
-├── .env                 真实配置与密钥（600，禁提交）
-├── deploy/
-│   ├── entrypoint.sh    只 exec supervisord（等 PG 会死锁，见下方「启动序列」）
-│   ├── supervisord.conf 双进程定义
-│   └── remote/          远端部署辅助（bootstrap-owner.cjs 等）
+systemd: vibehub.service
+  └─ node /app/server/dist/bootstrap.js        cwd=/app/server
+       ├─ 等 PG 就绪（pg_isready，最多 60s）
+       ├─ CREATE EXTENSION IF NOT EXISTS vector
+       ├─ prisma migrate deploy --schema=/app/prisma/schema.prisma
+       └─ 起 Fastify：API + 静态页 + SSE(:3210) + MCP SSE(/mcp/*)
+                                    │
+                                    └─ 127.0.0.1:5432 → 宿主机 PostgreSQL 16 + pgvector
+                                       （另监听 ZeroTier IP，供内网直连，见 §8）
+
+/app
+├── package.json / package-lock.json / node_modules
 ├── server/
-│   ├── src/
-│   │   ├── routes/      REST 路由（auth/bugs/attachments/mcp-sse/events…）
-│   │   ├── services/    业务逻辑（唯一被 routes 与 MCP 共用的层）
-│   │   ├── core/        prisma / errors / jwt / serialize / events / asset-sign …
-│   │   ├── mcp/         16 个工具、scope 守卫、上下文与计量
-│   │   └── bootstrap.ts 容器启动序列
-│   ├── prisma/schema.prisma   数据模型（迁移在 prisma/migrations/）
-│   ├── scripts/         门禁与运维脚本（acceptance.sh / backup.sh / trial-metrics.sh …）
-│   └── tests/e2e/       Playwright 核心闭环用例
-├── web/src/             Next.js 前端（app 路由 + components + hooks + lib）
-└── docs/                计划（00-09）/ 规范（00-03）
+│   ├── dist/            ← bootstrap.js 等编译产物（服务器上构建）
+│   ├── prisma/          ← schema + 9 个迁移
+│   └── src/
+├── web/out/             ← 本机构建的 Next 静态产物 + out/skills
+├── skills/              ← 技能正本（改完要同步到 web/out/skills）
+└── prisma → server/prisma   ← **符号链接，不可删**（见 §10 坑 1）
 ```
+
+后端分层严格单向 `routes → services → core`；API 与 MCP **平级共用 services**；前端唯一数据入口 `lib/api.ts`。
+这些契约的权威出处是仓库根 `AGENTS.md`，本文件只记**这台机器上的事实**。
 
 ---
 
-## 4. 常用运维命令（在本机执行）
+## 5. 常用运维命令（在服务器上）
 
 ```bash
-DK=/usr/local/bin/docker
-cd ~/vibehub                             # 运行中容器的编排目录（不是源码目录，见 §2）
+systemctl status vibehub --no-pager      # 状态（应为 active running）
+systemctl restart vibehub                # 重启（约 4 秒恢复，见 §11）
+systemctl stop vibehub                   # 停服
+systemctl is-enabled vibehub             # 应为 enabled（开机自启）
 
-$DK ps                                   # 容器状态（应 healthy）
-$DK logs -f vibehub --tail 50            # 跟随日志
-$DK compose restart                      # 重启
-$DK compose down && $DK compose up -d    # 重建容器（卷保留，数据不丢）
-$DK stats vibehub --no-stream            # 资源占用
+tail -f /var/log/vibehub.log             # 跟随日志（启动序列、请求、错误都在这）
+curl -s http://127.0.0.1:3210/api/health # 探活：{"status":"ok",...}
 
-# 进数据库
-$DK exec vibehub psql -U vibehub -d vibehub -c "SELECT count(*) FROM bugs"
+free -m                                  # 内存（留意 available 与 swap 用量）
+systemctl show vibehub -p MemoryCurrent --value | awk '{printf "%.0f MB\n",$1/1048576}'
+ss -lntp | grep 3210                     # 确认监听地址
+
+# 进数据库（密码取 /etc/vibehub/env 的 PGPASSWORD）
+set -a; . /etc/vibehub/env; set +a
+PGPASSWORD="$PGPASSWORD" psql -h 127.0.0.1 -U vibehub -d vibehub -c "select count(*) from bugs"
 
 # 看迁移状态
-$DK exec vibehub npx prisma migrate status
+set -a; . /etc/vibehub/env; set +a
+cd /app && npx prisma migrate status --schema=server/prisma/schema.prisma
 ```
 
-**改配置**：编辑 `.env`（或 `docker-compose.yml` 的 environment）→ `$DK compose up -d`。
-容器内进程会重启，数据卷不受影响。
+**改配置**：编辑 `/etc/vibehub/env` → `systemctl restart vibehub`。数据目录与库都不受影响。
 
 ---
 
-## 5. 改代码后怎么重新出镜像
-
-代码目录已在本机，可直接在本机构建（arm64 原生，无需交叉编译）：
+## 6. 改代码后怎么更新（两段式，别在服务器上构建前端）
 
 ```bash
-DK=/usr/local/bin/docker
-$DK exec vibehub pg_dump -U vibehub -d vibehub -Fc > ~/vibehub-backups/pg-$(date +%F-%H%M).dump   # 先备份
-cd ~/Downloads/vibehup && $DK build -t vibehub:1.6 .     # 在源码目录构建，打新 tag 便于回滚
-# 再到编排目录把 image 改成新 tag 后拉起（必须在 ~/vibehub，见 §2）：
-cd ~/vibehub && sed -i '' 's/image: vibehub:1.5/image: vibehub:1.6/' docker-compose.yml && $DK compose up -d
+# ── 本机（Mac，arm64）：只构建前端 ──
+npm run build -w web                      # → web/out（纯静态，与架构无关）
+rsync -az --exclude=node_modules --exclude=.git --exclude=.next --exclude=.env \
+  web/out server root@<公网IP>:/app/
+
+# ── 服务器：只构建后端 + 重启 ──
+ssh root@<公网IP>
+cd /app
+npm run build -w server                   # = prisma generate + tsc（约 1 分钟）
+systemctl restart vibehub
+
+# 技能有变动时（Dockerfile 里也是这么做的，见 §4）
+rm -rf /app/web/out/skills && cp -r /app/skills /app/web/out/skills
 ```
 
-### 1.5 → 1.6 升级步骤（2026-09-24 起可用）
+**改依赖时**（`server/package.json` 变了）：先 `cd /app && npm ci --workspace=server --include-workspace-root=false`，再构建。
+**改 schema 时**：`prisma generate` 必须重跑，否则运行期报 `PrismaClientValidationError`（看起来像业务 bug）。
 
-1.6 = GitHub `main`（R80 + R81 + R83）。**用干净克隆构建**，不动 `~/Downloads/vibehup` 里的本地改动（那里的 AGENTS.md 是本机版，直接 `git pull` 容易冲突）：
+**首次部署 / 换机的最小步骤**（顺序不能乱）：
 
 ```bash
-DK=/usr/local/bin/docker
-mkdir -p ~/vibehub-backups
-$DK exec vibehub pg_dump -U vibehub -d vibehub -Fc > ~/vibehub-backups/pg-$(date +%F-%H%M)-before-1.6.dump   # 1. 先备份
-rm -rf ~/vibehub-src-1.6 && git clone --depth 1 https://github.com/980911302/vibehup.git ~/vibehub-src-1.6   # 2. 干净源码
-cd ~/vibehub-src-1.6 && $DK build -t vibehub:1.6 .                                                       # 3. 构建（arm64 原生）
-cd ~/vibehub && cp docker-compose.yml docker-compose.yml.bak-1.5 \
-  && sed -i '' 's/image: vibehub:1.5/image: vibehub:1.6/' docker-compose.yml && $DK compose up -d        # 4. 换镜像拉起
-$DK ps                                                                                                   # 5. 等到 healthy（约半分钟）
-$DK logs vibehub --tail 100 | grep -iE "migration|迁移"                                                  #    应看到 4 个新迁移已应用
-$DK exec vibehub psql -U vibehub -d vibehub -Atc \
-  "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY migration_name DESC LIMIT 4"  #    应列出 status_actor / bug_reporter / skills / task_labels_review
+# 1) 系统准备：swap + Node 22 + pgvector
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+grep -q /swapfile /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
+# Node 22 官方 tarball 解到 /usr/local（按 dpkg --print-architecture 选 x64/arm64）
+apt-get install -y postgresql postgresql-16-pgvector
+
+# 2) 建角色/库/扩展（vibehub 作为库 owner；vector 由 postgres 预建一次）
+#    然后写 /etc/vibehub/env（600）、mkdir -p /var/lib/vibehub/data
+
+# 3) 代码落地
+#    rsync 源码到 /app（排除 node_modules/.git/.env），再：
+ln -sfn /app/server/prisma /app/prisma     # ★ bootstrap 硬编码 /app/prisma，缺它迁移必失败
+cd /app && npm ci --workspace=server --include-workspace-root=false
+npx prisma generate --schema=server/prisma/schema.prisma
+npm run build -w server
+
+# 4) systemd + 首账号
+#    写 /etc/systemd/system/vibehub.service（见 §2 参数）→ daemon-reload → enable --now
+#    BOOTSTRAP_EMAIL=... BOOTSTRAP_PASSWORD=... node - < /app/deploy/remote/bootstrap-owner.cjs
 ```
-
-启动时自动应用 4 个迁移：`task_labels_review`（任务加标签/打回原因/打回次数）、`skills`（技能两张表）、`bug_reporter`（缺陷加提出人）、`status_actor`（缺陷与任务加「最近一次流转的时间与操作人」）。
-**只加列加表，不改不删存量数据，不碰向量列**：已在云端用 1.5 结构 + 存量数据（含 1024 维向量）实测升级（含 R83 共 4 个迁移），数据与向量逐字节不变，HNSW 索引保留；容器新库 9 个迁移全部应用、8 秒就绪。
-存量「已关闭」的缺陷保持不变；R83 起「已关闭」只用于不修复的结局，「已验证」就是修复完成的终点。
-
-**启动时要能访问 `binaries.prisma.sh`**：构建阶段的 node slim 镜像里没有 OpenSSL，Prisma 探测不到版本、按 1.1 下载了引擎；
-运行期（OpenSSL 3）找不到对应的迁移引擎，于是每个新容器启动时现下载一次（1.3～1.5 一直如此，本机网络能通所以没暴露）。
-若 `docker logs` 卡在「应用数据库迁移」并报下载 `schema-engine` 失败，是网络问题：重试 `compose up -d`，或先回滚。根治见 §10。
-
-**升级后验收**：浏览器登录看板，顶栏应有「全部 / 指派给我 / 我提的 / 未指派」，看板六列（含「验证中」）；任务页六列；左侧有「技能」。
-IDE 里重连 MCP，应看到 26 个工具（1.7 起 27 个，`node server/scripts/verify-mcp-key.mjs` 按当前代码断言）。存量缺陷的「提出人」显示「未记录」属正常（此前没记录）。
-
-**回滚**：`docker-compose.yml.bak-1.5` 拷回去再 `$DK compose up -d`。已实测 1.5 在升级后的库上能正常启动与写入（新迁移都是新增列/表）；
-差异是 1.6 里进入新状态的记录在 1.5 看板上不显示：「待验证 / 验证中 / 已取消」的任务（1.5 只认待办/进行中/已完成），以及「验证中」的缺陷。要连数据一起回到升级前，用第 1 步的 dump 做 `pg_restore`。
-
-> 版本记录：1.5 → **1.6**（2026-09-24）R80：任务五态（待办/进行中/待验证/已完成/已取消）+ 标签 + 详情 + 删除；技能模块（Web 与 MCP 上传/下载/查看，挂项目或全团队通用）；
-> MCP 工具 16 → 26（补齐删除、任务详情、便签修改、技能四件套、`search`），新增 scope `skill:write`；各页共享当前项目。
-> R81：只读成员（viewer）真只读（缺陷/便签/附件写接口补角色校验）；缺陷详情全字段可改、只摆合法下一步、页内写重开原因、删除二次确认；
-> 记录缺陷提出人 + 看板「指派给我 / 我提的 / 未指派」；状态文案全中文（`verified` 显示为「已验证」）；CSV 导入缺陷 ID 前缀修正。
-> R83：缺陷与任务都加「验证中」（缺陷 已解决 → 验证中 → 已验证，已验证为终点；已关闭只用于重复/不修/无法复现且必须写原因；任务 待验证 → 验证中 → 已完成）；
-> 每次流转记下谁（MCP 记密钥名）、什么时候，卡片显示「谁 · 多久」，验证中 >2 小时、进行中 >24 小时标黄，`get_project_context` 增加 `verifying_bugs` / `verifying_tasks` / `stale_items`。
->
-> 1.4 → **1.5**（2026-09-24）状态流转协议进 MCP（`server/src/mcp/workflow.ts`）：initialize 下发流转规则，
-> `get_project_context` 增加 `awaiting_verification`、`doing_tasks`、`reminders`，`get_bug_detail` / `update_bug_status` 返回
-> `allowed_next_statuses` 与 `next_step`，`update_bug_status` 新增 `reopen_reason`（此前 AI 无法把验证不过的缺陷退回）；
-> `deleteBug` 连带删除评论（`bug_comments` 无外键，原先会留孤儿）；技能改为 MD 文件 `skills/vibehub-mcp/SKILL.md`，
-> 镜像内对外提供 `/skills/vibehub-mcp/SKILL.md` 与 `/skills/install.sh`。
->
-> 1.3 → 1.4（2026-09-24）新增 MCP 工具 `create_task`，`update_task` 可改标题/描述，
-> `list_tasks` 返回描述；`/mcp/sse` 加 `X-Accel-Buffering: no`（经 nginx 反代时大消息不再被缓冲，
-> 否则 IDE 报「tools fetch failed: Request timed out」）；新增 `.dockerignore`。
-
-> 构建耗时较长（四阶段 + Prisma 引擎 + Node 运行时）。构建失败时先看是否网络问题拉不到基底镜像
-> `pgvector/pgvector:pg16`（`docker pull` 试一下）。
-> **回滚**：把 compose 的 image 改回上一版本再 `up -d` 即可，卷不动、数据不丢。
-
-若只想更新前端：`cd web && npm ci && npm run build`（产出 `web/out/`），再重建镜像。
 
 ---
 
-## 6. 数据、备份与恢复
+## 7. 数据、备份、日志与恢复
 
 ```bash
-DK=/usr/local/bin/docker
-mkdir -p ~/vibehub-backups
+mkdir -p /root/vibehub-backups
 
-# 库
-$DK exec vibehub pg_dump -U vibehub -d vibehub -Fc > ~/vibehub-backups/pg-$(date +%F).dump
+# 库（逻辑备份，推荐）
+set -a; . /etc/vibehub/env; set +a
+PGPASSWORD="$PGPASSWORD" pg_dump -h 127.0.0.1 -U vibehub -d vibehub -Fc \
+  > /root/vibehub-backups/pg-$(date +%F-%H%M).dump
 
-# 附件卷
-$DK run --rm -v vibehub_vibehub-data:/data -v ~/vibehub-backups:/out \
-  alpine tar czf /out/data-$(date +%F).tar.gz -C /data .
+# 附件目录
+tar czf /root/vibehub-backups/data-$(date +%F).tar.gz -C /var/lib/vibehub/data .
 ```
 
-恢复：`pg_restore -U vibehub -d vibehub --clean --if-exists <dump>` + 把 tar 解回卷。
-仓库内 `server/scripts/backup.sh` 与 `restore-drill.sh` 实现了「备份 → 清库 → 恢复 → 核对」，
-演练结果 **10/10 通过**；要演练请指向测试库，别对着生产库跑。
+恢复：`pg_restore -h 127.0.0.1 -U vibehub -d vibehub --clean --if-exists <dump>` + 把 tar 解回 `/var/lib/vibehub/data`。
+仓库内 `server/scripts/backup.sh` 与 `restore-drill.sh` 实现了「备份 → 清库 → 恢复 → 核对」（演练 10/10 通过）；
+**演练必须指向测试库**，别对着生产库跑。
+
+**swap（2 GiB）**：不是可选项。768 MiB 机器没有 swap 时，一次内存尖峰就会被内核 OOM kill。
+**服务内存护栏**：`MemoryHigh=550M` / `MemoryMax=680M`——超 `High` 先回收，超 `Max` 才杀进程，给系统留活路。
+**日志轮转**：`/etc/logrotate.d/vibehub`（`su root syslog`、daily、保留 7 份、20M 触发、`copytruncate`）。
+不加 `su root syslog` 会报「parent directory has insecure permissions」而完全不轮转（`/var/log` 是 775 root:syslog）。
 
 ---
 
-## 7. 改完必须验证（本机的门禁）
+## 8. MCP 接入（现行 27 个工具）
 
-```bash
-cd ~/Downloads/vibehup/server
-export PATH=/opt/homebrew/bin:$PATH      # 本机 node/npm 在 homebrew（node -v 应为 v22.14.0）
-
-# 权威门禁：tsc + 全量 vitest + HTTP 冒烟 + Playwright E2E + 日志脱敏实证
-bash scripts/acceptance.sh               # 期望：PASS=19 FAIL=0
-```
-
-- **测试库**：`vibehub-test-db`（本机另起的容器，破坏性——每用例 TRUNCATE 全表）。
-  **不要**把测试指向生产库，那会清空真实数据。
-- **MCP 全工具自测**：`node scripts/test-all-mcp-tools.mjs`（需 `KEY=` 环境变量），
-  16 个工具逐个真调 + 数据库二次核对，期望 `PASS=54 FAIL=0`（1.6 起 26 个工具，期望 `PASS=81 FAIL=0`；1.7 起 27 个，期望 `PASS=94 FAIL=0`，库里须有至少两个项目才测得到多项目歧义）。
-- **性能体检**：`node scripts/perf-probe.mjs <BASE> <email> <password>`。
-- 声称「完成/通过」前必须当场跑命令并引用输出，不接受「我觉得应该没问题」。
-
----
-
-## 8. MCP 接入（给 IDE 用）
-
-本机服务已在跑，用 **SSE** 接入（与交付形态一致）：
+服务已在跑，用 **SSE** 接入：
 
 ```json
 {
   "mcpServers": {
     "vibehub": {
       "type": "sse",
-      "url": "http://<服务器地址>:3210/mcp/sse",
+      "url": "http://<ZeroTier IP>:3210/mcp/sse",
       "headers": { "Authorization": "Bearer <在 Web「密钥」页新建的密钥>" }
     }
   }
 }
 ```
 
-- 密钥在 Web 端「密钥」页创建，**明文只显示一次**；默认 90 天过期。
-- scope 决定能调哪些工具：`context:read`（读上下文）、`bug:write`（回填状态）、
-  `attachment:read`/`attachment:write`、`note:write`、`task:read`/`task:write`、`admin`（清回收站）；
-  1.6 起另有 `skill:write`（上传/删除技能；查看与下载技能属 `context:read`）。删除类工具跟着对应写权限走。
-  **建议按需最小授权**：日常「读上下文 + 回填」给 `context:read,attachment:read,bug:write` 足够。
-- **多项目时必须传 `project_slug`**（不传会报错并列出可选值——这是刻意设计，防止 AI 把内容写进别的项目）。
+- 端点是 `GET /mcp/sse`（Bearer 握手，回 `sessionId`）+ `POST /mcp/messages?sessionId=…`；无/错密钥一律 **401**。
+- 密钥在 Web 端「密钥」页创建，**明文只显示一次**，默认 90 天过期；撤销即时生效（长连接每次调用按 ID 复核）。
+- scope 决定能调哪些工具：`context:read`、`bug:write`、`attachment:read`/`attachment:write`、
+  `note:write`、`task:read`/`task:write`、`skill:write`、`admin`（清回收站）。
+  日常「读上下文 + 回填」给 `context:read,attachment:read,bug:write` 足够。
+- 技能安装到本机 Claude Code / Codex：`bash skills/install.sh`，或远程
+  `curl -fsSL http://<地址>:3210/skills/install.sh | VIBEHUB_URL=http://<地址>:3210 bash`。
 
-### 技能 vibehub-mcp（状态流转规范）
+### 工具清单（27 个 = 读取 11 + 写入 16；唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
 
-- 正本：`skills/vibehub-mcp/SKILL.md`（本目录）。**不要再把技能写成 VibeHub 便签**——MCP 读便签会截断到 300 字，AI 读不全，也不会自动加载。
-- 安装到本机 Claude Code / Codex / 通用 agents 的用户级技能目录：`bash skills/install.sh`（改了 SKILL.md 重跑即可）。
-- 别的机器：`curl -fsSL http://<地址>:3210/skills/install.sh | VIBEHUB_URL=http://<地址>:3210 bash`。
-- 规则的核心同时写在 `server/src/mcp/workflow.ts`（随 initialize 下发、写进工具描述与返回），**改流转规则时两处同步**。
+读取：`get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、`inspect_image_asset`、
+`list_notes`、`search`、`list_tasks`、`get_task_detail`、`list_skills`、`download_skill`
 
-### 工具清单（1.5 为 16 个；1.6 起 26 个；1.7 起 27 个，唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
+写入：`update_bug_status`、`create_bug`、`add_bug_comment`、`delete_bug`、`append_scratchpad`、`update_note`、
+`delete_note`、`upload_attachment`、`create_upload_url`、`delete_attachment`、`create_task`、`update_task`、
+`delete_task`、`upload_skill`、`delete_skill`、`purge_trash`（需 `admin`）
 
-读取：`get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、
-`inspect_image_asset`、`list_notes`、`list_tasks`；1.6 新增 `search`、`get_task_detail`、`list_skills`、`download_skill`
-写入：`update_bug_status`、`create_bug`、`add_bug_comment`、`append_scratchpad`、
-`upload_attachment`、`create_task`、`update_task`、`purge_trash`（需 admin）；
-1.6 新增 `delete_bug`、`update_note`、`delete_note`、`delete_attachment`、`delete_task`、`upload_skill`、`delete_skill`；1.7 新增 `create_upload_url`
+### 易踩的参数坑（实测确认）
 
-**易踩的参数坑**（实测确认）：
-- 传文件（1.7 起）：文本用 `upload_attachment` 的 `content` 直接传；本地文件用 `create_upload_url` 拿 curl 命令直传，内容不经过对话。1.6 及以前 `upload_attachment` 只能传 `data_base64`。
-- 看截图（1.7 起）：`inspect_image_asset` 默认直接返回图片；1.6 及以前默认返回服务端路径（容器部署时打不开）。
 - `update_bug_status` 的参数是 **`commit_hash`**，不是 `git_commit_hash`。
-- 状态**不能跳级**：合法路径 `open → in_progress → resolved → verifying → verified`（1.6 起；验证方先改 verifying 再动手，verified 是终点）；`closed` 只用于重复/不修/无法复现，必须写 `resolution_notes`。
+- 状态**不能跳级**：缺陷 `open → in_progress → resolved → verifying → verified`（`verified` 是修复终点）；
+  `closed` 只用于重复/不修/无法复现，必须写 `resolution_notes`。任务 `todo → doing → review → verifying → done`（另可 `cancelled`）。
 - `append_scratchpad` 不传 `project_slug` 会落成**全局便签**（项目下查不到）。
+- **多项目时必须传 `project_slug`**（不传会报错并列出可选值——刻意设计，防止 AI 写进别的项目）。
+- 传文件：文本用 `upload_attachment` 的 `content`；本地文件用 `create_upload_url` 拿 curl 命令直传，内容不经过对话。
+- 看图：`inspect_image_asset` 默认直接返回图片内容块（模型能看到截图），不要用 `return_mode: base64`。
 
 ---
 
-## 9. 本机不可违背的约定
+## 9. 数据库与网络暴露面
 
-1. **密钥不入库**：`.env`、`deploy/remote/docker-compose.yml` 含真实密钥，已在 `.gitignore` 中；
-   不要为了「方便」把明文提交进 git。
+| 项 | 事实 |
+| --- | --- |
+| PG 监听 | `listen_addresses = 'localhost,<ZeroTier IP>'`——**不含公网 IP** |
+| PG 认证 | 本地 `scram-sha-256`；ZeroTier 网段 `host all all <ZT 网段>/24 scram-sha-256`；无 `trust` 规则 |
+| 公网 5432 | **未监听**。`nc -z <公网IP> 5432` 可能显示 succeeded，那是云侧/中间设备接受 TCP 后立即关闭的假象——用 `psql` 直连会得到 `server closed the connection unexpectedly` |
+| 应用内网访问 | PG 走 `127.0.0.1:5432`；队友/你可从 ZeroTier 网段直连库（`psql -h <ZeroTier IP>`） |
+| 安全组 | 已放行 3210（公网可达服务）。**建议收敛为只开 3210 与 22**——全放行时若有人把 `listen_addresses` 改成 `*`，数据库立刻裸奔 |
+
+---
+
+## 10. 已知坑（都是实测抓到的）
+
+1. **`/app/prisma` 符号链接不可删**：`dist/bootstrap.js` 里把 schema 路径**硬编码**为 `/app/prisma/schema.prisma`
+   （容器布局遗留）。monorepo 实际在 `/app/server/prisma`，靠 `ln -sfn /app/server/prisma /app/prisma` 兼容。删掉它 → 迁移失败、服务起不来。
+2. **别在服务器上构建前端**：`next build` 峰值内存超过本机上限（§3）。前端一律本机构建后 rsync。
+3. **`npm run build -w server` 自带 `prisma generate`**；手工只跑 `tsc` 会在改 schema 后漏引擎（表现为诡异的 `PrismaClientValidationError`）。
+4. **静态产物路径三候选**：`cwd/../web/out`（monorepo）、`cwd/web/out`、`web-dist`。本机是 monorepo 布局，`cwd=/app/server` → 命中 `/app/web/out`。
+5. **`CREATE EXTENSION IF NOT EXISTS vector` 不需要超管**：扩展已存在时 PostgreSQL 会先短路返回（实测 `NOTICE: extension "vector" already exists, skipping`），所以 `vibehub` 角色无需 superuser；但**首次**建扩展要用 `postgres` 执行。
+6. **`REGISTRATION_OPEN` 必须为 `false`**：3210 公网可达，开着等于任何人扫到就能注册进你的看板（实测开着的状态下匿名注册返回 201 并拿到 token）。
+7. **SSH 密码登录可能被拒**：若 `root` 密码登录报 `Permission denied`，用云控制台 VNC/CloudShell 进机器
+   `passwd root` 重设，并确认 `sshd_config` 的 `PermitRootLogin`。**建议尽快改为密钥登录并关闭密码认证**。
+8. **`logrotate` 需 `su root syslog`**，否则静默不轮转（§7）。
+9. **内存只有 768 MiB**：不要在这台机器上再起 Docker、Jenkins、Elasticsearch 之类；加服务前先看 `free -m` 的 available。
+
+---
+
+## 11. 不可违背的约定（与仓库根 `AGENTS.md` 一致，此处只列本机相关的）
+
+1. **密钥不入库**：`/etc/vibehub/env` 含真实密钥（600），仓库里的 `.env.example` 只能是占位值。
 2. **不建演示数据**：任何环境不得残留 seed/演示数据。
-3. **迁移只准 `prisma migrate` 生成**（raw SQL 仅限 pgvector 向量列，且需注释原因）。
-   ⚠️ `migrate dev` 每次都会在生成的迁移里带上 `DROP INDEX "Embedding_embedding_idx"` + `DROP COLUMN "embedding"`
-   （Prisma 不感知向量列）。与向量列无关的迁移**删去这两句并留注释**——删了再补回会清空全部语义索引。
+3. **迁移只准 `prisma migrate` 生成**；raw SQL 仅限 pgvector 向量列且必须注释原因。
+   ⚠️ `migrate dev` 每次都会在迁移里带上 `DROP INDEX "Embedding_embedding_idx"` + `DROP COLUMN "embedding"`
+   （Prisma 不感知向量列）——与向量列无关的迁移要**删掉这两句并留注释**。
 4. **响应必须序列化**：禁止裸出 Prisma 模型（camelCase 曾致前端崩溃）。
-5. **静态导出约束**：页面禁用 `next/navigation` 的 `redirect()/notFound()`；根路径用
-   `window.location.replace` + `<meta refresh>`。Fastify 托管 out/ 必须 `extensions: ['html']`。
-6. **SSE 鉴权**：浏览器 `EventSource` 带不了头，`/api/events` 用 `?token=`；路由内校验。
-   **该 token 不得进日志**（已加请求序列化器脱敏）。
-7. **容器启动序列**：entrypoint 只 `exec supervisord`；「等 PG → 建扩展 → 迁移」在
-   `dist/bootstrap.js` 内。反过来会在容器启动时死锁（PG 归 supervisord 管）。
-8. **计量写入必须 await**：`logEvent`/`recordToolCall` 禁「即发即弃」，否则紧随的用量查询漏账。
-9. 改动完成后**更新本文件的对应章节**（部署参数、工具清单、已知坑），保持本文件与实物一致。
+5. **静态导出约束**：页面禁用 `next/navigation` 的 `redirect()/notFound()`；Fastify 托管 `out/` 必须 `extensions: ['html']`。
+6. **SSE 鉴权**：`/api/events` 用 `?token=`（EventSource 带不了头），该 token 不得进日志。
+7. **启动序列**：entrypoint/bootstrap 的「等 PG → 建扩展 → 迁移」不可挪到 systemd 之外或前置；`bootstrap.js` 已是唯一入口。
+8. **计量写入必须 await**：`logEvent`/`recordToolCall` 禁「即发即弃」。
+9. **改完更新本文件**的对应章节（部署参数、工具清单、已知坑）。
 
 ---
 
-## 10. 已知边界与后续可做项
+## 12. 本次部署实测记录（2026-10-17）
 
-- **无 HTTPS**：内网 HTTP 明文访问（同网段可见）。要对外或敏感环境需加反向代理 + 证书。
-- **防火墙**：本机 macOS 应用防火墙当前**关闭**（服务因此对内网可达）。如需限制来源，
-  开启防火墙并只放行必要网段。
-- **单机单团队**：不支持多租户；多机部署需把 SSE 的 LISTEN 与限流换成共享存储（Redis）。
-- **语义检索**：已启用 DashScope；Key 写在 `.env`，更换 Key 需 `compose up -d` 重启。
-  向量写路径已做优化——**只在标题/步骤/期望/实际变化时才重算**，拖拽改状态不再等外网。
-- **迁移引擎运行期下载**（2026-09-24 云端构建 1.6 时发现，1.3 起就存在）：见 §5「启动时要能访问 `binaries.prisma.sh`」。
-  根治办法是在 Dockerfile 的构建阶段装上 `openssl`（让 Prisma 按 OpenSSL 3 取引擎并打进镜像），改完需在本机重新构建验证。
-  另：`binaryTargets` 只含 arm64 目标，**x86 机器上构建的镜像查询引擎不对，跑不起来**；要换 x86 部署须加 `debian-openssl-3.0.x`。
-- **前端回归**统一走 Playwright（`server/tests/e2e/`），不用人工点点点。
+| 验收项 | 结果 |
+| --- | --- |
+| 迁移 | **9 个全部应用**（`init` → `status_actor`） |
+| 表数量 | **17** 张（16 个 model + `_prisma_migrations`） |
+| `/api/health` | **200**，约 10 ms |
+| 页面 `/` `/login` `/board` `/stats` `/skills` | 全 **200** |
+| 静态资源 `/skills/install.sh`、`/skills/vibehub-mcp/SKILL.md` | 全 **200** |
+| 未登录访问 `/api/bugs` 等写读接口 | 全 **401** |
+| 注册开关关闭后注册 | **403**（「系统已关闭自助注册」） |
+| MCP `initialize` + `tools/list` | 协议 `2024-11-05`，serverInfo `vibehub 0.2.0`，**27 个工具** |
+| MCP 无效/缺失密钥 | **401** |
+| 故障重启恢复 | **约 4 秒** |
+| 应用内存 | **约 139 MB** |
+| 磁盘占用 | 约 6.6 G / 40 G |
