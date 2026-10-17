@@ -224,6 +224,16 @@ model McpEventSubscription {
   @@map("mcp_event_subscriptions")
 }
 
+/// 动态注册的 OAuth 客户端（供 MCP 客户端 OAuth 2.1 / PKCE 使用）
+model OAuthClient {
+  id          String   @id // OAuth client_id
+  clientName  String?  @map("client_name")
+  redirectUris String[] @map("redirect_uris")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("oauth_clients")
+}
+
 /// 计量事件（出账与用量分析依据）
 model UsageEvent {
   id        String   @id

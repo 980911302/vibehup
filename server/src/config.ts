@@ -77,6 +77,13 @@ export const config = {
   attachmentTrashDays: Number(process.env.ATTACHMENT_TRASH_DAYS ?? 30),
   /** 登录态签名密钥：空 = 每次重启随机生成（core/jwt.ts 处理），生产必须显式配置 */
   jwtSecret: process.env.JWT_SECRET ?? '',
+  /** 外部 HTTPS 基址（MCP OAuth discovery 使用） */
+  publicUrl: (process.env.VIBEHUB_PUBLIC_URL ?? '').replace(/\/$/, ''),
+  /** 可信内网事件中转；空配置时直接投递，令牌仅存部署环境。 */
+  mcpEventRelay: {
+    url: process.env.VIBEHUB_MCP_EVENT_RELAY_URL ?? '',
+    token: process.env.VIBEHUB_MCP_EVENT_RELAY_TOKEN ?? '',
+  },
   /** 是否开放自助注册 */
   registrationOpen: (process.env.REGISTRATION_OPEN ?? 'true') !== 'false',
   /** access token 有效期（秒） */

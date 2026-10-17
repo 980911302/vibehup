@@ -90,6 +90,9 @@
 - **项目解析契约（R76）**：工具未传 `project_slug` 时，仅当只有一个进行中（未归档）项目才自动选择，否则 `VALIDATION_ERROR` 并列出可选 slug；**禁止**按 MCP 服务进程 cwd 猜项目或静默回落到最近更新的项目（容器内 cwd=/app、stdio 为 vibehub/server，均与 IDE 工作区无关，会把 AI 写入落进别的项目）。
 - **MCP 文件收发契约（R84，试用反馈）**：AI 传文件不经过对话、看图直接看到。① `upload_attachment`：文本传 `content`（原文，禁止要求 AI 转 base64），`data_base64` 仅作很小的二进制，二者必须且只能给一个；`file_type` 缺省按扩展名推断（`core/mime.ts`）；给了 `bug_id` 以缺陷所在项目为准并校验存在。② `create_upload_url`（attachment:write）：签发 `PUT /api/uploads?token=…`（`core/upload-grant.ts`：HMAC 以 `upload:` 前缀与 JWT 共用密钥、10 分钟、nonce 一次性），AI 在终端执行返回的 `curl -T`；链接地址取 SSE 握手时客户端连入的地址（`mcpStore.origin()`，stdio 回落本机端口）；上传时复核签发密钥（撤销/过期/降权即失效）；**令牌必须走查询参数**（Fastify 路径参数上限 100 字符，令牌更长会 414），访问日志沿用 `?token=` 脱敏。③ `inspect_image_asset` 默认 `return_mode=image`，经 guard 的 `ToolContent` 透传 MCP 图片内容块（png/jpeg/gif/webp，其余转 PNG）；`path` 只对同机 stdio 有意义，`base64` 仅兼容旧用法（塞在文本里，模型看不到图）。
 - **MCP Events（R87）**：远程 Work 连接使用 Streamable HTTP `/mcp`（`/mcp/sse` 保持兼容）；`server/discover` 与 `events/list|subscribe|unsubscribe` 只允许 Bearer keyed context，订阅要求 `context:read` 或 `admin`。回调仅 HTTPS 公网地址；验证 DNS 后固定到已验证 IP，禁止重定向；签名密钥 AES-GCM 加密存储。投递只含扁平实体 ID / 项目 ID / 可选状态，订阅持久化于 PostgreSQL；事件通过 PG LISTEN/NOTIFY 覆盖跨进程 MCP 写入。管理页可在 Admin+ 角色下查看/复制密钥，密钥明文只存 AES-256-GCM 密文且前端仅临时保存在内存。
+- **远程 MCP 会话恢复（R87）**：Work 后台运行可能不发 `initialize` 或沿用服务重启前的会话 ID；`/mcp` 每次先校验/刷新 Bearer keyed context，再复用同密钥会话或内部引导 SDK 会话；已知会话属于其他密钥仍返回 403。标准 `initialize` 始终建立新会话。改写会话 ID 必须同时更新 normalized headers 和 rawHeaders，防止 SDK 继续读取旧值。
+- **MCP Events 出站中转（R87 连接修复）**：可选 `VIBEHUB_MCP_EVENT_RELAY_URL` + `VIBEHUB_MCP_EVENT_RELAY_TOKEN`，只用于服务器无法访问 Work 回调时的可信内网出站中转。中转进程 `dist/mcp-event-relay.js` 仅绑定指定内网接口、校验独立 Bearer 令牌（至少 32 字符）、只允许 `connectors.api.openai.com` HTTPS 443；通过 HTTPS DNS 查询真实公网地址后固定 IP 并保留目标 TLS 证书校验，禁止重定向；若需要本机网络代理，设置 `VIBEHUB_MCP_EVENT_RELAY_PROXY`（仅 loopback HTTP CONNECT，连接经验证的目标公网 IP，TLS SNI/证书仍校验原域名）；只转发既有签名头与原始正文，不接触 webhook 签名密钥。不配置中转则继续直接投递。
+
 
 ## 6. 前端契约
 
@@ -101,6 +104,7 @@
 - **移动端入口契约（R62）**：<900px（触屏主场景）看板顶栏常驻「＋录缺陷」按钮（快捷键触屏不可达）；对话框基座 `w-[calc(100vw-2rem)] max-h-[85vh] overflow-y-auto` 保证小屏不溢出；粘贴区文案与主按钮按 `pointer: coarse` 分支（触屏无剪贴板，走常驻「选择截图/文件」大按钮）。
 - **危险按钮（R81）**：`.vh-btn` 是未分层的全局类，Tailwind 工具类（`bg-[var(--danger)]`/`text-[var(--danger)]`/`h-8` 等）压不过它——删除/撤销类按钮一律用 `vh-btn danger` / `vh-btn ghost danger` 变体，不要再叠工具类改颜色（此前全站删除按钮都显示成普通蓝/灰按钮）。
 - **图标宪法（R58）**：全站图标一律使用 `lucide-react` 组件，禁 emoji（空态/营销位/计数徽章）与 CSS `content` 字符图标（AI 徽章、星尘标识）——后者已全部上移为 JSX 组件（`Sparkles` 等），`globals.css` 不再出现 `content: '字符'` 图标规则。新增图标从 lucide 选型（PascalCase），尺寸/描边用 props，颜色走 token。
+- **OAuth 授权页（R88，用户要求美化）**：服务端 HTML 由 `core/oauth-page.ts` / `oauth-page-styles.ts` 渲染，读取部署前端 `index.html` 中的 CSS 链接复用 Daylight 主题 token，不另建颜色表；纯 HTML 页面使用 Lucide 内联 SVG，避免引入 React 运行依赖。只展示实际请求的权限，中文说明明确写出删除能力；账号允许登录名或邮箱。错误页不回显密码，登录失败保留未过期授权请求供重试；同意并验证成功后原子消费 nonce，单次请求最多签发一个授权码；取消时按已验证 callback 返回 `access_denied` 并保留 state。
 - **认证后导航用硬导航（R59）**：登录/注册成功后必须 `window.location.replace(target)`——`router.replace` 与 setUser 同刻提交会被 React 批处理吞掉（R50/R59 二次复现，表现为 token 已写但停在中转页）；静态导出生效下硬导航即普通跳转。
 - **路由守卫竞态防护（R54）**：`(app)/layout` 守卫踢回登录页前必须确认 localStorage 无 token——登录成功后的 `router.replace` 可能在 React 提交新上下文前触发导航，守卫读到旧上下文（user=null）会把用户踢回，与 setUser 赛跑；有 token = 刚登录/恢复中，应等待而非踢回（失效 token 由启动流程清理后自然踢回，不会卡死）。
 - **令牌刷新协调契约（R76）**：401 刷新一律经 `lib/token-refresh.ts`（同标签单飞 + localStorage 采用 + Web Locks 跨标签互斥 + 15s 超时），**禁止**任何地方直调 `/auth/refresh`（启动恢复流程亦然）；令牌读取 localStorage 优先、`storage` 事件跨标签同步；只有刷新被拒（401/403）才登出，网络抖动/服务重启不踢人。前端纯函数测试：`cd server && npx vitest run --root ../web`。

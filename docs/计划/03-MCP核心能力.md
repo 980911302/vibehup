@@ -169,6 +169,12 @@ ChatGPT Work 通过 Streamable HTTP `/mcp` 连接；旧 `/mcp/sse` 保持兼容 
 
 订阅保存在 `mcp_event_subscriptions`，签名密钥以 `JWT_SECRET` 派生的 AES-256-GCM 加密。事件投递经 PG LISTEN/NOTIFY，覆盖 Web 服务与独立 stdio MCP 进程的业务写入；过期、撤销或已停用创建人的密钥不再收到事件。服务通过 `server/discover` 声明 MCP Events 版本，提供 `events/list`、`events/subscribe`、`events/unsubscribe`。
 
+Work 的事件方法与 SDK 工具会话分离：事件订阅可直接调用；后台运行的普通工具请求可能省略 `initialize` 或携带服务重启前的会话 ID。HTTP 路由每次重新鉴权后，只复用同密钥 SDK 会话；无可用会话时内部引导新 SDK 会话，并同步改写 `headers`/`rawHeaders`。已知会话与密钥不匹配返回 403，标准 `initialize` 始终建立新会话。
+
+#### 可信内网出站中转（R87 连接修复）
+
+当部署主机到 Work 回调域名的 DNS/TLS 失败时，可通过 `VIBEHUB_MCP_EVENT_RELAY_URL` 与 `VIBEHUB_MCP_EVENT_RELAY_TOKEN` 配置独立出站中转；这不改变 `events/subscribe` 的 challenge 校验流程。独立进程 `dist/mcp-event-relay.js` 使用 Node.js 22，无额外依赖，凭证与监听地址见远端部署文档。中转只允许 `connectors.api.openai.com` HTTPS 443，以 HTTPS DNS 获取真实公网地址并固定 IP，保留证书校验、禁止重定向，签名正文与签名头原样传递。本机需要 Clash 等代理时，可配置 `VIBEHUB_MCP_EVENT_RELAY_PROXY` 指向 loopback HTTP 代理，CONNECT 使用已验证的目标 IP，TLS SNI/证书继续校验原域名。认证令牌只存环境文件；不在日志记录 callback URL、正文或签名头。公网 DNS/HTTPS 连接可用必须在实际中转主机上验证，内网互通不等于 OpenAI 出站可用。
+
 ## 3.7 验收标准
 
 - [ ] `tools/list` 返回与 `TOOL_NAMES` 等长的工具数（**现行 27**；原始签约 14 为历史基线）；每个 description 含 Token 经济学说明

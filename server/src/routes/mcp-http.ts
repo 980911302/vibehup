@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpServer } from '../mcp/server.js';
-import { handleMcpEventMethod, MCP_EVENT_METHODS } from '../mcp/events.js';
+import { handleMcpEventMethod, MCP_EVENT_METHODS, MCP_EVENT_PROTOCOL_VERSION } from '../mcp/events.js';
 import { loadKeyedContext, refreshKeyedContext, type McpContext } from '../mcp/context.js';
 import { mcpStore } from '../mcp/context-store.js';
 
@@ -30,14 +30,48 @@ function isEventMethod(value: unknown): value is (typeof MCP_EVENT_METHODS)[numb
 }
 
 export const mcpHttpRoutes: FastifyPluginAsync = async (app) => {
+  app.addContentTypeParser('application/octet-stream', { parseAs: 'string' }, (_request, body, done) => done(null, body));
+
+  async function bootstrapSession(authorization: string): Promise<Session> {
+    const response = await app.inject({
+      method: 'POST', url: '/mcp',
+      headers: { authorization, accept: 'application/json, text/event-stream', 'content-type': 'application/json' },
+      payload: {
+        jsonrpc: '2.0', id: 'vibehub-session-bootstrap', method: 'initialize',
+        params: {
+          protocolVersion: MCP_EVENT_PROTOCOL_VERSION, capabilities: {},
+          clientInfo: { name: 'vibehub-authenticated-bootstrap', version: '1.0.0' },
+        },
+      },
+    });
+    const id = response.headers['mcp-session-id'];
+    const session = typeof id === 'string' ? sessions.get(id) : undefined;
+    if (response.statusCode !== 200 || !session) throw new Error('MCP 会话初始化失败');
+    return session;
+  }
+
   app.post('/mcp', async (request, reply) => {
     let ctx: McpContext;
     try { ctx = await requestContext(request); }
     catch (error) {
+      reply.header('www-authenticate', 'Bearer resource_metadata="' + (process.env.VIBEHUB_PUBLIC_URL ?? '').replace(/\/$/, '') + '/.well-known/oauth-protected-resource/mcp"');
       return reply.code(401).send({ error: { code: 'INVALID_API_KEY', message: error instanceof Error ? error.message : '密钥无效' } });
     }
 
-    const body = request.body as { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown } | undefined;
+    let parsedBody = request.body;
+    if (request.headers['content-type']?.split(';', 1)[0].trim().toLowerCase() === 'application/octet-stream') {
+      if (typeof parsedBody !== 'string' || !parsedBody.trim()) return reply.code(202).send();
+      try { parsedBody = JSON.parse(parsedBody); }
+      catch { return reply.code(400).send({ error: { code: 'BAD_REQUEST', message: 'MCP 请求必须是有效的 JSON' } }); }
+      // ChatGPT may send JSON-RPC over an empty octet-stream probe or mislabeled JSON body.
+      request.raw.headers['content-type'] = 'application/json';
+      request.headers['content-type'] = 'application/json';
+      if (!request.headers.accept?.includes('application/json') || !request.headers.accept.includes('text/event-stream')) {
+        request.raw.headers.accept = 'application/json, text/event-stream';
+        request.headers.accept = 'application/json, text/event-stream';
+      }
+    }
+    const body = parsedBody as { jsonrpc?: unknown; id?: unknown; method?: unknown; params?: unknown } | undefined;
     if (body && isEventMethod(body.method)) {
       if (body.jsonrpc !== '2.0') {
         return reply.code(200).type('application/json').send({
@@ -64,14 +98,38 @@ export const mcpHttpRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const sessionId = request.headers['mcp-session-id'];
-    const existing = typeof sessionId === 'string' ? sessions.get(sessionId) : undefined;
+    const sameKeySessions = [...sessions.values()].filter((session) => session.apiKeyId === ctx.apiKeyId);
+    let existing = body?.method === 'initialize' ? undefined :
+      (typeof sessionId === 'string' ? sessions.get(sessionId) : undefined) ?? sameKeySessions.at(-1);
+    if (existing && existing.apiKeyId !== ctx.apiKeyId) {
+      return reply.code(403).send({ error: { code: 'FORBIDDEN', message: 'MCP 会话密钥不匹配' } });
+    }
+    // Work background runs may omit initialize or reuse a session lost on restart.
+    // Authentication above is mandatory; establish a new SDK session for this key.
+    if (!existing && body?.jsonrpc === '2.0' && typeof body.method === 'string' && body.method !== 'initialize') {
+      try { existing = await bootstrapSession(request.headers.authorization!); }
+      catch {
+        return reply.code(502).send({ error: { code: 'INTERNAL_ERROR', message: 'MCP 会话初始化失败，请重试' } });
+      }
+    }
     if (existing) {
-      if (existing.apiKeyId !== ctx.apiKeyId) return reply.code(403).send({ error: { code: 'FORBIDDEN', message: 'MCP 会话密钥不匹配' } });
+      const id = existing.transport.sessionId!;
+      if (sessionId !== id) {
+        request.raw.headers['mcp-session-id'] = id;
+        request.headers['mcp-session-id'] = id;
+        const raw: string[] = [];
+        for (let i = 0; i < request.raw.rawHeaders.length; i += 2) {
+          if (request.raw.rawHeaders[i]!.toLowerCase() !== 'mcp-session-id') {
+            raw.push(request.raw.rawHeaders[i]!, request.raw.rawHeaders[i + 1]!);
+          }
+        }
+        request.raw.rawHeaders = [...raw, 'mcp-session-id', id];
+      }
       reply.hijack();
       await mcpStore.run(ctx, () => existing.transport.handleRequest(
         request.raw as IncomingMessage,
         reply.raw as ServerResponse,
-        request.body,
+        parsedBody,
       ));
       return reply;
     }
@@ -81,7 +139,16 @@ export const mcpHttpRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const mcpServer = createMcpServer();
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: randomUUID });
+    let transport: StreamableHTTPServerTransport;
+    transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: randomUUID,
+      // Register the session at the SDK's initialization point. The client can
+      // issue tools/list as soon as it receives the initialize response, before
+      // handleRequest() has fully unwound back to this route.
+      onsessioninitialized: (id) => {
+        sessions.set(id, { apiKeyId: ctx.apiKeyId!, transport });
+      },
+    });
     transport.onclose = () => {
       const id = transport.sessionId;
       if (id) sessions.delete(id);
@@ -90,11 +157,12 @@ export const mcpHttpRoutes: FastifyPluginAsync = async (app) => {
       });
     };
     await mcpServer.connect(transport);
+    transport.onerror = (error) => app.log.warn({ message: error.message }, 'MCP HTTP transport error');
     reply.hijack();
     await mcpStore.run(ctx, () => transport.handleRequest(
       request.raw as IncomingMessage,
       reply.raw as ServerResponse,
-      request.body,
+      parsedBody,
     ));
     const id = transport.sessionId;
     if (id) sessions.set(id, { apiKeyId: ctx.apiKeyId!, transport });

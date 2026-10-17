@@ -209,9 +209,37 @@ IDE Agent 使用 **SSE** 接入：
 - scope 决定能调哪些工具：`context:read`、`bug:write`、`attachment:read`/`attachment:write`、
   `note:write`、`task:read`/`task:write`、`skill:write`、`admin`（清回收站）。
   日常「读上下文 + 回填」给 `context:read,attachment:read,bug:write` 足够。
-- ChatGPT Work 使用 Streamable HTTP `https://<域名>/mcp`，并配置 Bearer MCP 密钥。服务端现支持 `server/discover`、`events/list`、`events/subscribe`、`events/unsubscribe`；webhook callback 必须是 HTTPS 公网地址。当前机器仍只监听 HTTP 3210，需先配置域名/TLS 反向代理再连接 Work。
+- ChatGPT Work 使用 Streamable HTTP `https://<公网地址>/mcp`。OAuth 2.1 discovery 位于 `/.well-known/oauth-authorization-server` 与 `/.well-known/oauth-protected-resource/mcp`；动态客户端注册使用 `/oauth/register`，授权码 + PKCE 使用 `/oauth/authorize`、`/oauth/token`。授权页要求 VibeHub 账号登录并明确同意所请求的 scope；成功后签发 90 天 MCP 密钥，可在 Web「密钥」页撤销。`VIBEHUB_PUBLIC_URL` 必须等于外部 HTTPS 基址（不带末尾斜杠），否则 discovery 与 resource 校验不匹配。TLS 由 Nginx 终止并反代至 Fastify `127.0.0.1:3210`。MCP Events 仍支持 `server/discover`、`events/list`、`events/subscribe`、`events/unsubscribe`；webhook callback 必须是 HTTPS 公网地址。
 - 技能安装到本机 Claude Code / Codex：`bash skills/install.sh`，或远程
   `curl -fsSL http://<地址>:3210/skills/install.sh | VIBEHUB_URL=http://<地址>:3210 bash`。
+
+### MCP Events 出站中转（R87）
+
+已确认 Work 原生事件发现与订阅调用可达；初始失败发生在服务端向 `connectors.api.openai.com` 发送验证 challenge 的出站 DNS/TLS，已通过用户指定的内网 Mac 中转修复。插件详情已发现 11 个事件，普通 `tools/list` 不包含订阅方法属于协议正常行为。不能把出站超时误判为 Work 不支持事件。
+
+独立中转入口：`server/dist/mcp-event-relay.js`。只需 Node.js 22 及同目录的 `core/mcp-webhook-http.js`、`core/mcp-webhook-proxy.js` 和 `package.json`（`type: module`），不需要 Prisma、数据库或额外 npm 包。运行时环境：
+
+```sh
+# 中转主机：环境文件权限 600，由 systemd/launchd 以常驻服务启动
+VIBEHUB_MCP_EVENT_RELAY_HOST=<中转主机的加密内网地址>
+VIBEHUB_MCP_EVENT_RELAY_PORT=3218
+# 若中转主机使用本机 Clash 等代理，显式配置；只允许 loopback HTTP CONNECT
+VIBEHUB_MCP_EVENT_RELAY_PROXY=http://127.0.0.1:<本机代理端口>
+VIBEHUB_MCP_EVENT_RELAY_TOKEN=<至少32字符的独立随机令牌>
+# node /opt/vibehub-event-relay/mcp-event-relay.js
+
+# VibeHub 主机：加入 /etc/vibehub/env（权限 600）后重启 vibehub.service
+VIBEHUB_MCP_EVENT_RELAY_URL=http://<中转主机的加密内网地址>:3218/forward
+VIBEHUB_MCP_EVENT_RELAY_TOKEN=<与中转主机相同的独立令牌>
+```
+
+内网 HTTP 只允许用于 ZeroTier 等已加密可信网络，服务不能绑定公网接口。中转要求独立 Bearer 令牌，仅接受 OpenAI 回调域名的 HTTPS 443 请求，使用 HTTPS DNS、公网 IP 固定、正常 TLS 校验；禁止重定向。只转发既有签名头和正文，不传签名密钥。`GET /health` 同样需要 Bearer 认证。
+
+后台工具读取的会话恢复也已补齐：Work 自动运行可能沿用服务重启前的 MCP 会话 ID，或直接调用工具而不发送 initialize；发送端在每次 Bearer 鉴权后恢复同密钥 SDK 会话，替换旧 rawHeaders，其他密钥会话仍拒绝。升级后应实际触发事件检查 get_task_detail 能读取新任务，不能仅看订阅成功。
+
+当前中转运行于用户指定的 Mac mini：`~/.local/share/vibehub-event-relay/`（包含 `relay.env`，权限 600），由 `~/Library/LaunchAgents/top.zhanglinlin.vibehub-event-relay.plist` 常驻启动（RunAtLoad + KeepAlive），日志在 `~/Library/Logs/VibeHubEventRelay/`。重启：`launchctl kickstart -k gui/$(id -u)/top.zhanglinlin.vibehub-event-relay`。它依赖 Mac 在线、用户会话及本地 Clash 代理；退出该用户会话或关闭代理会中断事件投递，重新登录后 LaunchAgent 自动恢复。实测系统直连 OpenAI 失败，本机代理路径 TLS 成功；代理 CONNECT 到经 HTTPS DNS 验证的公网 IP，TLS SNI 和证书校验保持回调域名。
+
+部署顺序：备份旧代码/环境 → 检查中转主机的实际 OpenAI DNS/TLS 连通性 → 启动中转 → 从 VibeHub 主机认证访问中转 health → 部署发送端并设置环境 → 重启检查 health → 重试 Work 原生事件订阅并核对数据库订阅记录 → 新建经用户授权的任务确认 Work 被唤醒。最后两项未通过不能宣称事件闭环完成。回滚：还原环境与备份产物、重启原服务，停用中转。
 
 ### 工具清单（27 个 = 读取 11 + 写入 16；唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
 
@@ -291,7 +319,24 @@ IDE Agent 使用 **SSE** 接入：
 | 注册开关关闭后注册 | **403**（「系统已关闭自助注册」） |
 | MCP `initialize` + `tools/list` | 协议 `2024-11-05`，serverInfo `vibehub 0.2.0`，**27 个工具** |
 | MCP 无效/缺失密钥 | **401** |
-| Streamable HTTP `/mcp` 缺失密钥 | **401**；当前远端尚无 HTTPS 域名，Work 真连接待 TLS 配置后验收 |
+| Streamable HTTP `/mcp` 缺失密钥 | **401**；后续 HTTPS/OAuth 与工具读取已打通，事件订阅受出站回调 DNS/TLS 阻塞 |
 | 故障重启恢复 | **约 4 秒** |
 | 应用内存 | **约 139 MB** |
 | 磁盘占用 | 约 6.6 G / 40 G |
+
+### MCP Events 闭环补验（2026-10-17）
+
+- 用户指定内网 Mac 的 LaunchAgent 已运行，认证 health 200，未认证 401；云端到中转认证 health 200。
+- 本地与远端 Server build 均 exit 0，云端重启后 health 正常；未运行自动化测试。
+- Work 自动化 `VibeHub 新任务监控` 已启用；task.created 订阅持久保存，仅筛选验证项目。
+- 05:56:54Z 创建带完整描述的验证任务，05:57:41Z 后台 get_task_detail 成功记账；Work 自动报告完整标题、描述及验证标记，未发送额外聊天消息触发，任务保持 todo。
+- 初次事件已唤醒 Work，但读取因旧会话失败；随后补齐鉴权后的会话恢复，第二次完整闭环成功，不能仅凭初次回调 2xx 宣称完成。
+- 更新前源码/产物/环境备份保存在 `/root/vibehub-backups/mcp-relay-<时间戳>/`，令牌不写入文档。
+
+### OAuth 授权页 UI 更新（R88，2026-10-17）
+
+- 模板：`server/src/core/oauth-page.ts` 与 `oauth-page-styles.ts`；路由仍为 GET/POST `/oauth/authorize`。
+- 样式从当前部署的前端 `index.html` 提取 stylesheet 链接，复用 Daylight 主题；部署须保留完整 `web/out`，包括 CSS 文件。仅改授权模板时无需重建前端。
+- 更新前旧路由源码和产物已归档到 `/root/vibehub-backups/oauth-ui-<时间戳>/oauth-before.tar.gz`。回滚还原旧路由、重建后端并重启。
+- 本地与远端 Server build exit 0；服务重启后 health 正常；浏览器已查看线上真实 OAuth 授权页。没有提交登录/授权，也未运行自动化测试。
+- 错误回显不含密码；有效请求在登录失败后仍可重试，成功验证时原子消费 nonce；取消通过既有已校验 redirect_uri 返回 OAuth access_denied 与 state。

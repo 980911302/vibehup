@@ -21,6 +21,7 @@ import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/users.js';
 import { mcpSseRoutes } from './routes/mcp-sse.js';
 import { mcpHttpRoutes } from './routes/mcp-http.js';
+import { oauthRoutes } from './routes/oauth.js';
 import { startMcpEventDelivery } from './services/mcp-event-delivery.js';
 import { bugExtrasRoutes } from './routes/bug-extras.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
@@ -131,6 +132,8 @@ export async function buildServer(opts: { loggerStream?: NodeJS.WritableStream }
   await app.register(mcpSseRoutes, { prefix: '/mcp' });
   // MCP Streamable HTTP + MCP Events：供 ChatGPT Work 等远程 MCP 客户端使用
   await app.register(mcpHttpRoutes);
+  // OAuth 2.1 授权服务器（ChatGPT Work OAuth discovery / PKCE）
+  await app.register(oauthRoutes);
   const stopMcpEventDelivery = await startMcpEventDelivery();
   app.addHook('onClose', async () => stopMcpEventDelivery());
 
