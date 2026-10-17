@@ -331,6 +331,8 @@ R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI
 | R85 | 计划 Task 11 的页面把 `useToast()` 整个对象放进 `load` 的 `useCallback` 依赖；toast 上下文对象每次 Provider 重渲染都是新引用，请求失败→弹 toast→Provider 重渲染→`load` 变新→再请求，自我循环 | 改为解构稳定的 `error` 回调入依赖 | web/src/app/(app)/stats/page.tsx |
 | R85 | 计划 Task 8 只加侧栏入口与 `G D`，但全站导航另有两处 G 序列清单（帮助面板 `lib/shortcuts.ts`、⌘K 命令面板），漏改即三处漂移 | 同步补「统计」到帮助清单与 ⌘K | web/src/lib/shortcuts.ts、web/src/components/layout/CommandPalette.tsx |
 
+| R86（文档对账） | **用户要求「文档按最真实代码更新」**。全库排查出 6 类事实漂移：① 工具数仍写 14/15/26，而 `TOOL_NAMES` 与运行时 `tools/list` 均为 **27**；② 缺陷/任务仍写「五列」，R83 已是六列（缺陷多「验证中」、任务多「验证中」）；③ `core/errors.ts` 实有 `BAD_REQUEST`/`CONFLICT`，文档却列了代码中从未出现的 `INVALID_TRANSITION`；④ README：卷名写 `vibehub-db`（实际 `vibehub-pg`）、表数 14（实际 16 个 model）、基底写 pg17（实际默认 pg16）、用例数 243/12（实际 330/42）、`/api/bugs/board` 分组缺 `verifying`；⑤ `规范/03` 的 Dockerfile 仍是「3 阶段 + apt 装 nodejs」旧稿（实际 4 阶段 + Node 22 官方 tarball），entrypoint 仍写「等 PG→建扩展→migrate」五步（R53 已下沉 `dist/bootstrap.js`），supervisord 命令写 `dist/index.js`（实际 `dist/bootstrap.js`）；⑥ REST 摘要缺 auth/users/api-keys/system/stats/activity 六个路由族 | 以代码为唯一真相源逐份订正，全部替换带唯一性断言（0 误伤）：`README.md` 15 处、`AGENTS.md` §3 错误码枚举与状态码、`docs/计划/03` 6 处（并声明 §3.2 为原始签约、§3.2.1 为现行）、`00-总览`/`05`/`08`/`规范 00` 工具数与表述、`docs/规范/03` 的 Dockerfile/supervisord/entrypoint/compose 四段按实际文件重写。**历史日志不改写**（§3 运行日志与既有 §4 行保留当时事实）；代码零变更、行为零变更 | README、AGENTS、docs/计划/{00,03,05,08,PROGRESS}、docs/规范/{00,03} 共 8 份；代码与运行时不涉及 |
+
 ---
 
 ## 5. 给下一次运行的起点指令（最重要，结束时必须更新）

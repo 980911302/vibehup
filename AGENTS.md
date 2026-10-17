@@ -48,11 +48,11 @@
 
 - REST + snake_case JSON；响应必须经 `core/serialize.ts` 序列化，**禁止裸出 Prisma 模型**（曾致前端崩溃）。
 - 错误体统一：`{ "error": { "code", "message" } }`，message 必须是人话并指出下一步。
-- 错误码枚举（不得随意新增）：`VALIDATION_ERROR / NOT_FOUND / UNAUTHORIZED / FORBIDDEN / EMAIL_TAKEN / INVALID_CREDENTIALS / ACCOUNT_DISABLED / TOKEN_REUSED / LAST_OWNER / INVALID_TRANSITION / PAYLOAD_TOO_LARGE / RATE_LIMITED / INTERNAL_ERROR`。新增须经本文件登记。
+- 错误码枚举（不得随意新增）：`BAD_REQUEST / VALIDATION_ERROR / NOT_FOUND / UNAUTHORIZED / FORBIDDEN / CONFLICT / EMAIL_TAKEN / INVALID_CREDENTIALS / ACCOUNT_DISABLED / TOKEN_REUSED / LAST_OWNER / PAYLOAD_TOO_LARGE / RATE_LIMITED / INTERNAL_ERROR`（唯一出处 `core/errors.ts` 的类定义 + `index.ts` 兜底 500）。新增须经本文件登记。**状态流转非法**（跳级/缺 `reopen_reason`/非法关闭）统一用 `VALIDATION_ERROR` + 人话文案说明合法下一步，**不单设** `INVALID_TRANSITION`（该码仅存在于旧计划文档，代码中从未使用）。
 - 写操作返回更新后实体；分页 `{items,total,page,page_size}`；MCP 分页 `has_more + next_cursor`。
 - **认证响应结构契约**：`/auth/me` 返回 `{ user, stats }` 嵌套（扁平 user 字段 + stats 是反模式，曾致前端恢复登录态把 undefined 当 user）；`/auth/login|register` 返回 `{ user, access_token, refresh_token, expires_in }`。
 - **刷新令牌契约（R76）**：一次性轮换 + 重放整族吊销不变；但同一旧令牌在 10s 宽限期内重复提交且令牌族仍存活 = 并发竞态，照常签发不吊销（多请求/多标签同时刷新曾致用户每 15 分钟随机掉线）；登出吊销**整个令牌族**（否则宽限期内并发签出的同族令牌可让已登出会话复活）。
-- 状态码：200/201/204/400/401/403/404/409/413/429。
+- 状态码：200/201/204/400/401/403/404/409/413/429/500。
 - **multipart 上传顺序无关契约（R53）**：`/api/upload` 的文件 part 与 project_id 等字段到达顺序客户端不保证，路由必须两段式（遍历落盘收集 → 字段齐后建记录），禁止「文件先到就抛缺少字段」（容器 curl 实测抓到，已有回归用例）。
 - **只读成员契约（R81）**：所有内容写接口（缺陷含批量/评论/导入、便签、附件上传与删除、任务、技能）一律挂 `requireRole(...WRITER_ROLES)`（`plugins/authenticate.ts` 唯一出处：owner/admin/member），viewer 只读；保存视图属个人偏好，viewer 可用。viewer 的 403 文案须告诉他找管理员改角色。前端写入口统一按 `useCanEdit()` 隐藏/禁用（`lib/auth.tsx`），不得各页自行判断角色。
 - **缺陷提出人契约（R81）**：`bugs.reporter_id`（外键 → users，删用户 SetNull）记录「谁提的」：Web/REST 取登录用户，CSV 导入取导入人，MCP 取密钥创建人（stdio 无密钥 = 不记录）；看板/列表/详情响应统一带 `reporter{id,name}` 与 `assignee{id,name}`（service 层 `WITH_PEOPLE`）；成员页「建单」数按 `reporter_id` 计。缺陷状态对人一律说中文（`BUG_STATUS_LABELS`：待处理/进行中/已解决/验证中/已验证/已关闭；`verified` 是「已验证」不是「待验证」），报错文案与活动流「状态变更」同此。

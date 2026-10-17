@@ -26,11 +26,11 @@
 | 模块 | 能力 |
 | --- | --- |
 | 团队账户 | 注册/登录、角色 RBAC（Owner/Admin/Member/Viewer）、成员管理、注册开关；**首启三步向导**（建项目 → 接 AI → 邀队友） |
-| 缺陷看板 | 五列（Open/In Progress/Resolved/Verified/Closed），卡片直显截图缩略图，**拖拽变更状态**、多选批量、右键菜单、活动流；**<900px 移动端「录缺陷」常驻按钮** |
+| 缺陷看板 | 六列（待处理/进行中/已解决/验证中/已验证/已关闭），卡片直显截图缩略图与「谁 · 多久」，**拖拽变更状态**、多选批量、右键菜单、活动流；**<900px 移动端「录缺陷」常驻按钮** |
 | 随手记 | 瀑布流便签（实时 Markdown 渲染）、**置顶浮顶**、标签过滤、行内编辑（`G N`） |
 | 文件管理 | 我的/全部文件、三上传入口（**逐文件进度条 + 失败重试**）、图片灯箱、**在线文本查看（分片 + grep 高亮）**、删除与回收站 |
 | 快速录入 | 按 `C` → `Ctrl+V` 粘贴截图 → 异步上传生成缩略图 → 模板填充 → `⌘+Enter` 发送 |
-| 任务与项目 | 任务五列流转（待办 → 进行中 → 待验证 → 已完成，外加已取消；不能跳级，打回要写原因）、点开详情编辑标题/描述/优先级/负责人/**标签**、删除、转缺陷；项目表格、slug 复制（AI 匹配用）、归档、删除确认 |
+| 任务与项目 | 任务六列流转（待办 → 进行中 → 待验证 → 验证中 → 已完成，外加已取消；不能跳级，打回要写原因）、点开详情编辑标题/描述/优先级/负责人/**标签**、删除、转缺陷；项目表格、slug 复制（AI 匹配用）、归档、删除确认 |
 | 技能 | 团队的 Claude Code skill（SKILL.md + 附带文件）：选文件夹或 zip 上传、查看正文与附带文件、打包下载；挂在项目下或设为全团队通用；AI 经 MCP 查看、下载、上传 |
 | 当前项目 | 看板、任务、随手记、文件、技能各页共享当前项目并都带切换器，刷新后仍记得 |
 | MCP 密钥 | 三步创建向导、一次性明文、scope 最小权限、轮换（24h 宽限）、撤销、30 天用量图 |
@@ -106,7 +106,7 @@ VibeHub 支持两种传输，密钥均在 Web 端「MCP 密钥」页创建：
 
 > 密钥的 scope 决定可调用的工具（默认最小权限 `context:read`）；stdio 模式不配置密钥时为本地全权（单机信任模型）。`project_slug` 可在 Web 端「项目」页复制；系统只有一个进行中的项目时可省略，多项目时不传会报错并列出全部可选 slug（不会再按目录名猜测、写错项目）。
 
-### MCP Tools 一览（26 个）
+### MCP Tools 一览（27 个）
 
 | 类别 | 工具 |
 | --- | --- |
@@ -126,7 +126,7 @@ PATCH  /api/projects/:id                   更新项目
 DELETE /api/projects/:id                   删除项目（级联清理附件文件）
 
 GET    /api/bugs?project_id=&status=&severity=&q=&page=&page_size=
-GET    /api/bugs/board/:projectId          看板分组（open/in_progress/resolved/verified/closed）
+GET    /api/bugs/board/:projectId          看板分组（按状态机：open/in_progress/resolved/verifying/verified/closed）
 POST   /api/bugs                           创建缺陷（attachment_ids 关联上传产物）
 GET    /api/bugs/:bugId                    缺陷详情 + 附件清单
 PATCH  /api/bugs/:bugId                    更新（拖拽改状态走这里）
@@ -157,13 +157,23 @@ GET    /api/attachments/:id/text           文本分片读取
 GET    /api/attachments/:id/image          图片降采样信息
 DELETE /api/attachments/:id
 
-GET    /api/search?q=                      全局搜索（⌘K）
-GET    /api/events                         SSE 实时推送
+POST   /api/auth/register|login|refresh|logout
+GET    /api/auth/config                    公开配置（注册开关等）
+GET    /api/auth/me                        当前用户 + 统计（`{ user, stats }` 嵌套）
+PATCH  /api/auth/me · POST /api/auth/me/password
+GET    /api/users · POST · PATCH · DELETE  成员管理（Admin+，含转让 Owner）
+GET    /api/api-keys · POST · DELETE       密钥（明文仅创建/轮换返回一次；含用量与轮换）
+GET    /api/system · PATCH                 系统设置（注册开关 / 回收站天数）
+GET    /api/stats?project_id=<id>|all      统计页聚合（R85：今天产出/剩余/谁在处理/按密钥/14 天趋势）
+GET    /api/activity/recent                AI 活动可见流（全员可读，service 层已脱敏）
+
+GET    /api/search?q=                      全局搜索（⌘K，含 pgvector 语义分组）
+GET    /api/events?token=                  SSE 实时推送
 ```
 
 ## Docker 部署（单容器，推荐）
 
-一个容器 = PostgreSQL 17（pgvector）+ Node 22 + VibeHub 应用，对外只暴露 3210。
+一个容器 = PostgreSQL 16（pgvector，`ARG PG_IMAGE` 可切 pg17）+ Node 22 + VibeHub 应用，对外只暴露 3210。
 
 ```bash
 # 1. 配置必填项
@@ -177,7 +187,7 @@ docker compose up -d
 #    注册第一个账号 → 自动成为 Owner
 ```
 
-- **数据持久化**：`vibehub-db` 卷（PostgreSQL 数据）+ `vibehub-data` 卷（附件/派生图/回收站）
+- **数据持久化**：`vibehub-pg` 卷（PostgreSQL 数据）+ `vibehub-data` 卷（附件/派生图/回收站）
 - **备份**：`docker exec vibehub pg_dump -U vibehub vibehub > backup.sql` + `vibehub-data` 卷打包
 - **升级**：拉取新镜像后 `docker compose up -d`，入口自动执行幂等迁移
 - **健康检查**：容器内置 `/api/health` 探活
@@ -198,6 +208,9 @@ docker compose up -d
 | `EMBEDDING_API_KEY` / `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` | | dashscope 三件套（密钥只进环境变量，禁入文档与代码） |
 | `EMBEDDING_DIM` | | 向量维度，须与库中列宽一致（当前 1024） |
 | `EMBEDDING_SEND_DIM` / `EMBEDDING_USE_BASE64` / `EMBEDDING_TOKEN_LIMIT` | | 请求是否带 dimensions / base64 传输 / 文本截断上限 |
+| `LOGIN_MAX_ATTEMPTS` / `LOGIN_THROTTLE_WINDOW_MS` | | 登录防暴力：窗口内允许的失败次数（默认 5）/ 窗口毫秒（默认 15 分钟），超限返回 429 |
+| `MAX_UPLOAD_FILES` | | 单次上传最多文件数（默认 10） |
+| `DATA_DIR` / `PORT` / `HOST` | | 附件目录（默认 `./data`）/ 监听端口（默认 3210）/ 监听地址（默认 `0.0.0.0`） |
 
 本地开发双库：验收库 `vibehub-dev-db`(:55433，持久卷 `vibehub-dev-pg`) 与测试库 `vibehub-test-db`(:55432，**破坏性**，vitest 每用例清空) 分离——`bash server/scripts/dev-db.sh` 起验收库，测试自动走 `TEST_DATABASE_URL`。
 
@@ -207,7 +220,7 @@ docker compose up -d
 vibehub/
 ├── server/                        # Fastify + Prisma + MCP
 │   ├── prisma/
-│   │   ├── schema.prisma          # 14 张表（项目/缺陷/任务/便签/附件/用户/密钥/计量等）+ vector 列
+│   │   ├── schema.prisma          # 16 个 model（项目/缺陷/任务/便签/附件/用户/密钥/计量/技能/系统设置）+ vector 列
 │   │   └── migrations/            # SQL 迁移（向量列与 HNSW 索引以 raw SQL 收尾）
 │   ├── scripts/                   # dev-db.sh（验收库）/ test-db.sh（测试库）/ acceptance.sh（门禁）/ final-acceptance.mjs（四场景）
 │   └── src/
@@ -218,7 +231,7 @@ vibehub/
 │       ├── core/                  # prisma 单例 / 事件总线(PG NOTIFY) / ID / 拼音检索 / 序列化 / 错误
 │       ├── services/              # 领域服务（项目/缺陷/任务/便签/附件/存储/资产/语义检索/AI 活动）
 │       ├── routes/                # REST 路由
-│       └── mcp/                   # MCP Server 与 26 个 Tools
+│       └── mcp/                   # MCP Server 与 27 个 Tools
 ├── web/                           # Next.js (App Router) + Tailwind v4 + shadcn/ui
 │   └── src/
 │       ├── app/                   # 页面与全局样式
@@ -232,17 +245,17 @@ vibehub/
 ## 测试
 
 ```bash
-npm test                                        # vitest：243 个用例（services / MCP / HTTP / TDD 回归）
+npm test                                        # vitest：330 个用例（services / MCP / HTTP / TDD 回归）
 node scripts/final-acceptance.mjs               # 四场景端到端总验收（30 项，需服务在跑）
-cd server && npx vitest run --root ../web       # 前端纯函数单测（12 个：令牌刷新协调 / TSV 解析）
-cd server && bash scripts/acceptance.sh         # 提交门禁：tsc + vitest + HTTP 冒烟
+cd server && npx vitest run --root ../web       # 前端纯函数单测（42 个：令牌刷新协调 / TSV 解析 / 状态流转镜像）
+cd server && bash scripts/acceptance.sh         # 提交门禁：tsc + vitest + HTTP 冒烟 + Playwright E2E + 日志脱敏
 ```
 
-覆盖：缺陷状态机与看板分组、便签置顶与标签编解码、文本分片与 grep、图片降采样、语义检索（请求形态/base64/阈值/排序）、实时通知（LISTEN 可达性）、AI 活动脱敏、上传顺序无关、26 个 MCP 工具、任务五态与技能上传下载、上传→建缺陷→拖拽→详情全链路、四场景（身份治理/人的闭环/AI 闭环/治理）30 项。
+覆盖：缺陷状态机与看板分组、便签置顶与标签编解码、文本分片与 grep、图片降采样、语义检索（请求形态/base64/阈值/排序）、实时通知（LISTEN 可达性）、AI 活动脱敏、上传顺序无关、27 个 MCP 工具、任务五态与技能上传下载、上传→建缺陷→拖拽→详情全链路、四场景（身份治理/人的闭环/AI 闭环/治理）30 项。
 
 ## 路线图（设计文档第 6 节）
 
-- **阶段一（当前版本，已交付）**：SQLite → PostgreSQL 16 + pgvector 单容器、完整账户体系（RBAC/密钥/审计）、15 工具 MCP（stdio + SSE）、双主题前端、随手记/语义检索/AI 活动可见流/实时的 PG NOTIFY 通道
+- **阶段一（当前版本，已交付）**：SQLite → PostgreSQL 16 + pgvector 单容器、完整账户体系（RBAC/密钥/审计）、MCP（stdio + SSE，现已 27 工具）、双主题前端、随手记/语义检索/AI 活动可见流/实时的 PG NOTIFY 通道
 - **阶段二（已交付）**：Redis Pub/Sub 的替代方案（PG LISTEN/NOTIFY，单容器零新组件）、语义检索（DashScope embedding，可配）、SSE 集中式 MCP 节点——均已在当前版本落地
 - **当前阶段（R77 起）**：试用冻结期——新功能冻结，先用 10 个工作日真实试用检验核心闭环（docs/计划/09；指标 `bash server/scripts/trial-metrics.sh <起始日期>`）
 - **未立项（候选）**：MinIO/S3 存储抽象、多机部署（Redis）

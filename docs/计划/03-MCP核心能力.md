@@ -1,6 +1,6 @@
 # 步骤 03 · MCP 核心能力（产品的另一半身体）
 
-> 目标：把 MCP 从「7 个只读工具」升级为 **14 个工具的完整操作面**，闭合「人机同步闭环」。AI 能读全部上下文、能写全部状态、能上传自己的日志截图、每一次写入都打点审计。核心设计是 **Token 经济学**：让 AI 用最少的 token 办最完整的事。
+> 目标：把 MCP 从「7 个只读工具」升级为完整操作面，闭合「人机同步闭环」。本步骤原始签约 **14 个**（R8 校正为 15），此后逐轮扩充，**现行 27 个**（读取 11 + 写入 16）——现行清单以本文 §3.2.1 与 `server/src/mcp/server.ts` 的 `TOOL_NAMES` 为准。AI 能读全部上下文、能写全部状态、能上传自己的日志截图、每一次写入都打点审计。核心设计是 **Token 经济学**：让 AI 用最少的 token 办最完整的事。
 
 ## 3.1 涉及文件
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | `server/src/mcp/context.ts` | McpContext 类型：解析 stdin 环境中的 API Key → 密钥实体 + scope 集合 + 调用方身份 |
 | `server/src/mcp/scopes.ts` | scope 常量和 `hasScope(ctx, scope)` 守卫 |
-| `server/src/mcp/tools-extended.ts` | 新增 7 个工具的实现（list_notes/search/create_bug/add_bug_comment/upload_attachment/list_tasks/update_task/purge_trash 中按签约矩阵） |
+| `server/src/mcp/tools-extended.ts` | 新增 8 个工具的实现（list_notes/search/create_bug/add_bug_comment/upload_attachment/list_tasks/update_task/purge_trash） |
 | `server/src/services/usage.ts` | recordToolCall(ctx, tool, latencyMs, bytesOut, result) → UsageEvent + ApiKey.lastUsedAt |
 | `server/src/mcp/token-budget.ts` | 统一输出整形：列表截断、长文本截断并附提示、大小统计 |
 
@@ -19,12 +19,12 @@
 | 文件 | 改动 |
 | --- | --- |
 | `server/src/mcp/tools.ts` | 7 个既有工具全部接入 ctx：scope 校验 + 用量打点 + 输出整形 |
-| `server/src/mcp/server.ts` | registerTool 数量 7→14；工具描述重写（描述是给 AI 的 prompt，必须写清使用时机） |
+| `server/src/mcp/server.ts` | registerTool 数量 7→15（原文写 14，R8 校正；现行 27）；工具描述重写（描述是给 AI 的 prompt，必须写清使用时机） |
 | `server/src/mcp-entry.ts` | 启动时从 `VIBEHUB_API_KEY` 环境变量构建 ctx（无密钥 = 本地信任模式全权限） |
 | `server/src/services/bugs.ts` | 暴露 createBugFull（含指派/标签/模板）、addComment、listComments |
 | `server/src/services/attachments.ts` | uploadFromBuffer(actorCtx, projectId, buffer, fileName, mime) 供 MCP 上传 |
 
-## 3.2 工具矩阵（14 个，最终签约）
+## 3.2 工具矩阵（14 个，原始签约；现行 27 个见 §3.2.1）
 
 | # | 工具 | Scope | 读/写 | Token 策略 |
 | --- | --- | :-: | :-: | --- |
@@ -165,7 +165,7 @@ POST /mcp/messages        JSON-RPC 消息（session_id 由 SSE 握手分配）
 
 ## 3.7 验收标准
 
-- [ ] `tools/list` 返回 14 个工具；每个 description 含 Token 经济学说明
+- [ ] `tools/list` 返回与 `TOOL_NAMES` 等长的工具数（**现行 27**；原始签约 14 为历史基线）；每个 description 含 Token 经济学说明
 - [ ] 无密钥本地模式：全部工具可用，审计 actorLabel=`local`
 - [ ] 密钥模式：仅 `context:read` 的密钥调 `update_bug_status` → `isError:true` 且 message 指明缺哪个 scope
 - [ ] 过期/已撤销密钥 → MCP 进程启动即失败，stderr 有人话错误
@@ -181,6 +181,6 @@ POST /mcp/messages        JSON-RPC 消息（session_id 由 SSE 握手分配）
 
 ```bash
 cd vibehub/server && npx vitest run src/mcp
-# 端到端：用测试客户端依次调用 14 个工具（含一个超权调用），断言见 3.7
+# 端到端：用测试客户端依次调用全部工具（现行 27 个，含一个超权调用），断言见 3.7
 node /tmp/mcp-smoke.mjs   # 步骤 05 提供的脚本
 ```
