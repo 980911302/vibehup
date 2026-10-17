@@ -14,6 +14,8 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 // 语义检索测试卫生（卡片 28）：默认 none，写路径不打 DashScope 外网；
 // DashScope 客户端本身由 embedding.test.ts 用 vi.mock 覆盖 config.embedding 开启态验证
 process.env.EMBEDDING_PROVIDER = 'none';
+// 密钥明文加密（R87）依赖 JWT_SECRET；测试给固定值，避免依赖调用时序
+process.env.JWT_SECRET ??= 'test-only-jwt-secret-0123456789abcdef0123456789abcdef';
 
 // 应用迁移（幂等）
 try {

@@ -4,11 +4,13 @@ import { prisma } from '../core/prisma.js';
 import { ids } from '../core/ids.js';
 import { hashToken } from '../core/tokens.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
+import { decryptSecret, encryptSecret } from '../core/key-cipher.js';
 import { isKnownScope, SCOPES, type Scope } from '../mcp/scopes.js';
 
 /**
  * MCP 密钥管理（商业产品计划 §4）。
- * 明文只在创建/轮换响应中出现一次；库中仅存 SHA-256 哈希。
+ * 库中存 SHA-256 哈希（鉴权用）+ AES-256-GCM 密文（R87：供 Admin+ 随时查看/复制）。
+ * 明文仍只在创建/轮换响应里出现一次——查看接口需显式调用 revealKey 并二次确认。
  */
 
 /** 默认有效期 90 天；轮换宽限期 24h */
@@ -26,6 +28,8 @@ export interface ApiKeyView {
   expires_at: string | null;
   revoked_at: string | null;
   status: 'active' | 'expired' | 'revoked';
+  /** 明文是否可恢复（R87：false 表示该密钥建于加密存储之前或签名密钥已更换） */
+  can_reveal: boolean;
   created_by: string | null;
   created_at: string;
 }
@@ -51,6 +55,7 @@ function toView(key: ApiKey): ApiKeyView {
     expires_at: key.expiresAt?.toISOString() ?? null,
     revoked_at: key.revokedAt?.toISOString() ?? null,
     status: statusOf(key),
+    can_reveal: Boolean(key.keyCipher),
     created_by: key.createdBy,
     created_at: key.createdAt.toISOString(),
   };
@@ -87,6 +92,7 @@ export async function createKey(input: CreateKeyInput): Promise<{ key: string; v
       keyPrefix: plaintext.slice(0, 13),
       keyHash: hashToken(plaintext),
       salt,
+      keyCipher: encryptSecret(plaintext),
       scopes,
       rateLimit: input.rateLimit ?? 300,
       expiresAt: ttlDays === null ? null : new Date(Date.now() + ttlDays * 86_400_000),
@@ -127,11 +133,39 @@ export async function rotateKey(keyId: string, operatorId: string): Promise<{ ke
   return { ...created, previous_grace_until: newExpiry.toISOString() };
 }
 
-/** 撤销：立即失效 */
+/** 撤销：立即失效（行保留，列表显示「已撤销」） */
 export async function revokeKey(keyId: string): Promise<void> {
   const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
   if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
   await prisma.apiKey.update({ where: { id: keyId }, data: { revokedAt: new Date() } });
+}
+
+/**
+ * 查看明文（R87）：Admin+ 显式调用，解密 AES-256-GCM 密文。
+ * 撤销后不再返回——撤销即凭据作废，避免「撤销了还能看到明文」的错觉。
+ */
+export async function revealKey(keyId: string): Promise<{ key: string; name: string }> {
+  const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
+  if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
+  if (key.revokedAt) throw new ValidationError('已撤销的密钥不能再查看明文，请创建新密钥');
+  if (!key.keyCipher) {
+    throw new ValidationError('该密钥创建于加密存储上线之前，明文已不可恢复；请轮换生成新密钥');
+  }
+  const plain = decryptSecret(key.keyCipher);
+  if (!plain) {
+    throw new ValidationError('密钥明文解密失败（服务端 JWT_SECRET 可能已更换），请轮换生成新密钥');
+  }
+  return { key: plain, name: key.name };
+}
+
+/**
+ * 彻底删除（R87 用户决定）：与「撤销」不同，行从库中移除，列表不再出现。
+ * 历史用量保留但不再归属该密钥（UsageEvent.apiKeyId 外键为 SetNull）。
+ */
+export async function deleteKey(keyId: string): Promise<void> {
+  const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
+  if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
+  await prisma.apiKey.delete({ where: { id: keyId } });
 }
 
 export interface KeyUsagePoint {

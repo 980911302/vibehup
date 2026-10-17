@@ -33,8 +33,8 @@ export const apiKeyRoutes: FastifyPluginAsync = async (app) => {
       });
       reply.code(201);
       return {
-        key, // 一次性明文，仅此次返回
-        warning: '请立即复制保存；关闭后不可再查看，遗失只能轮换。',
+        key, // 一次性明文（之后可用 GET /:keyId/reveal 再次查看，R87）
+        warning: '请立即复制到 IDE 配置；之后可在列表点「查看」再次复制（仅 owner/admin 可查看）。',
         api_key: view,
       };
     },
@@ -50,13 +50,38 @@ export const apiKeyRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
-  // 撤销（Admin+，立即生效）
+  // 撤销（Admin+，立即生效，行保留）
+  app.post(
+    '/:keyId/revoke',
+    { preHandler: [app.authenticate, app.requireRole('owner', 'admin')] },
+    async (request, reply) => {
+      const { keyId } = request.params as { keyId: string };
+      await apiKeysService.revokeKey(keyId);
+      reply.code(204);
+      return null;
+    },
+  );
+
+  // 查看明文（Admin+，R87：解密存储的密文；撤销后不可查看）
+  app.get(
+    '/:keyId/reveal',
+    { preHandler: [app.authenticate, app.requireRole('owner', 'admin')] },
+    async (request, reply) => {
+      const { keyId } = request.params as { keyId: string };
+      const { key, name } = await apiKeysService.revealKey(keyId);
+      // 明文不进访问日志：沿用统一的 ?token= 脱敏规则（字段名 key 不在日志白名单内）
+      reply.header('Cache-Control', 'no-store');
+      return { key, name, warning: '明文仅用于复制到 IDE 配置，请勿粘贴到公开渠道或提交进仓库。' };
+    },
+  );
+
+  // 彻底删除（Admin+，R87：行从库中移除，与「撤销」区分）
   app.delete(
     '/:keyId',
     { preHandler: [app.authenticate, app.requireRole('owner', 'admin')] },
     async (request, reply) => {
       const { keyId } = request.params as { keyId: string };
-      await apiKeysService.revokeKey(keyId);
+      await apiKeysService.deleteKey(keyId);
       reply.code(204);
       return null;
     },

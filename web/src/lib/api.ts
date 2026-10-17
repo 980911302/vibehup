@@ -204,7 +204,11 @@ export const api = {
     request<{ key: string; warning: string; api_key: ApiKeyView }>('/api-keys', { method: 'POST', body: JSON.stringify(body) }),
   rotateApiKey: (id: string) =>
     request<{ key: string; view: ApiKeyView; previous_grace_until: string }>(`/api-keys/${id}/rotate`, { method: 'POST' }),
-  revokeApiKey: (id: string) => request<void>(`/api-keys/${id}`, { method: 'DELETE' }),
+  revokeApiKey: (id: string) => request<void>(`/api-keys/${id}/revoke`, { method: 'POST' }),
+  /** 彻底删除（R87）：行从库中移除，与「撤销」区分 */
+  deleteApiKey: (id: string) => request<void>(`/api-keys/${id}`, { method: 'DELETE' }),
+  /** 查看明文（R87）：仅 owner/admin，需再次解密 */
+  revealApiKey: (id: string) => request<{ key: string; name: string; warning: string }>(`/api-keys/${id}/reveal`),
   keyUsage: (id: string, days = 30) => request<KeyUsage>(`/api-keys/${id}/usage?days=${days}`),
 
   // ============ 成员 ============

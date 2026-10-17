@@ -201,6 +201,8 @@ export interface ApiKeyView {
   expires_at: string | null;
   revoked_at: string | null;
   status: 'active' | 'expired' | 'revoked';
+  /** 明文是否可恢复（R87：false = 建于加密存储之前或签名密钥已更换） */
+  can_reveal: boolean;
   created_by: string | null;
   created_at: string;
 }

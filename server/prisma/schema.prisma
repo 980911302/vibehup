@@ -187,6 +187,8 @@ model ApiKey {
   keyPrefix  String    @map("key_prefix") // vhk_live_7Kd9（展示用）
   keyHash    String    @map("key_hash") // SHA-256(salt + key)
   salt       String
+  /// 明文密钥的 AES-256-GCM 密文（R87：创建后仍可查看/复制；旧数据为空表示不可恢复）
+  keyCipher  String?   @map("key_cipher")
   scopes     String[]  @default(["context:read"]) // 最小权限默认
   rateLimit  Int       @default(300) @map("rate_limit") // 每分钟调用上限
   lastUsedAt DateTime? @map("last_used_at")
@@ -197,9 +199,29 @@ model ApiKey {
 
   creator     User?        @relation(fields: [createdBy], references: [id], onDelete: SetNull)
   usageEvents UsageEvent[]
+  eventSubscriptions McpEventSubscription[]
 
   @@index([revokedAt])
   @@map("api_keys")
+}
+
+/// ChatGPT Work MCP Events subscriptions. Webhook secrets are AES-GCM encrypted.
+model McpEventSubscription {
+  id          String   @id
+  apiKeyId    String   @map("api_key_id")
+  eventName   String   @map("event_name")
+  arguments   String   // canonical JSON, used to deduplicate subscriptions
+  callbackUrl String   @map("callback_url")
+  secretCipher String  @map("secret_cipher")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  apiKey ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@index([eventName, expiresAt])
+  @@index([apiKeyId])
+  @@map("mcp_event_subscriptions")
 }
 
 /// 计量事件（出账与用量分析依据）

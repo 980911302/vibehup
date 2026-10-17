@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { KeyRound, Plus, RotateCw, Trash2 } from 'lucide-react';
+import { Copy, Eye, KeyRound, Plug, Plus, RotateCw, ShieldOff, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import { CreateKeyWizard, KeyUsageChart, SCOPE_TOOLS } from '@/components/keys/KeyWizard';
+import { McpConfigPanel } from '@/components/keys/McpConfigPanel';
 import type { ApiKeyView, KeyUsage } from '@/lib/api-types';
 
 const STATUS_LABEL: Record<ApiKeyView['status'], string> = {
@@ -31,6 +32,9 @@ export default function KeysPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [usage, setUsage] = useState<KeyUsage | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
+  /** 明文只放内存：刷新即消失，不进 localStorage（R87） */
+  const [revealed, setRevealed] = useState<{ id: string; key: string } | null>(null);
 
   const load = async () => {
     try {
@@ -66,6 +70,43 @@ export default function KeysPage() {
     toast.success('已撤销，调用方将立即失效');
   };
 
+  /** 查看/隐藏明文（R87）：走后端解密，明文只留在内存 */
+  const reveal = async (id: string) => {
+    if (revealed?.id === id) {
+      setRevealed(null);
+      return;
+    }
+    try {
+      const r = await api.revealApiKey(id);
+      setRevealed({ id, key: r.key });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '无法查看该密钥明文');
+    }
+  };
+
+  /** 彻底删除（R87）：与「撤销」区分，行不可恢复 */
+  const remove = async (k: ApiKeyView) => {
+    const ok = window.confirm(
+      `确认彻底删除密钥「${k.name}」？\n\n删除后不可恢复，调用方立即失效；历史用量保留但不再归属该密钥。\n只想让它失效但保留记录，请用「撤销」。`,
+    );
+    if (!ok) return;
+    try {
+      await api.deleteApiKey(k.id);
+      if (revealed?.id === k.id) setRevealed(null);
+      await load();
+      toast.success('已彻底删除');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '删除失败');
+    }
+  };
+
+  const copyKey = (text: string) => {
+    void navigator.clipboard.writeText(text).then(
+      () => toast.success('已复制密钥'),
+      () => toast.error('复制失败，请手动选中复制'),
+    );
+  };
+
   const openUsage = async (id: string) => {
     setDetailId(detailId === id ? null : id);
     setUsage(null);
@@ -96,10 +137,16 @@ export default function KeysPage() {
         <span className="text-xs text-[var(--text-tertiary)]">MCP 密钥即 API Key——IDE Agent 消费上下文的唯一凭据</span>
         <div className="flex-1" />
         {isAdmin && (
-          <button className="vh-btn h-8 text-xs" onClick={() => setWizardOpen(true)} data-testid="create-key">
-            <Plus size={13} />
-            创建密钥
-          </button>
+          <>
+            <button className="vh-btn ghost h-8 text-xs" onClick={() => setConfigOpen(true)} data-testid="mcp-config">
+              <Plug size={13} />
+              连接客户端
+            </button>
+            <button className="vh-btn h-8 text-xs" onClick={() => setWizardOpen(true)} data-testid="create-key">
+              <Plus size={13} />
+              创建密钥
+            </button>
+          </>
         )}
       </div>
 
@@ -151,20 +198,56 @@ export default function KeysPage() {
                     <td className="py-2.5 pr-2">
                       <div className="flex items-center justify-end gap-1.5">
                         <button className="vh-btn ghost h-7 text-xs" onClick={() => void openUsage(k.id)}>用量</button>
+                        <button
+                          className="vh-btn ghost h-7 text-xs"
+                          onClick={() => void reveal(k.id)}
+                          disabled={!k.can_reveal || k.status !== 'active'}
+                          title={k.can_reveal ? '查看并复制明文' : '明文不可恢复（建于加密存储之前），请轮换'}
+                          data-testid="key-reveal"
+                        >
+                          <Eye size={12} />
+                        </button>
                         {k.status === 'active' && (
                           <>
                             <button className="vh-btn ghost h-7 text-xs" onClick={() => void rotate(k.id)} title="轮换（旧密钥 24h 宽限）">
                               <RotateCw size={12} />
                             </button>
-                            <button className="vh-btn ghost danger h-7 text-xs" onClick={() => void revoke(k.id)} title="立即撤销">
-                              <Trash2 size={12} />
+                            <button className="vh-btn ghost h-7 text-xs" onClick={() => void revoke(k.id)} title="撤销（立即失效，保留记录）">
+                              <ShieldOff size={12} />
                             </button>
                           </>
                         )}
+                        <button
+                          className="vh-btn ghost danger h-7 text-xs"
+                          onClick={() => void remove(k)}
+                          title="彻底删除（不可恢复）"
+                          data-testid="key-delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
                     </td>
                   )}
                 </tr>
+                {revealed?.id === k.id && (
+                  <tr key={`${k.id}-reveal`}>
+                    <td colSpan={7} className="bg-[var(--bg-panel)] px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <code className="min-w-0 flex-1 overflow-x-auto rounded bg-[var(--bg-elevated)] px-2 py-1.5 font-mono text-[11px] text-[var(--text-secondary)]">
+                          {revealed.key}
+                        </code>
+                        <button className="vh-btn h-7 text-xs" onClick={() => copyKey(revealed.key)}>
+                          <Copy size={12} />
+                          复制
+                        </button>
+                        <button className="vh-btn ghost h-7 text-xs" onClick={() => setRevealed(null)}>隐藏</button>
+                      </div>
+                      <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                        明文只存在本页面内存中，刷新即消失；请勿粘贴到公开渠道或提交进仓库。
+                      </p>
+                    </td>
+                  </tr>
+                )}
                 {detailId === k.id && (
                   <tr key={`${k.id}-usage`}>
                     <td colSpan={7} className="bg-[var(--bg-panel)] px-4 py-3">
@@ -186,6 +269,7 @@ export default function KeysPage() {
       </div>
 
       <CreateKeyWizard open={wizardOpen} onOpenChange={setWizardOpen} onCreated={load} />
+      <McpConfigPanel open={configOpen} keys={keys} onClose={() => setConfigOpen(false)} />
     </div>
   );
 }
