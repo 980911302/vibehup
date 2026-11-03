@@ -60,6 +60,7 @@ model Bug {
   statusChangedAt  DateTime? @map("status_changed_at")
   statusActorType  String?   @map("status_actor_type") // user | ai
   statusActorName  String?   @map("status_actor_name")
+  evidence         Json?     // 交付证据包：commit/pr/tests/screenshots/notes/no_code_reason（R90）
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
@@ -90,6 +91,7 @@ model Task {
   statusChangedAt DateTime? @map("status_changed_at")
   statusActorType String?   @map("status_actor_type")
   statusActorName String?   @map("status_actor_name")
+  evidence        Json?     // 交付证据包（R90），与缺陷同构
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 

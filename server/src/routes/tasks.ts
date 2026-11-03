@@ -15,6 +15,7 @@ interface TaskBody {
   assignee_id?: string | null;
   labels?: string[];
   reopen_reason?: string;
+  evidence?: unknown;
   attachment_ids?: string[];
 }
 
@@ -85,6 +86,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       assigneeId: body.assignee_id,
       labels: body.labels,
       reopenReason: body.reopen_reason,
+      evidence: body.evidence,
     }, { type: 'user', id: request.user?.id });
     return present(task);
   });

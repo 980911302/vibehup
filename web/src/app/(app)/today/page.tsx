@@ -24,6 +24,7 @@ import { StatsTrendChart } from '@/components/stats/StatsTrendChart';
 import { ActionCard, ActiveRow, Metric, TodaySkeleton, dateLabel, greeting } from '@/components/today/TodayWidgets';
 import { TodayVerifyActions } from '@/components/today/TodayVerifyActions';
 import { TodayRejectDialog } from '@/components/today/TodayRejectDialog';
+import { hasDeliveryEvidence } from '@/lib/evidence';
 
 const POLL_MS = 30_000;
 
@@ -99,6 +100,11 @@ export default function TodayPage() {
     void changeStatus(item, { status: 'verifying' }, '已接手验证');
   };
   const approve = (item: TodayItem) => {
+    if (!hasDeliveryEvidence(item.evidence)) {
+      toast.error('先补交付证据，再验收');
+      openItem(item);
+      return;
+    }
     void changeStatus(item, { status: item.kind === 'bug' ? 'verified' : 'done' }, '验收通过');
   };
   const confirmReject = async (reason: string) => {
@@ -217,6 +223,7 @@ export default function TodayPage() {
                   onStart={startVerify}
                   onApprove={approve}
                   onReject={setRejectTarget}
+                  onNeedsEvidence={openItem}
                 />
               )}
             />

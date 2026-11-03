@@ -1,5 +1,7 @@
 /** GET /api/today 响应类型（R89 今日工作台） */
 
+import type { DeliveryEvidence } from './api-types';
+
 export interface TodayActor {
   type: 'user' | 'ai';
   name: string;
@@ -25,6 +27,7 @@ export interface TodayItem {
   actor: TodayActor | null;
   since: string;
   stale: boolean;
+  evidence: DeliveryEvidence | null;
 }
 
 export interface TodayResponse {

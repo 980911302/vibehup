@@ -68,6 +68,20 @@ const TOKEN_BUDGET_NOTE =
 /** 经 resolveProject 解析项目的工具共用（R76：不再按 MCP 服务进程 cwd 猜项目） */
 const PROJECT_SLUG_DESC = '项目 slug（Web 端「项目」页可复制）；多项目时必填，只有一个进行中项目时可省略';
 
+/** 交付证据包（R90）：AI 标记 resolved/review 时一并写，人验收先看证据 */
+const EVIDENCE_SCHEMA = z
+  .object({
+    commit: z.string().optional().describe('修复提交 hash'),
+    pr_url: z.string().optional().describe('PR / MR 链接'),
+    tests: z.string().optional().describe('跑了什么测试、结果（如 vitest 348 passed）'),
+    changed_files: z.array(z.string()).optional().describe('改动的文件路径'),
+    screenshots: z.array(z.string()).optional().describe('附件 ID 列表（先用 upload_attachment 上传）'),
+    notes: z.string().optional().describe('一句话说明改了什么、怎么验的'),
+    no_code_reason: z.string().optional().describe('非代码交付时写原因；与 commit/PR/tests/截图至少给一项'),
+  })
+  .optional()
+  .describe('交付证据；标记 resolved/review 时尽量填，缺证据人无法通过验收');
+
 // MCP Events 使用的协议版本尚未进入 SDK 的静态版本表；保留 SDK 其余版本并补上该日期版本。
 if (!(SUPPORTED_PROTOCOL_VERSIONS as string[]).includes(MCP_EVENT_PROTOCOL_VERSION)) {
   (SUPPORTED_PROTOCOL_VERSIONS as string[]).push(MCP_EVENT_PROTOCOL_VERSION);
@@ -253,7 +267,7 @@ export function createMcpServer(): McpServer {
       title: '更新缺陷状态',
       description:
         '流转缺陷状态，经手就要调，不等人提醒。状态机 open → in_progress → resolved → verifying → verified，不能跳级（一次只走一步，需要时连续调用），verified 是修复完成的终点。' +
-        '开始修 → in_progress；修完且自测通过 → resolved（写 resolution_notes，有提交带 commit_hash）；开始验证 → verifying（团队靠它看到有人在验）；验证通过 → verified；' +
+        '开始修 → in_progress；修完且自测通过 → resolved（写 resolution_notes 和 evidence，有提交带 commit_hash）；开始验证 → verifying（团队靠它看到有人在验）；验证通过 → verified；' +
         '验证不通过 → in_progress 或 open 并填 reopen_reason（从 resolved/verifying/verified/closed 回流都必须填）；验不了交给别人 → resolved。' +
         '重复/不修/无法复现 → closed，resolution_notes 必须写原因（只能从 open/in_progress/resolved 关）。返回 allowed_next_statuses 与 next_step。',
       inputSchema: {
@@ -261,6 +275,7 @@ export function createMcpServer(): McpServer {
         status: z.enum(BUG_STATUSES).describe('目标状态（只能是当前状态的下一步，见 get_bug_detail 的 allowed_next_statuses）'),
         resolution_notes: z.string().optional().describe('resolved 时必写：根因、改了什么、怎么自测的；verified 时写在哪个环境怎么验证的；closed 时必写不修复的原因（重复写上缺陷号）'),
         commit_hash: z.string().optional().describe('修复对应的 git commit hash（有提交才填）'),
+        evidence: EVIDENCE_SCHEMA,
         reopen_reason: z.string().optional().describe('回流到 open/in_progress 时必填：验证没过的现象（从 verifying 打回会记为「验证不通过」）'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
@@ -397,7 +412,7 @@ export function createMcpServer(): McpServer {
     {
       title: '更新任务',
       description:
-        '流转任务状态（也可改优先级、标题、描述、标签，只改传入的字段），经手就要调。流转不能跳级：todo → doing → review → verifying → done；开始做 → doing；做完并自测通过 → review（待验证）；开始验收 → verifying（验证中，团队靠它看到有人在验）；验收通过 → done（自己做的不算验收）；验收不通过 → doing 并填 reopen_reason；验不了交给别人 → review；不做了 → cancelled，重做 → todo。description 是整段替换，list_tasks 返回的是截断后的描述，要改先用 get_task_detail(full: true) 取全文。',
+        '流转任务状态（也可改优先级、标题、描述、标签，只改传入的字段），经手就要调。标记 review 时尽量带 evidence（commit/PR/测试/截图/notes）。流转不能跳级：todo → doing → review → verifying → done；开始做 → doing；做完并自测通过 → review（待验证）；开始验收 → verifying（验证中，团队靠它看到有人在验）；验收通过 → done（自己做的不算验收）；验收不通过 → doing 并填 reopen_reason；验不了交给别人 → review；不做了 → cancelled，重做 → todo。description 是整段替换，list_tasks 返回的是截断后的描述，要改先用 get_task_detail(full: true) 取全文。',
       inputSchema: {
         task_id: z.string().describe('任务 ID'),
         status: z.enum(TASK_STATUS_ENUM).optional().describe('目标状态（只能是当前状态可走的下一步，见 get_task_detail 的 allowed_next_statuses）'),
@@ -406,6 +421,7 @@ export function createMcpServer(): McpServer {
         priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级'),
         title: z.string().optional().describe('新标题'),
         description: z.string().optional().describe('新描述（整段替换）'),
+        evidence: EVIDENCE_SCHEMA,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },

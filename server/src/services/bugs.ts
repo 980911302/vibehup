@@ -1,9 +1,10 @@
-import type { Bug, Prisma } from '@prisma/client';
+import { Prisma, type Bug } from '@prisma/client';
 import { prisma } from '../core/prisma.js';
 import { ids, slugify } from '../core/ids.js';
 import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
+import { normalizeEvidence } from './evidence.js';
 import { countAttachmentsFor } from './attachments.js';
 import { upsertEntityEmbedding, deleteEntityEmbedding } from './embedding.js';
 import { BUG_STATUSES, assertTransition, bugStatusLabel as label, isBugReopen, reopenReasonLabel, type BugStatus } from './bug-flow.js';
@@ -129,6 +130,8 @@ export async function updateBug(
     createdBy?: string;
     /** 重开原因（回流到 open/in_progress 时必填） */
     reopenReason?: string;
+    /** 交付证据包（R90）；null 清空 */
+    evidence?: unknown;
     /** 操作者：写活动流 + 记「谁在处理」（user=人类取名字, ai=MCP 取密钥名） */
     actor?: StatusActor;
   },
@@ -170,6 +173,10 @@ export async function updateBug(
   if (patch.resolutionNotes !== undefined) data.resolutionNotes = patch.resolutionNotes;
   if (patch.gitCommitHash !== undefined) data.gitCommitHash = patch.gitCommitHash;
   if (patch.createdBy !== undefined) data.createdBy = patch.createdBy;
+  if (patch.evidence !== undefined) {
+    const evidence = normalizeEvidence(patch.evidence);
+    data.evidence = evidence === null ? Prisma.DbNull : (evidence as Prisma.InputJsonValue);
+  }
   if (isReopen) data.reopenedCount = existing.reopenedCount + 1;
   if (statusChanged) {
     data.statusChangedAt = new Date();

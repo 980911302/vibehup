@@ -10,6 +10,7 @@ import type { TaskStatus } from '@/lib/task-flow';
 import { LabelEditor } from './LabelEditor';
 import { TaskStatusActions } from './TaskStatusActions';
 import { PRIORITY_LABEL } from './TaskCard';
+import { EvidencePanel } from '@/components/evidence/EvidencePanel';
 
 interface TaskDetailDialogProps {
   taskId: string;
@@ -130,6 +131,7 @@ function TaskDetailBody({ task, canEdit, members, labelSuggestions, save, onDele
           disabled={!canEdit}
           onTransition={(to: TaskStatus, reason?: string) => save({ status: to, reopen_reason: reason })}
         />
+        <EvidencePanel value={task.evidence ?? null} canEdit={canEdit} onSave={(e) => save({ evidence: e }, '证据已保存')} />
         {task.reopen_reason && (
           <p className="flex items-start gap-1.5 rounded-md bg-[var(--bg-elevated)] px-2.5 py-2 text-xs text-[var(--warn)]">
             <RotateCcw size={12} className="mt-0.5 shrink-0" />

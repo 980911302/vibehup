@@ -173,6 +173,7 @@ export async function getBugDetail(input: { bug_id: string }) {
     status: bug.status,
     ...bugNextStep(bug.status),
     resolution_notes: bug.resolutionNotes,
+    evidence: bug.evidence ?? null,
     git_commit_hash: bug.gitCommitHash,
     created_by: bug.createdBy,
     created_at: bug.createdAt.toISOString(),
@@ -279,6 +280,7 @@ export async function updateBugStatus(
     resolution_notes?: string;
     commit_hash?: string;
     reopen_reason?: string;
+    evidence?: Record<string, unknown>;
   },
   actor?: { type: 'ai'; id?: string | null; name?: string | null },
 ) {
@@ -287,6 +289,7 @@ export async function updateBugStatus(
     resolutionNotes: input.resolution_notes,
     gitCommitHash: input.commit_hash,
     reopenReason: input.reopen_reason,
+    evidence: input.evidence,
     actor,
   });
   return {
@@ -298,6 +301,7 @@ export async function updateBugStatus(
       severity: bug.severity,
       resolution_notes: bug.resolutionNotes,
       git_commit_hash: bug.gitCommitHash,
+      evidence: bug.evidence ?? null,
       updated_at: bug.updatedAt.toISOString(),
     },
     ...bugNextStep(bug.status),

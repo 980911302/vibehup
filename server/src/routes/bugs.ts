@@ -109,6 +109,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
       resolution_notes?: string;
       git_commit_hash?: string;
       reopen_reason?: string;
+      evidence?: unknown;
     };
     const bug = await bugsService.updateBug(bugId, {
       title: body.title,
@@ -124,6 +125,7 @@ export const bugRoutes: FastifyPluginAsync = async (fastify) => {
       resolutionNotes: body.resolution_notes,
       gitCommitHash: body.git_commit_hash,
       reopenReason: body.reopen_reason,
+      evidence: body.evidence,
       actor: { type: 'user', id: request.user?.id },
     });
     return serializeBug(bug);

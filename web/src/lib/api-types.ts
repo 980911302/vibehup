@@ -10,6 +10,17 @@ export interface PublicUser {
   created_at: string;
 }
 
+/** 交付证据包（R90）：AI/人标记 resolved/review 时留下，验收先看证据 */
+export interface DeliveryEvidence {
+  commit?: string;
+  pr_url?: string;
+  tests?: string;
+  changed_files?: string[];
+  screenshots?: string[];
+  notes?: string;
+  no_code_reason?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -45,6 +56,7 @@ export interface Bug {
   git_commit_hash: string | null;
   created_by: 'human' | 'ai';
   resolution_notes: string | null;
+  evidence: DeliveryEvidence | null;
   attachment_count: number;
   comment_count: number;
   created_at: string;
@@ -84,6 +96,7 @@ export interface Task {
   assignee: { id: string; name: string } | null;
   /** 最近一次打回的原因 */
   reopen_reason: string | null;
+  evidence: DeliveryEvidence | null;
   reopened_count: number;
   status_changed_at: string | null;
   status_actor: StatusActor | null;

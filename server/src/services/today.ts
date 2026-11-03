@@ -1,6 +1,7 @@
 import { prisma } from '../core/prisma.js';
 import { isStale } from './stale.js';
 import { getStats, type StatsResult } from './stats.js';
+import type { DeliveryEvidence } from './evidence.js';
 
 /**
  * 今日工作台聚合（R89）：跨项目、只读。
@@ -33,6 +34,7 @@ export interface TodayItem {
   actor: TodayActor | null;
   since: string;
   stale: boolean;
+  evidence: DeliveryEvidence | null;
 }
 
 export interface TodayResult {
@@ -104,6 +106,7 @@ export async function getToday(userId: string, now: Date = new Date()): Promise<
         statusChangedAt: true,
         statusActorType: true,
         statusActorName: true,
+        evidence: true,
         updatedAt: true,
       },
     }),
@@ -121,6 +124,7 @@ export async function getToday(userId: string, now: Date = new Date()): Promise<
         statusChangedAt: true,
         statusActorType: true,
         statusActorName: true,
+        evidence: true,
         updatedAt: true,
       },
     }),
@@ -160,6 +164,7 @@ export async function getToday(userId: string, now: Date = new Date()): Promise<
       actor: actorOf(b),
       since: since.toISOString(),
       stale: isStale(b.status, since, now),
+      evidence: (b.evidence as DeliveryEvidence | null) ?? null,
     });
   }
 
@@ -183,6 +188,7 @@ export async function getToday(userId: string, now: Date = new Date()): Promise<
       actor: actorOf(t),
       since: since.toISOString(),
       stale: isStale(t.status, since, now),
+      evidence: (t.evidence as DeliveryEvidence | null) ?? null,
     });
   }
 
