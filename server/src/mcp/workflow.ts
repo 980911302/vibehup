@@ -12,6 +12,7 @@ import { allowedNextTaskStatuses } from '../services/tasks.js';
 /** initialize 时下发给客户端的服务说明（Claude Code 等会把它放进系统提示） */
 export const SERVER_INSTRUCTIONS = [
   'VibeHub 是团队的缺陷与任务看板，看板上的状态就是团队看到的事实。',
+  '开工先调 get_me 确认「我代表谁、能做什么」；要交活先 list_members，再 handoff_work 并写原因。',
   '开工先调 get_project_context；有多个项目时必须传 project_slug（不传会报错并列出可选值，按当前代码仓库对应的项目选）。',
   '【状态流转硬规则：谁经手谁流转，做完当场改，不等人提醒】',
   '缺陷 open → in_progress → resolved → verifying → verified，不能跳级，verified 就是修复完成的终点：',
