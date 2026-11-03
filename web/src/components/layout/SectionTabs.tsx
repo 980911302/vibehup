@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { BookOpen, Bug, ListChecks, Puzzle, StickyNote, FolderOpen, type LucideIcon } from 'lucide-react';
+import { Archive, BookOpen, Bug, ListChecks, Puzzle, StickyNote, FolderOpen, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 function Tab({
@@ -32,7 +32,7 @@ function Tab({
 }
 
 /** 工作区二级导航：缺陷 / 任务（保留旧 testid 兼容既有 E2E） */
-export function WorkTabs({ active }: { active: 'bugs' | 'tasks' }) {
+export function WorkTabs({ active }: { active: 'bugs' | 'tasks' | 'archived' }) {
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5">
       <div className="flex items-baseline gap-2">
@@ -42,9 +42,10 @@ export function WorkTabs({ active }: { active: 'bugs' | 'tasks' }) {
       <div className="vh-segmented">
         <Tab active={active === 'bugs'} label="缺陷" icon={Bug} href="/work/bugs" testId="nav-bugs" />
         <Tab active={active === 'tasks'} label="任务" icon={ListChecks} href="/work/tasks" testId="nav-tasks" />
+        <Tab active={active === 'archived'} label="已归档" icon={Archive} href="/work/archived" testId="nav-archived" />
       </div>
       <span className="t-caption-5 ml-auto hidden text-[var(--text-tertiary)] md:inline">
-        拖拽卡片改状态 · 点开看详情
+        {active === 'archived' ? '已完成默认收在这里' : '拖拽卡片改状态 · 点开看详情'}
       </span>
     </div>
   );

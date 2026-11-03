@@ -9,6 +9,7 @@ import { ShortcutsHelp } from '@/components/layout/ShortcutsHelp';
 import { AppNav } from '@/components/layout/AppNav';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { ActivityPanel } from '@/components/activity/ActivityPanel';
+import { QuickCapture } from '@/components/bugs/QuickCapture';
 import { VibeHubProvider } from '@/hooks/use-vibehub';
 
 const ONBOARDED_KEY = 'vibehub_onboarded';
@@ -64,6 +65,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useHotkeys([
     { combo: 'mod+k', description: '命令面板', handler: () => setPaletteOpen(true), allowInInput: true },
     { combo: '?', description: '帮助', handler: () => setHelpOpen((v) => !v) },
+    { combo: 'c', description: '快速录入', handler: () => window.dispatchEvent(new CustomEvent('vibehub:quick-capture')) },
     { combo: 'g d', description: '今日', handler: () => router.push('/today') },
     { combo: 'g w', description: '工作', handler: () => router.push('/work') },
     { combo: 'g c', description: '上下文', handler: () => router.push('/context') },
@@ -106,6 +108,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <ShortcutsHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
         <OnboardingWizard open={onboardOpen} onOpenChange={setOnboardOpen} />
         <ActivityPanel open={activityOpen} onClose={() => setActivityOpen(false)} />
+        <QuickCapture />
 
         <style jsx global>{`
           .vh-spinner {

@@ -17,12 +17,13 @@ import { api } from '@/lib/api';
 import { useAuth, useCanEdit } from '@/lib/auth';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useMinuteClock } from '@/hooks/use-minute-clock';
-import { useHotkeys } from '@/lib/shortcuts';
 import { useToast } from '@/lib/toast';
 import type { TodayItem, TodayResponse } from '@/lib/today-types';
 import { CreateBugDialog } from '@/components/bugs/CreateBugDialog';
 import { StatsTrendChart } from '@/components/stats/StatsTrendChart';
 import { ActionCard, ActiveRow, Metric, TodaySkeleton, dateLabel, greeting } from '@/components/today/TodayWidgets';
+import { TodayVerifyActions } from '@/components/today/TodayVerifyActions';
+import { TodayRejectDialog } from '@/components/today/TodayRejectDialog';
 
 const POLL_MS = 30_000;
 
@@ -38,6 +39,8 @@ export default function TodayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<TodayItem | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -62,7 +65,11 @@ export default function TodayPage() {
     return () => clearInterval(timer);
   }, [load]);
 
-  useHotkeys([{ combo: 'c', description: '新建缺陷', handler: () => canEdit && setCreateOpen(true) }]);
+  useEffect(() => {
+    const onCreated = () => void load();
+    window.addEventListener('vibehub:record-created', onCreated);
+    return () => window.removeEventListener('vibehub:record-created', onCreated);
+  }, [load]);
 
   const openItem = useCallback(
     (item: TodayItem) => {
@@ -71,6 +78,39 @@ export default function TodayPage() {
     },
     [router, store],
   );
+
+  const changeStatus = async (item: TodayItem, patch: Record<string, unknown>, success: string) => {
+    setBusyId(item.id);
+    try {
+      if (item.kind === 'bug') await api.updateBug(item.id, patch);
+      else await api.updateTask(item.id, patch);
+      await load();
+      toast.success(success);
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '状态更新失败');
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const startVerify = (item: TodayItem) => {
+    void changeStatus(item, { status: 'verifying' }, '已接手验证');
+  };
+  const approve = (item: TodayItem) => {
+    void changeStatus(item, { status: item.kind === 'bug' ? 'verified' : 'done' }, '验收通过');
+  };
+  const confirmReject = async (reason: string) => {
+    if (!rejectTarget) return;
+    const item = rejectTarget;
+    const ok = await changeStatus(
+      item,
+      { status: item.kind === 'bug' ? 'in_progress' : 'doing', reopen_reason: reason },
+      '已打回',
+    );
+    if (ok) setRejectTarget(null);
+  };
 
   const counts = useMemo(() => {
     if (!data) return { mine: 0, verify: 0, ai: 0 };
@@ -169,6 +209,16 @@ export default function TodayPage() {
               onOpen={openItem}
               empty="没有等你验收的结果"
               testId="today-to-verify"
+              actionsFor={(item) => (
+                <TodayVerifyActions
+                  item={item}
+                  busy={busyId === item.id}
+                  canEdit={canEdit}
+                  onStart={startVerify}
+                  onApprove={approve}
+                  onReject={setRejectTarget}
+                />
+              )}
             />
             <ActionCard
               label="AI 进行中"
@@ -261,6 +311,13 @@ export default function TodayPage() {
           </div>
         </>
       )}
+
+      <TodayRejectDialog
+        item={rejectTarget}
+        busy={rejectTarget ? busyId === rejectTarget.id : false}
+        onClose={() => setRejectTarget(null)}
+        onConfirm={(reason) => void confirmReject(reason)}
+      />
 
       {store.currentProject && (
         <CreateBugDialog

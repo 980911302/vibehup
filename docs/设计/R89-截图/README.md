@@ -7,10 +7,12 @@
 | 文件 | 说明 |
 | --- | --- |
 | `before-board-dark.png` | 旧壳：侧边栏 + 六列看板 + 蓝色品牌 |
-| `after-work-bugs-dark.png` | 新壳：四区浮动顶栏 + 工作 · 缺陷 Tab；配色恢复原版蓝/纸白 |
+| `after-work-bugs-dark.png` | 工作 · 缺陷：四区顶栏 + 默认隐藏已完成列；配色恢复原版 |
+| `after-work-archived-dark.png` | 工作 · 已归档：完成的缺陷/任务不占看板 |
+| `after-quick-capture.png` | 任意页按 C 的全局快速录单 |
 | `before-login.png` | 旧登录页：网格背景 + 玻璃卡 |
 | `after-login.png` | 登录页恢复原版纸白/藏青+金色细节（仅把默认跳转改为今日） |
-| `after-today-dark.png` | 新增今日工作台（暗色） |
+| `after-today-dark.png` | 今日工作台（暗色）；待验收可直接通过/打回 |
 | `after-today-daylight.png` | 今日工作台（纸白） |
 | `after-today-mobile.png` | 今日工作台 390px |
 | `after-mobile-menu.png` | 移动端全屏导航 |

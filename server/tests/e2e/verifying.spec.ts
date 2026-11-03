@@ -65,6 +65,8 @@ test('缺陷：已关闭只用于不修复，必须写原因；已验证不能�
   await expect(page.getByTestId('bug-detail')).toContainText('关闭原因');
   await page.keyboard.press('Escape');
 
+  // Work 看板默认隐藏已完成列；回旧 /board 验证「已验证不能拖到已关闭」
+  await page.goto('/board');
   const verified = page.getByTestId('board-column-verified').getByTestId('bug-card').filter({ hasText: '已经验完的缺陷' });
   await verified.dragTo(page.getByTestId('board-column-closed'));
   await expect(page.getByText('已验证就是修复完成的终点，不用再关闭')).toBeVisible();
@@ -81,7 +83,7 @@ test('任务：待验证 → 开始验证 → 验证中（显示谁在验）→ 
   await gotoBoardWithSession(page, session);
   await page.getByTestId('nav-tasks').click();
 
-  await expect(page.locator('[data-testid^="task-column-"]')).toHaveCount(6);
+  await expect(page.locator('[data-testid^="task-column-"]')).toHaveCount(4);
   await page.getByText('接入企业微信扫码').click();
   await expect(page.getByTestId('task-to-done')).toHaveCount(0);
   await page.getByTestId('task-to-verifying').click();

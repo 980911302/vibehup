@@ -26,6 +26,8 @@ interface BugBoardProps {
   onContextMenu: (bugId: string, e: React.MouseEvent) => void;
   onSelectionChange: (ids: string[]) => void;
   selectedIds: string[];
+  /** Work 页默认隐藏已完成/已关闭，进「已归档」Tab 看 */
+  hideTerminal?: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ interface BugBoardProps {
  */
 export function BugBoard({
   board, thumbnails, flashIds, canEdit,
-  onMoveBug, onOpenBug, onContextMenu, onSelectionChange, selectedIds,
+  onMoveBug, onOpenBug, onContextMenu, onSelectionChange, selectedIds, hideTerminal = false,
 }: BugBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const draggingRef = useRef<string | null>(null);
@@ -107,9 +109,11 @@ export function BugBoard({
     onOpenBug(bugId, e);
   };
 
+  const columns = hideTerminal ? COLUMNS.filter((c) => c.key !== 'verified' && c.key !== 'closed') : COLUMNS;
+
   return (
     <div className="flex h-full gap-3 overflow-x-auto pb-2" data-testid="bug-board">
-      {COLUMNS.map((col) => {
+      {columns.map((col) => {
         const bugs = board[col.key] ?? [];
         const droppable = draggingBug ? canDropBug(draggingBug.status, col.key) : false;
         const isOver = dragOverCol === col.key && droppable;

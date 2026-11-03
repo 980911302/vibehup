@@ -21,6 +21,8 @@ interface TaskBoardProps {
   canEdit: boolean;
   onOpen: (taskId: string) => void;
   onMove: (task: Task, to: TaskStatus) => void;
+  /** Work 页默认隐藏已完成/已取消，进「已归档」Tab 看 */
+  hideTerminal?: boolean;
 }
 
 /** 为什么不能落到这一列：人话提示下一步能去哪 */
@@ -31,7 +33,7 @@ function rejectReason(from: TaskStatus, to: TaskStatus): string {
 }
 
 /** 任务看板（每个状态一列）：拖拽只接受合法的下一步，拖动时高亮可放的列 */
-export function TaskBoard({ tasks, canEdit, onOpen, onMove }: TaskBoardProps) {
+export function TaskBoard({ tasks, canEdit, onOpen, onMove, hideTerminal = false }: TaskBoardProps) {
   const toast = useToast();
   const draggingRef = useRef<Task | null>(null);
   const [dragging, setDragging] = useState<Task | null>(null);
@@ -55,9 +57,11 @@ export function TaskBoard({ tasks, canEdit, onOpen, onMove }: TaskBoardProps) {
     onMove(task, to);
   };
 
+  const statuses = hideTerminal ? TASK_STATUSES.filter((s) => s !== 'done' && s !== 'cancelled') : TASK_STATUSES;
+
   return (
     <div className="flex h-full gap-3 overflow-x-auto pb-2" data-testid="task-board">
-      {TASK_STATUSES.map((status) => {
+      {statuses.map((status) => {
         const list = tasks.filter((t) => t.status === status);
         const droppable = dragging ? canDropTo(dragging.status as TaskStatus, status) : false;
         return (

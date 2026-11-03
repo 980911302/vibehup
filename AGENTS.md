@@ -101,7 +101,7 @@
 ## 6. 前端契约
 
 - 颜色/圆角/阴影/时长/缓动一律 token（`globals.css` 唯一来源）；组件内禁止裸 HEX。
-- **四区导航与视觉系统（R89）**：一级入口只有今日 `/today`、工作 `/work/bugs|/work/tasks`、上下文 `/context/notes|/context/files|/context/skills`、设置 `/settings`；`AppNav` 是唯一顶栏，项目切换、搜索、AI 活动、主题、账号都在这里，页面内不再放重复切换器。字体恢复原版 Inter / Noto Sans SC / PingFang 栈（登录页保留 Noto Serif 标题）；文字使用 `globals.css` 的命名样式 `t-heading-1..6 / t-title-1..5 / t-body-1..6 / t-button-* / t-caption-1..5`，字号只取 Tailwind 12/14/16/18/20/24/30/36/48/60 阶梯；暗色背景沿用原版 `#0B0E14 / #12161F / #171C27 / #1D2432`，强调色为原版蓝 `#4C7DD9`（Daylight 藏青 `#1F355A`），金色仍只用于 AI 标识；语义色仅用于状态；卡片边框四周齐全，背景无渐变；动效只用 transform/opacity，恢复原版曲线 `cubic-bezier(0.32,0.72,0,1)` / `cubic-bezier(0.16,1,0.3,1)`，时长 140/220/320ms。图标按 R58 继续用 lucide（未改用 Phosphor/Solar，遵守仓库图标宪法）。
+- **四区导航与视觉系统（R89）**：一级入口只有今日 `/today`、工作 `/work/bugs|/work/tasks|/work/archived`、上下文 `/context/notes|/context/files|/context/skills`、设置 `/settings`；`C` 是全局快速录单（任何页；无项目时唤起首启），工作看板默认隐藏已完成/已关闭/已取消（自动归入「已归档」Tab，旧 `/board` 保留完整六列）；`AppNav` 是唯一顶栏，项目切换、搜索、AI 活动、主题、账号都在这里，页面内不再放重复切换器。字体恢复原版 Inter / Noto Sans SC / PingFang 栈（登录页保留 Noto Serif 标题）；文字使用 `globals.css` 的命名样式 `t-heading-1..6 / t-title-1..5 / t-body-1..6 / t-button-* / t-caption-1..5`，字号只取 Tailwind 12/14/16/18/20/24/30/36/48/60 阶梯；暗色背景沿用原版 `#0B0E14 / #12161F / #171C27 / #1D2432`，强调色为原版蓝 `#4C7DD9`（Daylight 藏青 `#1F355A`），金色仍只用于 AI 标识；语义色仅用于状态；卡片边框四周齐全，背景无渐变；动效只用 transform/opacity，恢复原版曲线 `cubic-bezier(0.32,0.72,0,1)` / `cubic-bezier(0.16,1,0.3,1)`，时长 140/220/320ms。图标按 R58 继续用 lucide（未改用 Phosphor/Solar，遵守仓库图标宪法）。
 - 动效铁律：只动 transform/opacity；退出快于进入；`prefers-reduced-motion` 降级；装饰动画只允许三处（登录聚光/AI 流光/空状态浮动）。
 - 暗色 Midnight 默认 + 纸白 Daylight；登录页恒定 Daylight。
 - 单文件 ≤300 行、单函数 ≤50 行、props ≤7；基础组件 forwardRef + cva + cn()。

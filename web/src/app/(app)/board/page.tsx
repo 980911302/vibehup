@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ClipboardList, Filter, FolderPlus, Plus, Search, X } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useAuth } from '@/lib/auth';
@@ -56,6 +56,8 @@ function BoardUrlSync({
 /** 缺陷看板页（步骤 07 §7.1）：筛选条 + 看板（每个状态一列）+ 批量栏 */
 export default function BoardPage() {
   const store = useVibeHub();
+  const pathname = usePathname();
+  const hideTerminal = pathname.startsWith('/work');
   const { user } = useAuth();
   const toast = useToast();
 
@@ -75,9 +77,8 @@ export default function BoardPage() {
   const canEdit = user?.role !== 'viewer';
   const openCreate = useCallback(() => canEdit && setCreateOpen(true), [canEdit]);
 
-  // 快捷键：C 新建 / Esc 清选择（输入态放行由 useHotkeys 处理）
+  // 快捷键：Esc 清选择（C 全局快速录入）
   useHotkeys([
-    { combo: 'c', description: '新建缺陷', handler: () => canEdit && setCreateOpen(true) },
     { combo: 'esc', description: '清选择', handler: () => { setSelectedIds([]); setMenu(null); } },
   ]);
 
@@ -86,6 +87,8 @@ export default function BoardPage() {
     const onPaste = (e: ClipboardEvent) => {
       const files = Array.from(e.clipboardData?.files ?? []);
       if (!files.length || !canEdit) return;
+      // 对话框内的粘贴由 CreateBugDialog 自己处理；否则会再开一个板页录入框
+      if ((e.target as HTMLElement | null)?.closest('[role="dialog"], [data-testid="bug-paste-area"]')) return;
       e.preventDefault();
       setPendingFiles(files);
       setCreateOpen(true);
@@ -221,6 +224,7 @@ export default function BoardPage() {
           flashIds={flashIds}
           canEdit={canEdit}
           selectedIds={selectedIds}
+          hideTerminal={hideTerminal}
           onSelectionChange={setSelectedIds}
           onMoveBug={(bugId, status) => {
             // 服务端仍可能拒绝（比如别人刚改过状态）：人话提示，不再抛未捕获异常（功能巡检 B4）

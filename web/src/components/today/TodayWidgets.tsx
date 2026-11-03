@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -59,6 +60,7 @@ export function ActionCard({
   onOpen,
   empty,
   testId,
+  actionsFor,
 }: {
   label: string;
   hint: string;
@@ -69,6 +71,7 @@ export function ActionCard({
   onOpen: (item: TodayItem) => void;
   empty: string;
   testId: string;
+  actionsFor?: (item: TodayItem) => ReactNode;
 }) {
   return (
     <section className="vh-card flex flex-col p-5" data-testid={testId}>
@@ -86,24 +89,34 @@ export function ActionCard({
       <div className="mt-4 flex-1 space-y-1">
         {items.length === 0 && <p className="t-caption-2 py-3 text-[var(--text-tertiary)]">{empty}</p>}
         {items.slice(0, 3).map((item) => (
-          <button
-            key={`${item.kind}-${item.id}`}
-            className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--bg-elevated)]"
-            onClick={() => onOpen(item)}
-          >
-            <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs ${statusTone(item)}`}>
-              {statusLabel(item)}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="t-caption-1 block truncate text-[var(--text-primary)]">{item.title}</span>
-              <span className="t-caption-5 block truncate text-[var(--text-tertiary)]">
-                {item.project.name} · {who(item)}
+          <div key={`${item.kind}-${item.id}`} className="rounded-lg px-2 py-2 transition-colors hover:bg-[var(--bg-elevated)]">
+            <div
+              role="button"
+              tabIndex={0}
+              className="flex w-full cursor-pointer items-start gap-2 text-left"
+              onClick={() => onOpen(item)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onOpen(item);
+                }
+              }}
+            >
+              <span className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-xs ${statusTone(item)}`}>
+                {statusLabel(item)}
               </span>
-            </span>
-            <span className="t-caption-5 shrink-0 text-[var(--text-tertiary)]">
-              {formatSpan(now - new Date(item.since).getTime())}
-            </span>
-          </button>
+              <span className="min-w-0 flex-1">
+                <span className="t-caption-1 block truncate text-[var(--text-primary)]">{item.title}</span>
+                <span className="t-caption-5 block truncate text-[var(--text-tertiary)]">
+                  {item.project.name} · {who(item)}
+                </span>
+              </span>
+              <span className="t-caption-5 shrink-0 text-[var(--text-tertiary)]">
+                {formatSpan(now - new Date(item.since).getTime())}
+              </span>
+            </div>
+            {actionsFor && <div className="mt-1.5">{actionsFor(item)}</div>}
+          </div>
         ))}
       </div>
 

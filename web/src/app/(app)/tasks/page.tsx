@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { FolderPlus, ListTodo } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useCanEdit } from '@/lib/auth';
@@ -29,6 +29,8 @@ function TaskUrlSync({ onOpen }: { onOpen: (taskId: string) => void }) {
 /** 任务页：六列流转（待办 → 进行中 → 待验证 → 验证中 → 已完成 / 已取消）、标签筛选、点卡片看详情 */
 export default function TasksPage() {
   const store = useVibeHub();
+  const pathname = usePathname();
+  const hideTerminal = pathname.startsWith('/work');
   const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [labelFilter, setLabelFilter] = useState('');
@@ -110,7 +112,7 @@ export default function TasksPage() {
       </div>
 
       <div className="flex-1 overflow-hidden p-4">
-        <TaskBoard tasks={visible} canEdit={canEdit} onOpen={setDetailId} onMove={(t, to) => void move(t, to)} />
+        <TaskBoard tasks={visible} canEdit={canEdit} hideTerminal={hideTerminal} onOpen={setDetailId} onMove={(t, to) => void move(t, to)} />
       </div>
 
       <Suspense fallback={null}>

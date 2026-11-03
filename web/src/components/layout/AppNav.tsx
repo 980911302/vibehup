@@ -9,6 +9,7 @@ import {
   Keyboard,
   Menu,
   Moon,
+  Plus,
   Search,
   Settings2,
   Sparkles,
@@ -17,7 +18,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useAuth } from '@/lib/auth';
+import { useAuth, useCanEdit } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
 import { useVibeHub } from '@/hooks/use-vibehub';
@@ -47,6 +48,7 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+  const canEdit = useCanEdit();
   const { theme, toggle } = useTheme();
   const store = useVibeHub();
   const toast = useToast();
@@ -120,6 +122,18 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
                 compact
               />
             </div>
+
+            {canEdit && (
+              <button
+                className="vh-btn h-9 gap-1.5 px-2.5"
+                onClick={() => window.dispatchEvent(new CustomEvent('vibehub:quick-capture'))}
+                title="快速录入（C）"
+                data-testid="quick-capture"
+              >
+                <Plus size={15} />
+                <span className="hidden lg:inline">录缺陷</span>
+              </button>
+            )}
 
             <div className="hidden sm:block">
               <button
