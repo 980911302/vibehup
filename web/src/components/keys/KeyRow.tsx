@@ -3,7 +3,7 @@
 import { Copy, Eye, KeyRound, Lock, RotateCw, ShieldOff, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ApiKeyView } from '@/lib/api-types';
-import { KeyUsageChart, SCOPE_TOOLS } from './KeyWizard';
+import { KeyUsageChart } from './KeyWizard';
 
 const STATUS_LABEL: Record<ApiKeyView['status'], string> = {
   active: '活跃',
@@ -75,17 +75,6 @@ export function KeyRow({
               )}
             </div>
             <code className="t-mono mt-1 block truncate text-xs text-[var(--text-tertiary)]">{k.masked}</code>
-            <div className="mt-1.5 flex flex-wrap items-center gap-1">
-              {k.scopes.map((s) => (
-                <span
-                  key={s}
-                  className="rounded bg-[var(--brand-soft)] px-1.5 py-0.5 text-xs text-[var(--accent)]"
-                  title={SCOPE_TOOLS[s]?.join(' · ')}
-                >
-                  {s}
-                </span>
-              ))}
-            </div>
           </div>
         </div>
 

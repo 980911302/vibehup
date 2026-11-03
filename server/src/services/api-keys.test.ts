@@ -32,13 +32,19 @@ describe('createKey', () => {
     await expect(apiKeysService.revealKey(view.id, { id: owner.user.id, role: 'owner' })).resolves.toMatchObject({ key, name: 'cursor' });
   });
 
-  it('默认最小权限 scope + 90 天过期', async () => {
+  it('不传 scope 时自动继承角色能力 + 90 天过期（R89 用户反馈）', async () => {
     const owner = await createUser({ email: 'o@t.com' });
     const { view } = await apiKeysService.createKey({ name: 'default', createdBy: owner.user.id });
-    expect(view.scopes).toEqual(['context:read']);
+    expect(view.scopes).toEqual(expect.arrayContaining(['context:read', 'bug:write', 'task:write', 'admin']));
     const days = (new Date(view.expires_at!).getTime() - Date.now()) / 86_400_000;
     expect(days).toBeGreaterThan(89);
     expect(days).toBeLessThanOrEqual(90);
+  });
+
+  it('viewer 不传 scope 时只继承读取能力', async () => {
+    const viewer = await createUser({ email: 'viewer-key@t.com', role: 'viewer' });
+    const { view } = await apiKeysService.createKey({ name: 'viewer-key', createdBy: viewer.user.id });
+    expect(view.scopes).toEqual(['context:read', 'task:read', 'attachment:read']);
   });
 
   it('自定义 scope / 限速 / 永久有效期（null）', async () => {

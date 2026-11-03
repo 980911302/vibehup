@@ -38,9 +38,9 @@ function statusLabel(item: TodayItem): string {
 
 function statusTone(item: TodayItem): string {
   if (item.stale) return 'bg-[var(--danger)]/12 text-[var(--danger)]';
-  if (item.status === 'in_progress' || item.status === 'doing') return 'bg-[var(--brand-soft)] text-[var(--accent)]';
+  if (item.status === 'in_progress' || item.status === 'doing') return 'bg-[var(--brand-soft)] text-[var(--accent-color)]';
   if (item.status === 'resolved' || item.status === 'review') return 'bg-[var(--warn)]/12 text-[var(--warn)]';
-  if (item.status === 'verifying') return 'bg-[var(--accent)]/12 text-[var(--accent)]';
+  if (item.status === 'verifying') return 'bg-[var(--accent-color)]/12 text-[var(--accent-color)]';
   return 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]';
 }
 
@@ -108,7 +108,7 @@ export function ActionCard({
       </div>
 
       {items.length > 0 && (
-        <button className="t-caption-4 mt-3 flex items-center gap-1 text-[var(--accent)]" onClick={() => onOpen(items[0])}>
+        <button className="t-caption-4 mt-3 flex items-center gap-1 text-[var(--accent-color)]" onClick={() => onOpen(items[0])}>
           打开第一件 <ArrowRight size={13} />
         </button>
       )}

@@ -218,7 +218,7 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
               return (
                 <button
                   key={item.href}
-                  className={cn('vh-mobile-link', active && 'text-[var(--accent)]')}
+                  className={cn('vh-mobile-link', active && 'text-[var(--accent-color)]')}
                   style={{ '--i': i } as CSSProperties}
                   onClick={() => go(item.href)}
                   aria-current={active ? 'page' : undefined}
@@ -226,7 +226,7 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
                 >
                   <Icon size={22} strokeWidth={1.6} />
                   {item.label}
-                  {active && <Check size={18} className="ml-auto text-[var(--accent)]" />}
+                  {active && <Check size={18} className="ml-auto text-[var(--accent-color)]" />}
                 </button>
               );
             })}

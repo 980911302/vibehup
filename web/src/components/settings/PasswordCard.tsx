@@ -7,7 +7,7 @@ import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 const inputClass =
-  'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)]';
+  'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-color)]';
 
 function strength(p: string): number {
   let score = 0;

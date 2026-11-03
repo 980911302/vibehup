@@ -55,7 +55,7 @@ export function ContextTabs({ active }: { active: 'notes' | 'files' | 'skills' }
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5">
       <div className="flex items-baseline gap-2">
-        <BookOpen size={16} className="text-[var(--accent)]" />
+        <BookOpen size={16} className="text-[var(--accent-color)]" />
         <span className="t-title-3 text-[var(--text-primary)]">上下文</span>
         <span className="t-caption-5 hidden text-[var(--text-tertiary)] sm:inline">给 AI 看的项目资料</span>
       </div>

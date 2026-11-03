@@ -5,7 +5,7 @@ import { ids } from '../core/ids.js';
 import { hashToken } from '../core/tokens.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../core/errors.js';
 import { decryptSecret, encryptSecret } from '../core/key-cipher.js';
-import { disallowedScopes, isKnownScope, SCOPES } from '../mcp/scopes.js';
+import { allowedScopesForRole, disallowedScopes, isKnownScope, SCOPES } from '../mcp/scopes.js';
 
 /**
  * MCP 密钥管理（R89：密钥即个人 AI 身份）。
@@ -81,10 +81,6 @@ export interface CreateKeyInput {
 /** 创建密钥：返回一次性明文；scope 上限由创建人的真实角色决定 */
 export async function createKey(input: CreateKeyInput): Promise<{ key: string; view: ApiKeyView }> {
   if (!input.name?.trim()) throw new ValidationError('密钥名称不能为空');
-  const scopes = input.scopes ?? ['context:read'];
-  for (const s of scopes) {
-    if (!isKnownScope(s)) throw new ValidationError(`未知 scope: ${s}。可用: ${SCOPES.join(' / ')}`);
-  }
   if (input.rateLimit !== undefined && (input.rateLimit < 1 || input.rateLimit > 10_000)) {
     throw new ValidationError('rate_limit 需在 1-10000 之间');
   }
@@ -96,6 +92,12 @@ export async function createKey(input: CreateKeyInput): Promise<{ key: string; v
   if (!creator) throw new ValidationError('密钥所属用户不存在，请重新登录后重试');
   if (creator.status !== 'active') {
     throw new ForbiddenError('该账号已被禁用，不能创建或轮换密钥；请联系管理员恢复账号');
+  }
+  // R89 用户反馈：密钥不再让用户选权限；默认继承本人角色允许的全部能力。
+  // 显式 scopes 仍供 API/OAuth 兼容，并继续按角色校验上限。
+  const scopes = input.scopes ?? [...allowedScopesForRole(creator.role)];
+  for (const s of scopes) {
+    if (!isKnownScope(s)) throw new ValidationError(`未知 scope: ${s}。可用: ${SCOPES.join(' / ')}`);
   }
   const denied = disallowedScopes(creator.role, scopes);
   if (denied.length > 0) {

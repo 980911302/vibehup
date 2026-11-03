@@ -1,12 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { KeyRound, Plug, Plus, ShieldCheck, Users } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
-import { allowedScopesForRole } from '@/lib/key-scopes';
 import { CreateKeyWizard } from '@/components/keys/KeyWizard';
 import { KeyRow } from '@/components/keys/KeyRow';
 import { McpConfigPanel } from '@/components/keys/McpConfigPanel';
@@ -21,7 +20,6 @@ export default function KeysPage() {
   const toast = useToast();
   const { error: toastError } = toast;
   const isAdmin = user?.role === 'owner' || user?.role === 'admin';
-  const allowedScopes = useMemo(() => allowedScopesForRole(user?.role), [user?.role]);
 
   const [keys, setKeys] = useState<ApiKeyView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,7 +118,7 @@ export default function KeysPage() {
           </p>
           <h1 className="t-heading-4 mt-2">密钥代表你</h1>
           <p className="t-body-3 mt-2 max-w-[680px] text-[var(--text-secondary)]">
-            AI 通过密钥替你干活。每个客户端一把，权限不超过你的角色；看板上会显示「你 · 密钥名」。
+            AI 通过密钥替你干活。每个客户端一把，密钥自动继承你的角色能力；看板上会显示「你 · 密钥名」。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -134,10 +132,9 @@ export default function KeysPage() {
       </header>
 
       {/* 概览 */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Bento label="活跃密钥" value={`${activeKeys.length}`} suffix={teamView ? `全团队 ${keys.length}` : `共 ${keys.length}`} />
         <Bento label="角色" value={user?.name ?? ''} suffix={isAdmin ? '管理员可审计团队' : '个人身份'} />
-        <Bento label="权限上限" value={`${allowedScopes.length}`} suffix="个 scope" />
         <Bento
           label="安全状态"
           value={activeKeys.length > 0 ? '正常' : '无可用密钥'}
@@ -213,7 +210,6 @@ export default function KeysPage() {
         open={wizardOpen}
         onOpenChange={setWizardOpen}
         onCreated={() => void load(teamView)}
-        allowedScopes={allowedScopes}
       />
       <McpConfigPanel open={configOpen} keys={keys.filter((k) => canManage(k))} onClose={() => setConfigOpen(false)} />
     </div>

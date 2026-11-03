@@ -30,7 +30,7 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 const inputClass =
-  'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)]';
+  'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-color)]';
 
 /** 设置（R89）：我的 / 团队；密钥自助，Admin+ 管成员、项目与系统。 */
 export default function SettingsPage() {
@@ -103,13 +103,13 @@ export default function SettingsPage() {
             <h2 className="t-title-3">个人资料</h2>
             <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">AI 的动作会记在你名下，用真名方便团队辨认。</p>
             <div className="mt-4 flex items-center gap-3">
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-soft)] text-lg font-semibold text-[var(--accent)]">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-soft)] text-lg font-semibold text-[var(--accent-color)]">
                 {(user?.name ?? '?').slice(0, 1)}
               </span>
               <div className="min-w-0">
                 <p className="t-title-4 truncate">{user?.name}</p>
                 <p className="t-caption-5 truncate text-[var(--text-tertiary)]">{user?.email}</p>
-                <p className="t-caption-4 mt-0.5 text-[var(--accent)]">{ROLE_LABEL[user?.role ?? ''] ?? user?.role}</p>
+                <p className="t-caption-4 mt-0.5 text-[var(--accent-color)]">{ROLE_LABEL[user?.role ?? ''] ?? user?.role}</p>
               </div>
             </div>
             <div className="mt-4 flex gap-2">

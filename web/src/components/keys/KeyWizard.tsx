@@ -1,69 +1,45 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Copy, KeyRound, Loader2, RotateCw, ShieldAlert, Trash2 } from 'lucide-react';
+import { Check, Copy, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 import type { ApiKeyView } from '@/lib/api-types';
 
-/** scope → 可调用的 MCP 工具（与 server/src/mcp/tool-scopes.ts 一致） */
-const SCOPE_TOOLS: Record<string, string[]> = {
-  'context:read': ['get_project_context', 'list_bugs', 'get_bug_detail', 'list_notes', 'search', 'list_skills', 'download_skill'],
-  'attachment:read': ['read_attachment_text', 'inspect_image_asset'],
-  'attachment:write': ['upload_attachment', 'delete_attachment'],
-  'bug:write': ['update_bug_status', 'create_bug', 'add_bug_comment', 'delete_bug'],
-  'note:write': ['append_scratchpad', 'update_note', 'delete_note'],
-  'task:read': ['list_tasks', 'get_task_detail'],
-  'task:write': ['create_task', 'update_task', 'delete_task'],
-  'skill:write': ['upload_skill', 'delete_skill'],
-  admin: ['purge_trash'],
-};
-
-/** 创建密钥向导（步骤 07 §7.5：三步，第 3 步一次性明文） */
+/** 创建密钥向导（R89：两步，第 2 步一次性明文；权限自动继承角色） */
 export function CreateKeyWizard({
-  open, onOpenChange, onCreated, allowedScopes,
+  open, onOpenChange, onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
-  /** 当前角色可申请的 scope；缺省=全部（管理员） */
-  allowedScopes?: string[];
 }) {
   const toast = useToast();
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
-  const [scopes, setScopes] = useState<string[]>(['context:read']);
   const [expiresInDays, setExpiresInDays] = useState<number | null>(90);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ key: string; view: ApiKeyView } | null>(null);
   const [copied, setCopied] = useState<'key' | 'config' | null>(null);
-  const visibleScopes = useMemo(
-    () => Object.entries(SCOPE_TOOLS).filter(([scope]) => !allowedScopes || allowedScopes.includes(scope)),
-    [allowedScopes],
-  );
 
   useEffect(() => {
     if (open) {
       setStep(1);
       setName('');
-      setScopes([visibleScopes[0]?.[0] ?? 'context:read']);
       setExpiresInDays(90);
       setResult(null);
       setCopied(null);
     }
-  }, [open, visibleScopes]);
-
-  const toggleScope = (s: string) => {
-    setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
-  };
+  }, [open]);
 
   const submit = async () => {
     setSubmitting(true);
     try {
-      const r = await api.createApiKey({ name: name.trim(), scopes, expires_in_days: expiresInDays });
+      // 用户不需要选权限；服务端按本人角色自动继承能力
+      const r = await api.createApiKey({ name: name.trim(), expires_in_days: expiresInDays });
       setResult({ key: r.key, view: r.api_key });
-      setStep(3);
+      setStep(2);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '创建失败');
     } finally {
@@ -101,49 +77,31 @@ export function CreateKeyWizard({
       <div className="w-[520px] rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-panel)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()} data-testid="key-wizard">
         {/* 步骤指示器 */}
         <div className="mb-5 flex items-center gap-2">
-          {[1, 2, 3].map((s) => (
+          {[1, 2].map((s) => (
             <div key={s} className="flex flex-1 items-center gap-2">
               <span className={cn(
                 'flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium',
-                step >= s ? 'bg-[var(--accent)] text-[var(--accent-contrast)]' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]',
+                step >= s ? 'bg-[var(--accent-color)] text-[var(--accent-contrast)]' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]',
               )}>{s}</span>
-              {s < 3 && <div className={cn('h-px flex-1', step > s ? 'bg-[var(--brand)]' : 'bg-[var(--border-subtle)]')} />}
+              {s < 2 && <div className={cn('h-px flex-1', step > s ? 'bg-[var(--brand)]' : 'bg-[var(--border-subtle)]')} />}
             </div>
           ))}
         </div>
 
         {step === 1 && (
           <>
-            <h3 className="mb-1 text-base font-semibold">名称</h3>
-            <p className="mb-4 text-xs text-[var(--text-tertiary)]">给密钥起个名字，方便在用量审计中识别（如 cursor-main）</p>
+            <h3 className="mb-1 text-base font-semibold">创建密钥</h3>
+            <p className="mb-4 text-xs text-[var(--text-tertiary)]">
+              密钥代表你，会自动继承你当前角色的能力，不需要再选权限。
+            </p>
             <input
               autoFocus
-              className="mb-4 h-10 w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none focus:border-[var(--brand)]"
-              placeholder="密钥名称"
+              className="mb-4 h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none focus:border-[var(--accent-color)]"
+              placeholder="密钥名称，如 cursor-main"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && name.trim() && void submit()}
             />
-            <div className="flex justify-end">
-              <button className="vh-btn" disabled={!name.trim()} onClick={() => setStep(2)}>下一步</button>
-            </div>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
-            <h3 className="mb-1 text-base font-semibold">权限范围（Scopes）</h3>
-            <p className="mb-4 text-xs text-[var(--text-tertiary)]">最小权限原则：默认只读；可申请的权限不会超过你的角色。写操作需显式勾选。</p>
-            <div className="mb-4 space-y-2">
-              {visibleScopes.map(([scope, tools]) => (
-                <label key={scope} className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[var(--border-subtle)] p-2.5 hover:bg-[var(--bg-elevated)]">
-                  <input type="checkbox" className="mt-0.5" checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} />
-                  <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">{scope}</p>
-                    <p className="text-xs text-[var(--text-tertiary)]">{tools.join(' · ')}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
             <div className="mb-4 flex items-center gap-3 text-xs">
               <span className="text-[var(--text-tertiary)]">有效期</span>
               {[30, 90, null].map((d) => (
@@ -151,7 +109,9 @@ export function CreateKeyWizard({
                   key={String(d)}
                   className={cn(
                     'rounded-md border px-2.5 py-1 transition-colors cursor-pointer',
-                    expiresInDays === d ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand)]' : 'border-[var(--border-strong)] text-[var(--text-tertiary)]',
+                    expiresInDays === d
+                      ? 'border-[var(--accent-color)] bg-[var(--brand-soft)] text-[var(--accent-color)]'
+                      : 'border-[var(--border-strong)] text-[var(--text-tertiary)]',
                   )}
                   onClick={() => setExpiresInDays(d)}
                 >
@@ -159,9 +119,8 @@ export function CreateKeyWizard({
                 </button>
               ))}
             </div>
-            <div className="flex justify-between">
-              <button className="vh-btn ghost" onClick={() => setStep(1)}>上一步</button>
-              <button className="vh-btn" disabled={scopes.length === 0 || submitting} onClick={submit}>
+            <div className="flex justify-end">
+              <button className="vh-btn" disabled={!name.trim() || submitting} onClick={() => void submit()}>
                 {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 创建密钥
               </button>
@@ -169,7 +128,7 @@ export function CreateKeyWizard({
           </>
         )}
 
-        {step === 3 && result && (
+        {step === 2 && result && (
           <>
             <h3 className="mb-1 text-base font-semibold">密钥已创建</h3>
             <p className="mb-3 text-xs text-[var(--danger)]">先复制到 IDE 配置；之后可在列表点「查看」再次复制，遗失或泄露请立即轮换。</p>
@@ -252,4 +211,3 @@ export function KeyUsageChart({ keyId }: { keyId: string }) {
   );
 }
 
-export { SCOPE_TOOLS };

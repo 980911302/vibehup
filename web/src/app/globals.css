@@ -22,8 +22,8 @@
     --brand: #4c7dd9;
     --brand-navy: #2e4e8f;
     --brand-soft: rgba(76, 125, 217, 0.14);
-    --accent: #4c7dd9;
-    --accent-strong: #2e4e8f;
+    --accent-color: #4c7dd9;
+    --accent-color-strong: #2e4e8f;
     --accent-contrast: #ffffff;
     --bg-inset: #0b0e14;
     --gold: #d4a76a;
@@ -74,8 +74,8 @@
     --brand: #1f355a;
     --brand-navy: #16294a;
     --brand-soft: rgba(31, 53, 90, 0.08);
-    --accent: #1f355a;
-    --accent-strong: #16294a;
+    --accent-color: #1f355a;
+    --accent-color-strong: #16294a;
     --accent-contrast: #ffffff;
     --bg-inset: #f7f3ec;
     --gold: #b8924e;
@@ -250,7 +250,7 @@
 .vh-brand-mark {
   width: 32px; height: 32px; border-radius: var(--r-btn); flex-shrink: 0;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--accent); color: var(--accent-contrast);
+  background: var(--accent-color); color: var(--accent-contrast);
   font-weight: 600; font-size: 14px;
 }
 .vh-brand-name { font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
@@ -279,7 +279,7 @@
 .vh-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   height: 36px; padding: 0 12px; border: 1px solid transparent; border-radius: var(--r-btn);
-  background: var(--accent); color: var(--accent-contrast);
+  background: var(--accent-color); color: var(--accent-contrast);
   font-size: 14px; line-height: 20px; font-weight: 600; cursor: pointer;
   transition: filter var(--dur-fast) var(--ease), transform 150ms var(--ease), background-color var(--dur-fast) var(--ease);
 }
@@ -298,13 +298,13 @@
   background: var(--bg-elevated); color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);
 }
-.vh-gold-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.vh-gold-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
 .vh-ai-badge {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 12px; line-height: 16px; padding: 1px 8px; border-radius: var(--r-pill);
   background: var(--gold-bg); color: var(--gold);
 }
-.vh-gold-sweep { background: var(--accent); }
+.vh-gold-sweep { background: var(--gold); }
 .vh-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   padding: 64px 16px; text-align: center; color: var(--text-tertiary);

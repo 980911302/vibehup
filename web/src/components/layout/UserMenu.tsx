@@ -27,7 +27,7 @@ export function UserMenu() {
         aria-label="账号菜单"
         data-testid="user-menu"
       >
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-semibold text-[var(--accent)]">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-semibold text-[var(--accent-color)]">
           {user.name.slice(0, 1)}
         </span>
         <ChevronDown size={13} className="hidden text-[var(--text-tertiary)] lg:block" />
@@ -40,7 +40,7 @@ export function UserMenu() {
             <div className="px-2 py-2">
               <p className="t-title-4 truncate">{user.name}</p>
               <p className="t-caption-5 truncate text-[var(--text-tertiary)]">{user.email}</p>
-              <p className="t-caption-4 mt-1 text-[var(--accent)]">{ROLE_LABEL[user.role] ?? user.role}</p>
+              <p className="t-caption-4 mt-1 text-[var(--accent-color)]">{ROLE_LABEL[user.role] ?? user.role}</p>
             </div>
             <div className="my-1 h-px bg-[var(--border-subtle)]" />
             <button className="vh-menu-item" onClick={() => { setOpen(false); router.push('/settings'); }}>

@@ -65,7 +65,7 @@ export function ProjectSwitcher({
           >
             <input
               autoFocus
-              className="mb-2 h-9 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)]"
+              className="mb-2 h-9 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-color)]"
               placeholder="搜索项目，支持拼音"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -97,7 +97,7 @@ export function ProjectSwitcher({
             </div>
             <div className="mt-2 flex gap-2 border-t border-[var(--border-subtle)] pt-2">
               <input
-                className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)]"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-color)]"
                 placeholder="新建项目名称"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}

@@ -14,8 +14,9 @@
 | `after-today-daylight.png` | 今日工作台（纸白） |
 | `after-today-mobile.png` | 今日工作台 390px |
 | `after-mobile-menu.png` | 移动端全屏导航 |
-| `after-settings-dark.png` | 新设置页（我的 / 团队） |
-| `after-keys-dark.png` | 密钥自助页 |
+| `after-settings-dark.png` | 新设置页（我的 / 团队，暗色） |
+| `after-settings-daylight.png` | 设置页纸白主题；「管理我的密钥」按钮对比度修复 |
+| `after-keys-dark.png` | 密钥自助页；创建不选权限，自动继承角色 |
 | `after-context-notes-dark.png` | 上下文 · 随手记 |
 
 演示数据仅存在于本地开发库，截图后未进入任何提交。
