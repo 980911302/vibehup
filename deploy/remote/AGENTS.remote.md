@@ -340,3 +340,11 @@ VIBEHUB_MCP_EVENT_RELAY_TOKEN=<与中转主机相同的独立令牌>
 - 更新前旧路由源码和产物已归档到 `/root/vibehub-backups/oauth-ui-<时间戳>/oauth-before.tar.gz`。回滚还原旧路由、重建后端并重启。
 - 本地与远端 Server build exit 0；服务重启后 health 正常；浏览器已查看线上真实 OAuth 授权页。没有提交登录/授权，也未运行自动化测试。
 - 错误回显不含密码；有效请求在登录失败后仍可重试，成功验证时原子消费 nonce；取消通过既有已校验 redirect_uri 返回 OAuth access_denied 与 state。
+
+### R89 产品重做第一切片（2026-11-03）
+
+- 备份：`/root/vibehub-backups/pg-before-r89-*.dump`、`app-before-r89-*.tar.gz`、`data-before-r89-*.tar.gz`；数据库、附件目录与原 `/app` 均在替换前留档。
+- 部署：本机构建 `web/out` → rsync 到 `/app/web/out`（并同步 `/app/out`）；`server/src` 同步后在服务器执行 `npm run build -w server`；`vibehub.service` 重启。旧 PostgreSQL 集群启动并确认 `postgresql@16-main` / `vibehub` 均 enabled。
+- 验证：`/api/health` 本地与 HTTPS 均 200；`/today`、`/work/bugs`、`/work/tasks`、`/context/*`、`/settings`、`/keys`、`/stats` 均 200；未登录 `/api/today` 401；`prisma migrate status` 12 个迁移全部最新；库数据保持 `users=1 / projects=1 / bugs=0 / tasks=2 / api_keys=3`；服务 active、enabled，内存约 227 MB；日志无 error/exception。
+- 说明：本次只替换代码与静态产物，保留数据库、`/var/lib/vibehub/data` 与 `/etc/vibehub/env`；注册开关仍为 false。登录页与配色按用户反馈恢复原版，四区结构/今日/密钥自助保留。凭据与真实地址不写入本文件。
+
