@@ -7,9 +7,9 @@
 | 文件 | 说明 |
 | --- | --- |
 | `before-board-dark.png` | 旧壳：侧边栏 + 六列看板 + 蓝色品牌 |
-| `after-work-bugs-dark.png` | 新壳：四区浮动顶栏 + 工作 · 缺陷 Tab + 暖金强调色 |
+| `after-work-bugs-dark.png` | 新壳：四区浮动顶栏 + 工作 · 缺陷 Tab；配色恢复原版蓝/纸白 |
 | `before-login.png` | 旧登录页：网格背景 + 玻璃卡 |
-| `after-login.png` | 新登录页：纸白平面 + 左叙事右表单 |
+| `after-login.png` | 登录页恢复原版纸白/藏青+金色细节（仅把默认跳转改为今日） |
 | `after-today-dark.png` | 新增今日工作台（暗色） |
 | `after-today-daylight.png` | 今日工作台（纸白） |
 | `after-today-mobile.png` | 今日工作台 390px |

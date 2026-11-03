@@ -7,127 +7,122 @@
  */
 
 @layer base {
-  /* ============ Midnight（默认，warm black） ============ */
+  /* ============ Midnight（默认） ============ */
   :root,
   [data-theme='midnight'] {
-    --bg-page: #131209;
-    --bg-panel: #181818;
-    --bg-card: #1f1f1f;
-    --bg-elevated: #272727;
-    --bg-inset: #0f0e08;
-    --border-subtle: #2b2a25;
-    --border-strong: #716d62;
-    --text-primary: #f4f1e8;
-    --text-secondary: #b9b2a4;
-    --text-tertiary: #948c7d;
-    --brand: #d8b573;
-    --brand-navy: #8a6420;
-    --brand-soft: rgba(216, 181, 115, 0.12);
-    --accent: #d8b573;
-    --accent-strong: #eacd94;
-    --accent-contrast: #14120c;
-    --gold: #d8b573;
-    --gold-bright: #eacd94;
-    --gold-bg: rgba(216, 181, 115, 0.12);
-    --ok: #78c9a1;
-    --warn: #e8b65e;
-    --danger: #e47c82;
-    --sev-critical: #e47c82;
-    --sev-high: #e8b65e;
-    --sev-normal: #8fa8cc;
-    --sev-low: #948c7d;
+    --bg-page: #0b0e14;
+    --bg-panel: #12161f;
+    --bg-card: #171c27;
+    --bg-elevated: #1d2432;
+    --border-subtle: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --text-primary: #f2f5fa;
+    --text-secondary: #a8b3c4;
+    --text-tertiary: #6b7688;
+    --brand: #4c7dd9;
+    --brand-navy: #2e4e8f;
+    --brand-soft: rgba(76, 125, 217, 0.14);
+    --accent: #4c7dd9;
+    --accent-strong: #2e4e8f;
+    --accent-contrast: #ffffff;
+    --bg-inset: #0b0e14;
+    --gold: #d4a76a;
+    --gold-bright: #f0cb88;
+    --gold-bg: rgba(212, 167, 106, 0.12);
+    --ok: #3ecf8e;
+    --warn: #f2a95c;
+    --danger: #f2617a;
+    --sev-critical: #f2617a;
+    --sev-high: #f2a95c;
+    --sev-normal: #5ca3f2;
+    --sev-low: #8a94a6;
 
     /* 旧组件兼容映射（shadcn 风格三角色值） */
-    --background: 45 30% 6%;
-    --foreground: 44 30% 93%;
-    --card: 0 0% 12%;
-    --card-foreground: 44 30% 93%;
-    --popover: 0 0% 9%;
-    --popover-foreground: 44 30% 93%;
-    --primary: 40 50% 65%;
-    --primary-foreground: 48 25% 6%;
-    --secondary: 0 0% 15%;
-    --secondary-foreground: 44 30% 93%;
-    --muted: 0 0% 12%;
-    --muted-foreground: 40 8% 53%;
-    --accent: 0 0% 19%;
-    --accent-foreground: 44 30% 93%;
-    --destructive: 357 65% 69%;
+    --background: 222 47% 6%;
+    --foreground: 210 40% 96%;
+    --card: 222 40% 9%;
+    --card-foreground: 210 40% 96%;
+    --popover: 222 44% 8%;
+    --popover-foreground: 210 40% 96%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 14%;
+    --muted-foreground: 215 20% 62%;
+    --accent: 217 33% 20%;
+    --accent-foreground: 210 40% 96%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 19%;
-    --input: 0 0% 19%;
-    --ring: 40 50% 65%;
-    --radius: 0.5rem;
-
-    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
-    --shadow-2: 0 12px 40px rgb(0 0 0 / 0.45);
-    --shadow-3: 0 32px 80px rgb(0 0 0 / 0.55);
+    --border: 217 28% 18%;
+    --input: 217 28% 18%;
+    --ring: 243 75% 59%;
+    --radius: 0.65rem;
   }
 
   /* ============ Daylight（纸白） ============ */
   [data-theme='daylight'] {
-    --bg-page: #f4efe5;
-    --bg-panel: #fbf7ef;
-    --bg-card: #fffdf8;
-    --bg-elevated: #ede6d8;
-    --bg-inset: #f8f4ec;
-    --border-subtle: #e4dcce;
-    --border-strong: #938873;
-    --text-primary: #1b1914;
-    --text-secondary: #5f594d;
-    --text-tertiary: #736c5c;
-    --brand: #8a6420;
-    --brand-navy: #5e4313;
-    --brand-soft: rgba(138, 100, 32, 0.1);
-    --accent: #8a6420;
-    --accent-strong: #6f4f18;
-    --accent-contrast: #fffdf8;
-    --gold: #8a6420;
-    --gold-bright: #6f4f18;
-    --gold-bg: rgba(138, 100, 32, 0.1);
-    --ok: #1f7a55;
-    --warn: #9a6418;
-    --danger: #b83a44;
-    --sev-critical: #b83a44;
-    --sev-high: #9a6418;
-    --sev-normal: #3f5d88;
-    --sev-low: #736c5c;
+    --bg-page: #f7f3ec;
+    --bg-panel: #ffffff;
+    --bg-card: #ffffff;
+    --bg-elevated: #fbf9f4;
+    --border-subtle: #eae4d6;
+    --border-strong: #d8cfbb;
+    --text-primary: #1f355a;
+    --text-secondary: #5b6577;
+    --text-tertiary: #9aa3b2;
+    --brand: #1f355a;
+    --brand-navy: #16294a;
+    --brand-soft: rgba(31, 53, 90, 0.08);
+    --accent: #1f355a;
+    --accent-strong: #16294a;
+    --accent-contrast: #ffffff;
+    --bg-inset: #f7f3ec;
+    --gold: #b8924e;
+    --gold-bright: #d9bc7e;
+    --gold-bg: rgba(184, 146, 78, 0.12);
+    --ok: #1e9e6a;
+    --warn: #c77f2e;
+    --danger: #d64545;
+    --sev-critical: #d64545;
+    --sev-high: #c77f2e;
+    --sev-normal: #2e4e8f;
+    --sev-low: #8a94a6;
 
-    --background: 40 40% 93%;
-    --foreground: 43 15% 9%;
-    --card: 45 100% 99%;
-    --card-foreground: 43 15% 9%;
-    --popover: 40 50% 96%;
-    --popover-foreground: 43 15% 9%;
-    --primary: 40 62% 33%;
-    --primary-foreground: 45 100% 99%;
-    --secondary: 40 37% 89%;
-    --secondary-foreground: 43 15% 9%;
-    --muted: 40 37% 89%;
-    --muted-foreground: 42 9% 38%;
-    --accent: 40 30% 84%;
-    --accent-foreground: 43 15% 9%;
-    --destructive: 353 52% 47%;
-    --destructive-foreground: 45 100% 99%;
-    --border: 40 24% 81%;
-    --input: 40 24% 78%;
-    --ring: 40 62% 33%;
-
-    --shadow-1: 0 1px 2px rgb(60 45 20 / 0.08);
-    --shadow-2: 0 12px 40px rgb(60 45 20 / 0.12);
-    --shadow-3: 0 32px 80px rgb(60 45 20 / 0.16);
+    --background: 40 43% 94%;
+    --foreground: 215 52% 24%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 52% 24%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 52% 24%;
+    --primary: 215 52% 24%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 40 30% 90%;
+    --secondary-foreground: 215 52% 24%;
+    --muted: 40 30% 92%;
+    --muted-foreground: 215 15% 45%;
+    --accent: 40 30% 88%;
+    --accent-foreground: 215 52% 24%;
+    --destructive: 0 65% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 40 24% 85%;
+    --input: 40 24% 82%;
+    --ring: 215 52% 24%;
   }
 
   /* ============ 通用 token（两主题一致） ============ */
   :root {
     --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-8: 48px;
-    --r-btn: 8px; --r-card: 16px; --r-panel: 24px; --r-pill: 999px;
-    --glass: saturate(1.2) blur(20px);
-    --ease: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
-    --dur-fast: 300ms; --dur-base: 300ms; --dur-exit: 200ms; --dur-slow: 500ms;
-    --grad-ai: #d8b573;
+    --r-btn: 10px; --r-card: 14px; --r-panel: 20px; --r-pill: 999px;
+    --shadow-1: 0 1px 2px rgb(2 6 16 / 0.30), 0 1px 3px rgb(2 6 16 / 0.20);
+    --shadow-2: 0 8px 24px rgb(2 6 16 / 0.36), 0 2px 6px rgb(2 6 16 / 0.24);
+    --shadow-3: 0 24px 64px rgb(2 6 16 / 0.48), 0 4px 12px rgb(2 6 16 / 0.32);
+    --glass: saturate(1.4) blur(20px);
+    --ease: cubic-bezier(0.32, 0.72, 0, 1);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --dur-fast: 140ms; --dur-base: 220ms; --dur-exit: 140ms; --dur-slow: 320ms;
+    --grad-ai: linear-gradient(135deg, #f0cb88 0%, #d4a76a 45%, #b8924e 100%);
   }
 }
 
@@ -178,12 +173,11 @@
     background-color: var(--bg-page);
     color: var(--text-primary);
     font-family:
-      var(--font-geist-sans), 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei',
-      ui-sans-serif, system-ui, sans-serif;
+      'Inter Variable', 'Noto Sans SC', 'PingFang SC', ui-sans-serif, system-ui,
+      -apple-system, 'Segoe UI', Roboto, sans-serif;
     font-size: 14px;
-    line-height: 20px;
     -webkit-font-smoothing: antialiased;
-    letter-spacing: -0.006em;
+    letter-spacing: 0.01em;
   }
   h1, h2, h3, h4, h5, h6 { text-wrap: balance; }
   p { text-wrap: pretty; }
@@ -231,7 +225,7 @@
 .t-caption-3 { font-size: 12px; line-height: 16px; font-weight: 600; }
 .t-caption-4 { font-size: 12px; line-height: 16px; font-weight: 500; }
 .t-caption-5 { font-size: 12px; line-height: 16px; font-weight: 400; }
-.t-mono { font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace; }
+.t-mono { font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace; }
 
 /* ============ 应用壳通用类（R89：浮动顶栏，四区导航） ============ */
 .vh-topbar {
@@ -299,7 +293,7 @@
 .vh-btn.ghost.danger { background: transparent; color: var(--danger); }
 .vh-btn.ghost.danger:hover { background: var(--bg-elevated); color: var(--danger); }
 .vh-kbd {
-  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: 'JetBrains Mono', SFMono-Regular, Menlo, monospace;
   font-size: 12px; line-height: 16px; padding: 1px 6px; border-radius: 4px;
   background: var(--bg-elevated); color: var(--text-tertiary);
   border: 1px solid var(--border-subtle);

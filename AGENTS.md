@@ -21,7 +21,7 @@
 
 > **R87（用户决定，定向解冻）**：为 ChatGPT Work 增加 MCP Events；Streamable HTTP `/mcp` 与 MCP Events 订阅/推送，保留 `/mcp/sse` 兼容；MCP 密钥 Admin+ 可查看/复制。仅 keyed MCP context 可发现/订阅，订阅需 `context:read` 或 `admin`；回调 HTTPS 公网地址，签名密钥加密存储。实现细节见 `docs/计划/03-MCP核心能力.md` §3.6.1。
 >
-> **R89（用户决定，产品重做第一切片）**：按已确认的「减产品、不换地基」方案，把 10 个一级入口收成四区——**今日 / 工作 / 上下文 / 设置**；今日是跨项目只读行动台（待我处理 / 待验收 / AI 进行中 / 正在干 / 今天），工作复用缺陷与任务看板，上下文复用随手记/文件/技能，设置收个人资料、密钥、偏好与团队管理。密钥改为**每个成员自助**（密钥即个人 AI 身份，scope 不得超过本人角色），管理员可 `all=1` 审计团队密钥。视觉按 `elayadesign/ai-design-skills` 重做：Geist 字体、暖黑/纸白 token、四区浮动顶栏、命名文字样式、单一强调色、只动 transform/opacity 的 500ms/300ms 曲线。旧 `/board`、`/tasks`、`/notes`、`/files`、`/skills`、`/stats` 路由保留，作为二级能力与回滚入口；数据模型、状态机、MCP、认证、测试不重写。MCP 的 `get_me` / `list_members` / `handoff_work` 属下一阶段，不在本切片。
+> **R89（用户决定，产品重做第一切片）**：按已确认的「减产品、不换地基」方案，把 10 个一级入口收成四区——**今日 / 工作 / 上下文 / 设置**；今日是跨项目只读行动台（待我处理 / 待验收 / AI 进行中 / 正在干 / 今天），工作复用缺陷与任务看板，上下文复用随手记/文件/技能，设置收个人资料、密钥、偏好与团队管理。密钥改为**每个成员自助**（密钥即个人 AI 身份，scope 不得超过本人角色），管理员可 `all=1` 审计团队密钥。视觉先按 `elayadesign/ai-design-skills` 重做；用户反馈「原来的配色好看、特别是登录页」后恢复原版纸白/藏青+金色与登录页细节，保留四区浮动顶栏、命名文字样式、焦点/对比度/动效改进。旧 `/board`、`/tasks`、`/notes`、`/files`、`/skills`、`/stats` 路由保留，作为二级能力与回滚入口；数据模型、状态机、MCP、认证、测试不重写。MCP 的 `get_me` / `list_members` / `handoff_work` 属下一阶段，不在本切片。
 
 ## 1. 权威文档索引（施工前必读）
 
@@ -101,7 +101,7 @@
 ## 6. 前端契约
 
 - 颜色/圆角/阴影/时长/缓动一律 token（`globals.css` 唯一来源）；组件内禁止裸 HEX。
-- **四区导航与视觉系统（R89）**：一级入口只有今日 `/today`、工作 `/work/bugs|/work/tasks`、上下文 `/context/notes|/context/files|/context/skills`、设置 `/settings`；`AppNav` 是唯一顶栏，项目切换、搜索、AI 活动、主题、账号都在这里，页面内不再放重复切换器。字体 Geist Sans/Mono（`geist` 包，本地字体、构建不出网）；文字使用 `globals.css` 的命名样式 `t-heading-1..6 / t-title-1..5 / t-body-1..6 / t-button-* / t-caption-1..5`，字号只取 Tailwind 12/14/16/18/20/24/30/36/48/60 阶梯；暗色背景只取 `#131209 / #181818 / #1F1F1F / #272727`，单一强调色（暖金/古铜），语义色仅用于状态；卡片边框四周齐全，背景无渐变；动效只用 transform/opacity，曲线 `cubic-bezier(0.22,1,0.36,1)`，布局 500ms、颜色/透明度 300ms。图标按 R58 继续用 lucide（未改用 Phosphor/Solar，遵守仓库图标宪法）。
+- **四区导航与视觉系统（R89）**：一级入口只有今日 `/today`、工作 `/work/bugs|/work/tasks`、上下文 `/context/notes|/context/files|/context/skills`、设置 `/settings`；`AppNav` 是唯一顶栏，项目切换、搜索、AI 活动、主题、账号都在这里，页面内不再放重复切换器。字体恢复原版 Inter / Noto Sans SC / PingFang 栈（登录页保留 Noto Serif 标题）；文字使用 `globals.css` 的命名样式 `t-heading-1..6 / t-title-1..5 / t-body-1..6 / t-button-* / t-caption-1..5`，字号只取 Tailwind 12/14/16/18/20/24/30/36/48/60 阶梯；暗色背景沿用原版 `#0B0E14 / #12161F / #171C27 / #1D2432`，强调色为原版蓝 `#4C7DD9`（Daylight 藏青 `#1F355A`），金色仍只用于 AI 标识；语义色仅用于状态；卡片边框四周齐全，背景无渐变；动效只用 transform/opacity，恢复原版曲线 `cubic-bezier(0.32,0.72,0,1)` / `cubic-bezier(0.16,1,0.3,1)`，时长 140/220/320ms。图标按 R58 继续用 lucide（未改用 Phosphor/Solar，遵守仓库图标宪法）。
 - 动效铁律：只动 transform/opacity；退出快于进入；`prefers-reduced-motion` 降级；装饰动画只允许三处（登录聚光/AI 流光/空状态浮动）。
 - 暗色 Midnight 默认 + 纸白 Daylight；登录页恒定 Daylight。
 - 单文件 ≤300 行、单函数 ≤50 行、props ≤7；基础组件 forwardRef + cva + cn()。

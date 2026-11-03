@@ -1,6 +1,4 @@
 import type { Metadata, Viewport } from 'next';
-import { GeistSans } from 'geist/font/sans';
-import { GeistMono } from 'geist/font/mono';
 import { AuthProvider } from '@/lib/auth';
 import { ThemeProvider } from '@/lib/theme';
 import { ToastProvider } from '@/lib/toast';
@@ -12,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#131209',
+  themeColor: '#0b1020',
   width: 'device-width',
   initialScale: 1,
 };
@@ -21,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="zh-CN"
-      className={`${GeistSans.variable} ${GeistMono.variable} dark`}
+      className="dark"
       data-theme="midnight"
     >
       <body className="overflow-hidden">
