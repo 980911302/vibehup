@@ -12,6 +12,7 @@
 | `after-quick-capture.png` | 任意页按 C 的全局快速录单 |
 | `after-evidence-gate.png` | R90：验证中但无交付证据，今日只给「补证据」 |
 | `after-evidence-panel.png` | R90：详情页「交付证据」补 commit/PR/测试/说明 |
+| `after-notifications.png` | R90：顶栏通知抽屉（待验收/交接/打回，可全部已读） |
 | `before-login.png` | 旧登录页：网格背景 + 玻璃卡 |
 | `after-login.png` | 登录页恢复原版纸白/藏青+金色细节（仅把默认跳转改为今日） |
 | `after-today-dark.png` | 今日工作台（暗色）；待验收可直接通过/打回 |

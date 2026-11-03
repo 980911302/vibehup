@@ -5,6 +5,7 @@ import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
 import { normalizeEvidence } from './evidence.js';
+import { notifyUser, notifyWriters } from './notifications.js';
 import { countAttachmentsFor } from './attachments.js';
 import { resolveStatusActor, type StatusActor } from './stale.js';
 
@@ -176,6 +177,28 @@ export async function updateTask(taskId: string, patch: TaskPatch, actor?: Statu
     Object.assign(data, await resolveStatusActor(actor));
   }
   const task = await prisma.task.update({ where: { id: taskId }, data });
+  if (data.status === 'review') {
+    await notifyWriters({
+      type: 'verify',
+      title: `待验收：${task.title}`,
+      body: '任务已提交验证，先看交付证据再验收',
+      entityType: 'task',
+      entityId: task.id,
+      projectId: task.projectId,
+      excludeUserId: actor?.type === 'user' ? actor.id : null,
+    });
+  }
+  if (data.status === 'doing' && task.assigneeId && task.assigneeId !== (actor?.type === 'user' ? actor.id : null) && patch.reopenReason) {
+    await notifyUser({
+      userId: task.assigneeId,
+      type: 'reopen',
+      title: `打回：${task.title}`,
+      body: patch.reopenReason.trim(),
+      entityType: 'task',
+      entityId: task.id,
+      projectId: task.projectId,
+    });
+  }
   eventBus.publish({
     type: 'task.updated',
     projectId: task.projectId,

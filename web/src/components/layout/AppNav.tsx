@@ -4,6 +4,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
+  Bell,
   BookOpen,
   Check,
   Keyboard,
@@ -19,12 +20,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth, useCanEdit } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { cn } from '@/lib/utils';
 import { ProjectSwitcher } from './ProjectSwitcher';
 import { UserMenu } from './UserMenu';
+import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 
 export const NAV_ITEMS: { href: string; label: string; icon: LucideIcon; match: string[] }[] = [
   { href: '/today', label: '今日', icon: Sunrise, match: ['/today', '/stats'] },
@@ -53,6 +56,22 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
   const store = useVibeHub();
   const toast = useToast();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      api.listNotifications(false, 1)
+        .then((r) => alive && setUnread(r.unread))
+        .catch(() => undefined);
+    void load();
+    const timer = setInterval(load, 30_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -158,6 +177,18 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
               </button>
             </div>
 
+            <div className="relative">
+              <button
+                className="vh-icon-btn"
+                onClick={() => setNotifOpen(true)}
+                title="通知"
+                aria-label={`通知${unread ? `（${unread} 条未读）` : ''}`}
+                data-testid="open-notifications"
+              >
+                <Bell size={17} />
+                {unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">{unread > 99 ? '99+' : unread}</span>}
+              </button>
+            </div>
             <div className="hidden sm:block">
               <button
                 className="vh-icon-btn"
@@ -283,6 +314,7 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
           </div>
         </div>
       )}
+      <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} onUnreadChange={setUnread} />
     </>
   );
 }

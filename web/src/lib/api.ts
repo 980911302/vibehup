@@ -24,6 +24,7 @@ import { ApiError, BASE, currentAccessToken, parseError, rawRequest, request, se
 import { taskApi, skillApi } from './api-more';
 import type { StatsResponse } from './stats-types';
 import type { TodayResponse } from './today-types';
+import type { NotificationsResponse } from './api-types';
 import { scopeParam } from './stats-view';
 
 export { ApiError, setTokenAccessors };
@@ -232,6 +233,12 @@ export const api = {
 
   // ============ 今日（R89，跨项目只读聚合） ============
   getToday: () => request<TodayResponse>('/today'),
+
+  // ============ 站内通知（R90） ============
+  listNotifications: (unread = false, limit = 30) =>
+    request<NotificationsResponse>(`/notifications?unread=${unread ? 1 : 0}&limit=${limit}`),
+  markNotificationRead: (id: string) => request<{ ok: boolean }>(`/notifications/${id}/read`, { method: 'PATCH' }),
+  markAllNotificationsRead: () => request<{ updated: number }>('/notifications/read-all', { method: 'PATCH' }),
 
   // ============ AI 活动（卡片 36，全员可读） ============
   recentActivity: () => request<ActivityItem[]>('/activity/recent'),

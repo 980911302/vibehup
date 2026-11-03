@@ -5,6 +5,7 @@ import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
 import { normalizeEvidence } from './evidence.js';
+import { notifyUser, notifyWriters } from './notifications.js';
 import { countAttachmentsFor } from './attachments.js';
 import { upsertEntityEmbedding, deleteEntityEmbedding } from './embedding.js';
 import { BUG_STATUSES, assertTransition, bugStatusLabel as label, isBugReopen, reopenReasonLabel, type BugStatus } from './bug-flow.js';
@@ -202,6 +203,30 @@ export async function updateBug(
     } catch (err) {
       console.error('[vibehub] 活动流写入失败:', err);
     }
+  }
+
+  if (statusChanged && patch.status === 'resolved') {
+    const actorUserId = patch.actor?.type === 'user' ? patch.actor.id : null;
+    await notifyWriters({
+      type: 'verify',
+      title: `待验收：${bug.title}`,
+      body: 'AI/同事已交付，先看交付证据再验收',
+      entityType: 'bug',
+      entityId: bug.id,
+      projectId: bug.projectId,
+      excludeUserId: actorUserId,
+    });
+  }
+  if (isReopen && bug.assigneeId && bug.assigneeId !== (patch.actor?.type === 'user' ? patch.actor.id : null)) {
+    await notifyUser({
+      userId: bug.assigneeId,
+      type: 'reopen',
+      title: `打回：${bug.title}`,
+      body: patch.reopenReason?.trim() || '验证没通过，请继续处理',
+      entityType: 'bug',
+      entityId: bug.id,
+      projectId: bug.projectId,
+    });
   }
 
   eventBus.publish({

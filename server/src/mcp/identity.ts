@@ -6,6 +6,7 @@ import * as tasksService from '../services/tasks.js';
 import * as bugComments from '../services/bug-comments.js';
 import * as usersService from '../services/users.js';
 import * as projectsService from '../services/projects.js';
+import { notifyUser } from '../services/notifications.js';
 
 /**
  * AI 身份与交接（R90）：AI 先知道「我是谁、我能做什么、团队有谁」，
@@ -85,6 +86,15 @@ export async function handoffWork(
   if (input.entity_type === 'bug') {
     const bug = await bugsService.getBug(input.entity_id);
     await bugsService.updateBug(bug.id, { assigneeId: target.id, actor: mcpActor(ctx) });
+    await notifyUser({
+      userId: target.id,
+      type: 'handoff',
+      title: `转交给你：${bug.title}`,
+      body: reason,
+      entityType: 'bug',
+      entityId: bug.id,
+      projectId: bug.projectId,
+    });
     await bugComments.addComment({
       bugId: bug.id,
       authorType: 'ai',
@@ -104,6 +114,15 @@ export async function handoffWork(
 
   const task = await tasksService.getTask(input.entity_id);
   await tasksService.updateTask(task.id, { assigneeId: target.id }, mcpActor(ctx));
+  await notifyUser({
+    userId: target.id,
+    type: 'handoff',
+    title: `转交给你：${task.title}`,
+    body: reason,
+    entityType: 'task',
+    entityId: task.id,
+    projectId: task.projectId,
+  });
   return {
     ok: true,
     entity_type: 'task',

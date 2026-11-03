@@ -313,3 +313,23 @@ export function formatTime(iso: string): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+/** 站内通知（R90） */
+export interface NotificationItem {
+  id: string;
+  type: 'handoff' | 'verify' | 'reopen' | 'assigned' | string;
+  title: string;
+  body: string | null;
+  entity_type: 'bug' | 'task' | null;
+  entity_id: string | null;
+  project_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  items: NotificationItem[];
+  total: number;
+  unread: number;
+  has_more: boolean;
+}
