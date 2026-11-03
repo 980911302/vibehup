@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { Archive, BookOpen, Bug, ListChecks, Puzzle, StickyNote, FolderOpen, type LucideIcon } from 'lucide-react';
+import { ProjectMemoryCard } from '@/components/context/ProjectMemoryCard';
 import { cn } from '@/lib/utils';
 
 function Tab({
@@ -54,6 +55,7 @@ export function WorkTabs({ active }: { active: 'bugs' | 'tasks' | 'archived' }) 
 /** 上下文二级导航：随手记 / 文件 / 技能 */
 export function ContextTabs({ active }: { active: 'notes' | 'files' | 'skills' }) {
   return (
+    <>
     <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5">
       <div className="flex items-baseline gap-2">
         <BookOpen size={16} className="text-[var(--accent-color)]" />
@@ -69,5 +71,7 @@ export function ContextTabs({ active }: { active: 'notes' | 'files' | 'skills' }
         笔记、证据与技能，都是 AI 接活时的上下文
       </span>
     </div>
+    <ProjectMemoryCard />
+    </>
   );
 }

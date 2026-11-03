@@ -6,6 +6,7 @@ import * as projectsService from '../services/projects.js';
 import * as bugsService from '../services/bugs.js';
 import * as tasksService from '../services/tasks.js';
 import * as skillsService from '../services/skills.js';
+import * as memoryService from '../services/memory.js';
 import * as notesService from '../services/notes.js';
 import * as attachmentsService from '../services/attachments.js';
 import { readTextSlice, isTextFile, inspectImageAsset } from '../services/assets.js';
@@ -50,7 +51,7 @@ function handledBy(x: { statusActorName: string | null; statusChangedAt: Date | 
 /** 1. get_project_context —— 冷启动：项目活跃状态简报 */
 export async function getProjectContext(input: { project_slug?: string }) {
   const project = await projectsService.resolveProject(input.project_slug);
-  const [board, tasks, doingTasks, reviewTasks, verifyingTasks, notes, skills] = await Promise.all([
+  const [board, tasks, doingTasks, reviewTasks, verifyingTasks, notes, skills, memory] = await Promise.all([
     bugsService.getBugBoard(project.id, 20),
     tasksService.listTasks({ projectId: project.id, status: 'todo' }),
     tasksService.listTasks({ projectId: project.id, status: 'doing' }),
@@ -58,6 +59,7 @@ export async function getProjectContext(input: { project_slug?: string }) {
     tasksService.listTasks({ projectId: project.id, status: 'verifying' }),
     notesService.listNotes({ projectId: project.id, limit: 5 }),
     skillsService.listSkills({ projectId: project.id }),
+    memoryService.getProjectMemoryForMcp(project.id),
   ]);
 
   const openBugs = [...board.open, ...board.in_progress].map(briefBug);
@@ -105,6 +107,7 @@ export async function getProjectContext(input: { project_slug?: string }) {
     stale_items: [...staleBugs.map(briefBug), ...staleTasks.map(briefTask)].slice(0, DEFAULT_BUDGET.listLimit),
     todo_tasks: tasks.slice(0, 20).map(briefTask),
     // 团队技能：只给名称与描述，要用时 download_skill 取全文
+    memory,
     skills: skills.slice(0, DEFAULT_BUDGET.listLimit).map((s) => ({
       name: s.name,
       description: truncateText(s.description, DEFAULT_BUDGET.noteMax).value,

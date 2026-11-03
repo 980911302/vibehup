@@ -333,3 +333,9 @@ export interface NotificationsResponse {
   unread: number;
   has_more: boolean;
 }
+
+export interface ProjectMemory {
+  project: { id: string; name: string; slug: string; description: string | null };
+  decisions: { id: string; content: string; tags: string[]; pinned_at: string | null; updated_at: string }[];
+  updated_at: string;
+}

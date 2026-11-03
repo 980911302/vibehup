@@ -24,7 +24,7 @@ import { ApiError, BASE, currentAccessToken, parseError, rawRequest, request, se
 import { taskApi, skillApi } from './api-more';
 import type { StatsResponse } from './stats-types';
 import type { TodayResponse } from './today-types';
-import type { NotificationsResponse } from './api-types';
+import type { NotificationsResponse, ProjectMemory } from './api-types';
 import { scopeParam } from './stats-view';
 
 export { ApiError, setTokenAccessors };
@@ -233,6 +233,8 @@ export const api = {
 
   // ============ 今日（R89，跨项目只读聚合） ============
   getToday: () => request<TodayResponse>('/today'),
+
+  getProjectMemory: (projectId: string) => request<ProjectMemory>(`/projects/${projectId}/memory`),
 
   // ============ 站内通知（R90） ============
   listNotifications: (unread = false, limit = 30) =>
