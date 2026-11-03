@@ -29,7 +29,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 访问地址 | Web/API/MCP SSE 为 `http://<ZeroTier IP>:3210` 或 `http://<公网IP>:3210`（安全组已放行 3210）；ChatGPT Work Streamable HTTP 为 `/mcp`，需另配 HTTPS 域名与 TLS 后方可连接 |
+| 访问地址 | Web/API/MCP SSE 为 `http://<内网IP>:3210`、`http://<公网IP>:3210`；公网 IP 的 443 仍保留（`121.36.215.70` IP 证书 + Nginx 反代）。ChatGPT Work 的域名 HTTPS（`mcp.zhanglinlin.top`）已按用户要求于 2026-11-03 移除；如恢复 Work 需重新配域名/TLS |
 | 代码目录 | **`/app`**（monorepo：`server/` + `web/` + `skills/`） |
 | 进程管理 | **systemd**：`vibehub.service`（`enabled`，开机自启；异常 5s 自动重启） |
 | 启动命令 | `node dist/bootstrap.js`，工作目录 `/app/server` |
@@ -347,4 +347,12 @@ VIBEHUB_MCP_EVENT_RELAY_TOKEN=<与中转主机相同的独立令牌>
 - 部署：本机构建 `web/out` → rsync 到 `/app/web/out`（并同步 `/app/out`）；`server/src` 同步后在服务器执行 `npm run build -w server`；`vibehub.service` 重启。旧 PostgreSQL 集群启动并确认 `postgresql@16-main` / `vibehub` 均 enabled。
 - 验证：`/api/health` 本地与 HTTPS 均 200；`/today`、`/work/bugs`、`/work/tasks`、`/context/*`、`/settings`、`/keys`、`/stats` 均 200；未登录 `/api/today` 401；`prisma migrate status` 12 个迁移全部最新；库数据保持 `users=1 / projects=1 / bugs=0 / tasks=2 / api_keys=3`；服务 active、enabled，内存约 227 MB；日志无 error/exception。
 - 说明：本次只替换代码与静态产物，保留数据库、`/var/lib/vibehub/data` 与 `/etc/vibehub/env`；注册开关仍为 false。登录页与配色按用户反馈恢复原版，四区结构/今日/密钥自助保留。凭据与真实地址不写入本文件。
+
+### 域名 / TLS 收敛（2026-11-03，用户要求）
+
+- 用户已自行删除 `mcp.zhanglinlin.top` 的 DNS 映射，并要求移除对应的 Nginx 443 与 Let's Encrypt 配置。
+- 删除前备份：`/root/vibehub-backups/domain-removal-2026-11-03-1936.tar.gz`（Nginx 配置 + `/etc/letsencrypt`，权限 600）。
+- 已删除 Nginx 中两个 `mcp.zhanglinlin.top` server block，`nginx -t` + `reload` 通过；`certbot delete --cert-name mcp.zhanglinlin.top` 已移除域名证书与续期配置。
+- 保留 `121.36.215.70` 的 IP 证书和 443 反代；`VIBEHUB_PUBLIC_URL` 改为 `https://121.36.215.70`；重启后 `/api/health` 200、`/today` 200。
+- 当前入口：`http://<内网IP>:3210` / `http://<公网IP>:3210`，以及 `https://121.36.215.70`。域名不再由本机提供。
 
