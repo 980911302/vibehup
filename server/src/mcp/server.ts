@@ -8,6 +8,7 @@ import * as tools from './tools.js';
 import * as ext from './tools-extended.js';
 import { guarded } from './guard.js';
 import { SERVER_INSTRUCTIONS } from './workflow.js';
+import * as identity from './identity.js';
 import { TOOL_SCOPES } from './tool-scopes.js';
 import { registerMoreTools } from './register-more.js';
 import { mcpActor, refreshKeyedContext, resolveMcpContext } from './context.js';
@@ -58,6 +59,10 @@ export const TOOL_NAMES = [
   'delete_skill',
   // R84：本地文件签名直传（curl），内容不经过对话
   'create_upload_url',
+  // R90：AI 身份与交接
+  'get_me',
+  'list_members',
+  'handoff_work',
 ] as const;
 
 const TASK_STATUS_ENUM = TASK_STATUSES;
@@ -439,6 +444,55 @@ export function createMcpServer(): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     guarded('purge_trash', TOOL_SCOPES.purge_trash, (ctx, args) => ext.purgeTrash(ctx, args)),
+  );
+
+  server.registerTool(
+    'get_me',
+    {
+      title: '我是谁',
+      description: '返回当前 AI 的人类身份、密钥、角色能力与当前项目。开工或交接前先调，避免替错人/越权。',
+      inputSchema: {
+        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    guarded('get_me', TOOL_SCOPES.get_me, (ctx, args) =>
+      identity.getMe(ctx, args as { project_slug?: string }),
+    ),
+  );
+
+  server.registerTool(
+    'list_members',
+    {
+      title: '团队成员',
+      description: '列出可交接的 active 成员（id/名字/角色）。转交前先查；只读成员不能作为负责人。非管理员看不到邮箱。',
+      inputSchema: {
+        limit: z.number().int().min(1).max(50).optional().describe('最多返回多少条，默认 20'),
+        q: z.string().optional().describe('按名字/邮箱搜索'),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    guarded('list_members', TOOL_SCOPES.list_members, (ctx, args) =>
+      identity.listMembers(ctx, args as { limit?: number; q?: string }),
+    ),
+  );
+
+  server.registerTool(
+    'handoff_work',
+    {
+      title: '转交缺陷/任务',
+      description: '把缺陷或任务转给某个可写成员，必须写一句原因。缺陷会写入活动流；任务记入 MCP 用量。转交前先用 list_members 取 assignee_id。',
+      inputSchema: {
+        entity_type: z.enum(['bug', 'task']).describe('bug 或 task'),
+        entity_id: z.string().describe('缺陷/任务 ID'),
+        assignee_id: z.string().describe('接手人 ID（list_members 返回）'),
+        reason: z.string().describe('转交原因（最多 500 字）'),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    guarded('handoff_work', TOOL_SCOPES.handoff_work, (ctx, args) =>
+      identity.handoffWork(ctx, args as Parameters<typeof identity.handoffWork>[1]),
+    ),
   );
 
   registerMoreTools(server);

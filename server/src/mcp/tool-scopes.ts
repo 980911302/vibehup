@@ -6,6 +6,9 @@ import type { Scope } from './scopes.js';
  */
 export const TOOL_SCOPES = {
   // 读取
+  get_me: 'context:read',
+  list_members: 'context:read',
+  handoff_work: 'context:read',
   get_project_context: 'context:read',
   list_bugs: 'context:read',
   get_bug_detail: 'context:read',

@@ -19,6 +19,10 @@ export interface McpContext {
   actorLabel: string;
   /** 看板上显示的操作人名（密钥名，如「Cursor-验证」）；R83 起记在流转记录上 */
   actorName?: string;
+  /** 密钥背后的人（R90 get_me / list_members 用）；local 模式为空 */
+  human?: { id: string; name: string; role: string } | null;
+  /** 当前密钥摘要（R90 get_me 用）；local 模式为空 */
+  key?: { id: string; name: string; prefix: string } | null;
 }
 
 /** MCP 写入的操作人：看板据此显示「谁在处理」 */
@@ -36,13 +40,13 @@ export class McpContextError extends Error {
 export async function resolveMcpContext(env: NodeJS.ProcessEnv = process.env): Promise<McpContext> {
   const rawKey = env.VIBEHUB_API_KEY?.trim();
   if (!rawKey) {
-    return { mode: 'local', apiKeyId: null, scopes: LOCAL_SCOPES, actorLabel: 'local', actorName: '本地 AI' };
+    return { mode: 'local', apiKeyId: null, scopes: LOCAL_SCOPES, actorLabel: 'local', actorName: '本地 AI', human: null, key: null };
   }
   return loadKeyedContext(rawKey);
 }
 
 /** 校验密钥时连带取创建人状态（禁用账号的密钥随之停用） */
-const WITH_CREATOR_STATUS = { creator: { select: { status: true } } } as const;
+const WITH_CREATOR_STATUS = { creator: { select: { id: true, name: true, role: true, status: true } } } as const;
 
 /**
  * 从明文密钥加载上下文（stdio 与 SSE 双传输共用）。
@@ -65,7 +69,7 @@ export async function refreshKeyedContext(ctx: McpContext): Promise<McpContext> 
   return toKeyedContext(key);
 }
 
-function toKeyedContext(key: (ApiKey & { creator: { status: string } | null }) | null): McpContext {
+function toKeyedContext(key: (ApiKey & { creator: { id: string; name: string; role: string; status: string } | null }) | null): McpContext {
   if (!key) {
     throw new McpContextError('密钥不存在，请在 Web 端「密钥」页检查或重新创建');
   }
@@ -86,6 +90,8 @@ function toKeyedContext(key: (ApiKey & { creator: { status: string } | null }) |
     scopes: new Set<string>(key.scopes),
     actorLabel: `${key.name}(${key.keyPrefix})`,
     actorName: key.name,
+    human: key.creator ? { id: key.creator.id, name: key.creator.name, role: key.creator.role } : null,
+    key: { id: key.id, name: key.name, prefix: key.keyPrefix },
   };
 }
 

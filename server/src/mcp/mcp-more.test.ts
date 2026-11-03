@@ -26,8 +26,8 @@ beforeEach(async () => {
 });
 
 describe('工具与权限', () => {
-  it('27 个工具，每个都声明了所需 scope；删除跟着对应写权限，技能读取只要 context:read', () => {
-    expect(TOOL_NAMES).toHaveLength(27);
+  it('30 个工具，每个都声明了所需 scope；删除跟着对应写权限，技能读取只要 context:read', () => {
+    expect(TOOL_NAMES).toHaveLength(30);
     expect(Object.keys(TOOL_SCOPES).sort()).toEqual([...TOOL_NAMES].sort());
     for (const scope of Object.values(TOOL_SCOPES)) expect(SCOPES).toContain(scope);
     expect(TOOL_SCOPES).toMatchObject({

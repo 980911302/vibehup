@@ -23,7 +23,7 @@
 >
 > **R89（用户决定，产品重做第一切片）**：按已确认的「减产品、不换地基」方案，把 10 个一级入口收成四区——**今日 / 工作 / 上下文 / 设置**；今日是跨项目只读行动台（待我处理 / 待验收 / AI 进行中 / 正在干 / 今天），工作复用缺陷与任务看板，上下文复用随手记/文件/技能，设置收个人资料、密钥、偏好与团队管理。密钥改为**每个成员自助**（密钥即个人 AI 身份，scope 不得超过本人角色），管理员可 `all=1` 审计团队密钥。视觉先按 `elayadesign/ai-design-skills` 重做；用户反馈「原来的配色好看、特别是登录页」后恢复原版纸白/藏青+金色与登录页细节，保留四区浮动顶栏、命名文字样式、焦点/对比度/动效改进。旧 `/board`、`/tasks`、`/notes`、`/files`、`/skills`、`/stats` 路由保留，作为二级能力与回滚入口；数据模型、状态机、MCP、认证、测试不重写。MCP 的 `get_me` / `list_members` / `handoff_work` 属下一阶段，不在本切片。
 >
-> **R90（用户决定，验收闭环第一切片）**：给缺陷/任务加交付证据包 `evidence`（JSONB：commit / pr_url / tests / changed_files / screenshots / notes / no_code_reason）；AI 在 `update_bug_status` / `update_task` 标记 resolved/review 时写入，人也可在详情页补。今日待验收卡展示证据摘要；验证中但无证据时只能「补证据」，不能直接「验收通过」；非代码交付可写 `no_code_reason`。MCP `get_bug_detail` / `get_task_detail` / update 返回值带 evidence。交接（get_me/list_members/handoff_work）、站内通知、项目记忆仍按 `docs/设计/R90-验收交接与记忆设计.md` 后续落地。
+> **R90（用户决定，验收闭环第一切片）**：给缺陷/任务加交付证据包 `evidence`（JSONB：commit / pr_url / tests / changed_files / screenshots / notes / no_code_reason）；AI 在 `update_bug_status` / `update_task` 标记 resolved/review 时写入，人也可在详情页补。今日待验收卡展示证据摘要；验证中但无证据时只能「补证据」，不能直接「验收通过」；非代码交付可写 `no_code_reason`。MCP `get_bug_detail` / `get_task_detail` / update 返回值带 evidence。MCP 身份与交接已落：`get_me`（人类/密钥/能力/项目）、`list_members`（active 成员，非 admin 不带邮箱）、`handoff_work`（缺陷写活动流、任务记用量；viewer 拒绝）；站内通知、项目记忆仍按 `docs/设计/R90-验收交接与记忆设计.md` 后续落地。
 
 ## 1. 权威文档索引（施工前必读）
 
@@ -85,7 +85,7 @@
 
 ## 5. MCP 契约
 
-- 27 工具（读取 11 + 写入 16）契约见 `docs/计划/03` §3.2.1，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`，每个工具所需 scope 唯一出处是 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES`；工具签名不得随意变更，变更须登记 PROGRESS §4。**删除类工具（R80 用户决定）**：`delete_bug/delete_task/delete_note/delete_attachment/delete_skill` 跟着对应数据的写权限走，不单设删除权限；工具描述要求 AI 删除前先向用户确认。
+- 30 工具（读取 14 + 写入 16）契约见 `docs/计划/03` §3.2.1，清单唯一出处是 `server/src/mcp/server.ts` 的 `TOOL_NAMES`，每个工具所需 scope 唯一出处是 `server/src/mcp/tool-scopes.ts` 的 `TOOL_SCOPES`；工具签名不得随意变更，变更须登记 PROGRESS §4。**删除类工具（R80 用户决定）**：`delete_bug/delete_task/delete_note/delete_attachment/delete_skill` 跟着对应数据的写权限走，不单设删除权限；工具描述要求 AI 删除前先向用户确认。
 - **状态流转协议（R79 新增，`server/src/mcp/workflow.ts` 是 MCP 侧唯一出处）**：缺陷 `open → in_progress → resolved → verifying → verified`（R83：`verified` 是修复完成的终点；`closed` 只用于重复/不修/无法复现，必须带 `resolution_notes`，可从 open/in_progress/resolved 直接关；回流到 open/in_progress 须带 `reopen_reason`；缺陷规则唯一出处是 `services/bug-flow.ts`）、任务 `todo → doing → review → verifying → done`（R80：外加 `cancelled`；`review/verifying/done → doing` 为打回须带 `reopen_reason`，`verifying → review` 为放回；任务规则唯一出处是 `services/tasks.ts` 的 `TASK_TRANSITIONS`），**不能跳级**；验证方接手先改 `verifying`，看板和 `get_project_context`（`verifying_bugs/verifying_tasks/stale_items`）据此显示谁在验、验了多久。前端 `lib/bug-flow.ts` / `lib/task-flow.ts` 是镜像。规则不靠 AI 自己想起来加载技能，而是三处随协议一起送到每个连上来的 AI：① `initialize` 的 `instructions`（`SERVER_INSTRUCTIONS`）；② 工具描述（`update_bug_status` / `create_task` 等）；③ 工具返回值（`get_bug_detail` / `get_task_detail` / `create_task` / `update_task` 带 `allowed_next_statuses` + `next_step`）。`get_project_context` 额外返回 `reminders`（该流转却没流转的存量）、`awaiting_verification`、`review_tasks` 与 `skills`（名称+描述）。**改流转规则时必须同步** `workflow.ts`、`skills/vibehub-mcp/SKILL.md` 第 2–4 节、`docs/计划/03`。
 - 每个工具经 `guard(scope, fn)`：scope 校验 → 执行 → `recordToolCall` 打点 → Token 经济学校形。
 - **MCP 上下文传递契约（R69）**：上下文一律经 `mcpStore`（AsyncLocalStorage）传递——SSE 路由在握手 keyed ctx 内 `run()` 消息处理；`guard` 取 store 上下文、无 store 才回落 env 解析（stdio）。**禁止**在 HTTP 进程里对每次调用单独 `resolveMcpContext()`——无 VIBEHUB_API_KEY 环境变量会静默落到 local 全权：scope 校验被绕过（限权密钥可调写操作）+ 用量打点 api_key_id 为 NULL。
@@ -93,6 +93,7 @@
 - 双传输：stdio（`VIBEHUB_API_KEY` 可选，无密钥=本地全权）+ SSE（`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=xxx`，Bearer 必需，session 即凭据；容器部署形态）。
 - scope 枚举：`context:read / attachment:read / attachment:write / bug:write / note:write / task:read / task:write / skill:write / admin`（`skill:write` 为 R80 新增：上传/删除技能；查看与下载技能属 `context:read`）；新建密钥默认继承本人角色允许的全部 scope（前端不再让用户选权限；显式 scope 仅 API/OAuth 兼容）。
 - **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效（SSE 长连接由 guard 每次调用按 ID 复核密钥状态与 scope，R76）；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。**R90 证据规则**：`update_bug_status` / `update_task` 的 `evidence` 参数与 REST 同构；标记 resolved/review 时 AI 应尽量写入；`get_bug_detail` / `get_task_detail` 返回 evidence。
+- **R90 身份/交接规则**：`get_me` / `list_members` 需 `context:read`；`handoff_work` 工具级 scope 为 `context:read`，但内部按实体强制 `bug:write` / `task:write`；`assignee` 必须是 active 非 viewer；缺陷转交写活动流，任务写用量事件。
 - **R89 自助规则**：密钥归属创建人；本人可管理自己的全部密钥，Admin+ 可管理团队全部；创建时不选权限，服务端按所属用户真实角色自动继承可用 scope（`ROLE_SCOPES`），显式 scope 仍按角色校验；管理员替他人轮换时新密钥仍归原主人，旧主人被移除时才落到操作人。
 - **成员与密钥联动（R76）**：密钥校验连带检查创建人状态——账号禁用则其密钥随之停用（可逆，恢复账号即恢复）；移除成员在同一事务内先吊销其创建的全部密钥再删用户（`createdBy` 为 SetNull，否则离职人员密钥继续有效）。
 - **MCP 密钥查看（R87）**：密钥仍以 SHA-256 哈希鉴权，并额外保存 AES-256-GCM 密文供 Admin+ 明确查看/复制；明文只放前端内存，刷新即清除。加密密钥由 `JWT_SECRET` 派生，更换 `JWT_SECRET` 后历史密文不可解；旧密钥没有密文时只能轮换。
