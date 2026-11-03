@@ -89,15 +89,15 @@ export function AssetPool({
                   onClick={() => onOpenText(a.id, a.file_name)}
                 >
                   <FileText className="h-6 w-6" />
-                  <span className="px-1 text-[10px] line-clamp-2">{a.file_name}</span>
+                  <span className="px-1 text-xs line-clamp-2">{a.file_name}</span>
                 </button>
               )}
               <div className="flex items-center justify-between px-2 py-1.5">
-                <span className="flex items-center gap-1 truncate text-[10px] text-muted-foreground">
+                <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                   {isImage(a) ? <ImageIcon className="h-3 w-3 shrink-0" /> : <FileText className="h-3 w-3 shrink-0" />}
                   <span className="truncate">{a.file_name}</span>
                 </span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">{formatSize(a.file_size)}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{formatSize(a.file_size)}</span>
               </div>
               <button
                 className="absolute right-1 top-1 rounded bg-background/80 p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 cursor-pointer"

@@ -5,7 +5,6 @@ import { Plus, StickyNote } from 'lucide-react';
 import type { Note } from '@/lib/api-types';
 import { NoteCard } from './NoteCard';
 import { NoteComposer } from './NoteComposer';
-import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 import { useCanEdit } from '@/lib/auth';
 
 interface NoteWallProps {
@@ -44,7 +43,6 @@ export function NoteWall({
     <div className="flex h-full flex-col">
       {/* 顶栏：项目 + 计数 + 新建 */}
       <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
-        <CurrentProjectSwitcher />
         <span className="text-xs text-[var(--text-tertiary)]">{filtered.length} 条随手记</span>
         <div className="flex-1" />
         {canEdit && (
@@ -115,7 +113,7 @@ export function NoteWall({
 
 /** 底部标签栏药丸：选中金色，其余中性（token 化） */
 function chipClass(active: boolean): string {
-  const base = 'rounded-full border px-2.5 py-1 text-[11px] transition-colors cursor-pointer';
+  const base = 'rounded-full border px-2.5 py-1 text-xs transition-colors cursor-pointer';
   return active
     ? `${base} border-[var(--gold)] bg-[var(--gold-bg)] text-[var(--gold)]`
     : `${base} border-[var(--border-strong)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]`;

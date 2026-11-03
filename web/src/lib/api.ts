@@ -23,6 +23,7 @@ import type {
 import { ApiError, BASE, currentAccessToken, parseError, rawRequest, request, setTokenAccessors } from './http';
 import { taskApi, skillApi } from './api-more';
 import type { StatsResponse } from './stats-types';
+import type { TodayResponse } from './today-types';
 import { scopeParam } from './stats-view';
 
 export { ApiError, setTokenAccessors };
@@ -198,8 +199,8 @@ export const api = {
     return request<TextSlice>(`/attachments/${id}/text?${qs.toString()}`);
   },
 
-  // ============ 密钥 ============
-  listApiKeys: () => request<ApiKeyView[]>('/api-keys'),
+  // ============ 密钥（R89：每个成员自助） ============
+  listApiKeys: (all = false) => request<ApiKeyView[]>(`/api-keys${all ? '?all=1' : ''}`),
   createApiKey: (body: { name: string; scopes?: string[]; rate_limit?: number; expires_in_days?: number | null }) =>
     request<{ key: string; warning: string; api_key: ApiKeyView }>('/api-keys', { method: 'POST', body: JSON.stringify(body) }),
   rotateApiKey: (id: string) =>
@@ -207,7 +208,7 @@ export const api = {
   revokeApiKey: (id: string) => request<void>(`/api-keys/${id}/revoke`, { method: 'POST' }),
   /** 彻底删除（R87）：行从库中移除，与「撤销」区分 */
   deleteApiKey: (id: string) => request<void>(`/api-keys/${id}`, { method: 'DELETE' }),
-  /** 查看明文（R87）：仅 owner/admin，需再次解密 */
+  /** 查看明文（R87）：本人或管理员，需再次解密 */
   revealApiKey: (id: string) => request<{ key: string; name: string; warning: string }>(`/api-keys/${id}/reveal`),
   keyUsage: (id: string, days = 30) => request<KeyUsage>(`/api-keys/${id}/usage?days=${days}`),
 
@@ -228,6 +229,9 @@ export const api = {
 
   // ============ 统计（R85，全员可读） ============
   stats: (params: { projectId: string | null }) => request<StatsResponse>(`/stats?project_id=${scopeParam(params.projectId)}`),
+
+  // ============ 今日（R89，跨项目只读聚合） ============
+  getToday: () => request<TodayResponse>('/today'),
 
   // ============ AI 活动（卡片 36，全员可读） ============
   recentActivity: () => request<ActivityItem[]>('/activity/recent'),

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ClipboardList, Filter, FolderPlus, Plus, Search, X } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useAuth } from '@/lib/auth';
@@ -11,10 +12,46 @@ import { BugDetailDialog } from '@/components/bugs/BugDetailDialog';
 import { CreateBugDialog } from '@/components/bugs/CreateBugDialog';
 import { TextViewer } from '@/components/assets/TextViewer';
 import { BatchBar } from '@/components/bugs/BatchBar';
-import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 import { BugContextMenu } from '@/components/bugs/BugContextMenu';
 import { BoardFilterPanel, WhoSegment } from '@/components/bugs/BoardFilterControls';
 import { activeFilterCount, filterBoard, type WhoFilter } from '@/lib/bug-filters';
+
+/**
+ * 地址栏 ?bug=<id> 打开详情、?new=1 打开录入（命令面板/今日页跨页跳转用）。
+ * 静态导出下 useSearchParams 必须包在 Suspense 里。
+ */
+function BoardUrlSync({
+  onOpenBug,
+  onNew,
+}: {
+  onOpenBug: (id: string) => void;
+  onNew: () => void;
+}) {
+  const params = useSearchParams();
+  const bugId = params.get('bug');
+  const isNew = params.get('new');
+
+  // 处理完就清掉 query：否则关闭详情后从 ⌘K 再点同一条不会重新触发
+  const clear = (key: string) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has(key)) return;
+    url.searchParams.delete(key);
+    window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+  };
+
+  useEffect(() => {
+    if (!bugId) return;
+    onOpenBug(bugId);
+    clear('bug');
+  }, [bugId, onOpenBug]);
+  useEffect(() => {
+    if (isNew !== '1') return;
+    onNew();
+    clear('new');
+  }, [isNew, onNew]);
+  return null;
+}
 
 /** 缺陷看板页（步骤 07 §7.1）：筛选条 + 看板（每个状态一列）+ 批量栏 */
 export default function BoardPage() {
@@ -36,6 +73,7 @@ export default function BoardPage() {
   const flashTimers = useRef<Map<string, number>>(new Map());
 
   const canEdit = user?.role !== 'viewer';
+  const openCreate = useCallback(() => canEdit && setCreateOpen(true), [canEdit]);
 
   // 快捷键：C 新建 / Esc 清选择（输入态放行由 useHotkeys 处理）
   useHotkeys([
@@ -127,7 +165,6 @@ export default function BoardPage() {
     <div className="flex h-full flex-col">
       {/* 筛选条 */}
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
-        <CurrentProjectSwitcher />
         <WhoSegment value={who} onChange={setWho} />
 
         <div className="relative">
@@ -142,16 +179,12 @@ export default function BoardPage() {
 
         <button className="vh-btn ghost h-8 text-xs" onClick={() => setFilterOpen((v) => !v)}>
           <Filter size={13} />
-          筛选{activeFilters > 0 && <span className="ml-1 rounded-full bg-[var(--brand)] px-1.5 text-[10px] text-white">{activeFilters}</span>}
+          筛选{activeFilters > 0 && <span className="ml-1 rounded-full bg-[var(--brand)] px-1.5 text-xs text-white">{activeFilters}</span>}
         </button>
 
-        {/* 移动端录缺陷入口（卡片 38：触屏无 C 快捷键，<900px 常驻按钮） */}
+        {/* 录缺陷：桌面与触屏都常驻（触屏没有 C 快捷键，R62） */}
         {canEdit && (
-          <button
-            className="vh-btn hidden h-8 text-xs max-[899px]:inline-flex"
-            onClick={() => setCreateOpen(true)}
-            data-testid="mobile-create-bug"
-          >
+          <button className="vh-btn h-8 text-xs" onClick={() => setCreateOpen(true)} data-testid="create-bug">
             <Plus size={14} />
             录缺陷
           </button>
@@ -258,6 +291,10 @@ export default function BoardPage() {
         onSubmit={store.createBug}
         projectId={store.currentProject?.id ?? ''}
       />
+
+      <Suspense fallback={null}>
+        <BoardUrlSync onOpenBug={setDetailId} onNew={openCreate} />
+      </Suspense>
 
       {detailId && (
         <BugDetailDialog

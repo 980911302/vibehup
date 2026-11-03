@@ -22,11 +22,13 @@ const SCOPE_TOOLS: Record<string, string[]> = {
 
 /** 创建密钥向导（步骤 07 §7.5：三步，第 3 步一次性明文） */
 export function CreateKeyWizard({
-  open, onOpenChange, onCreated,
+  open, onOpenChange, onCreated, allowedScopes,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: () => void;
+  /** 当前角色可申请的 scope；缺省=全部（管理员） */
+  allowedScopes?: string[];
 }) {
   const toast = useToast();
   const [step, setStep] = useState(1);
@@ -36,17 +38,21 @@ export function CreateKeyWizard({
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ key: string; view: ApiKeyView } | null>(null);
   const [copied, setCopied] = useState<'key' | 'config' | null>(null);
+  const visibleScopes = useMemo(
+    () => Object.entries(SCOPE_TOOLS).filter(([scope]) => !allowedScopes || allowedScopes.includes(scope)),
+    [allowedScopes],
+  );
 
   useEffect(() => {
     if (open) {
       setStep(1);
       setName('');
-      setScopes(['context:read']);
+      setScopes([visibleScopes[0]?.[0] ?? 'context:read']);
       setExpiresInDays(90);
       setResult(null);
       setCopied(null);
     }
-  }, [open]);
+  }, [open, visibleScopes]);
 
   const toggleScope = (s: string) => {
     setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -92,14 +98,14 @@ export function CreateKeyWizard({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => onOpenChange(false)}>
-      <div className="w-[520px] rounded-[20px] border border-[var(--border-strong)] bg-[var(--bg-panel)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()} data-testid="key-wizard">
+      <div className="w-[520px] rounded-2xl border border-[var(--border-strong)] bg-[var(--bg-panel)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()} data-testid="key-wizard">
         {/* 步骤指示器 */}
         <div className="mb-5 flex items-center gap-2">
           {[1, 2, 3].map((s) => (
             <div key={s} className="flex flex-1 items-center gap-2">
               <span className={cn(
                 'flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium',
-                step >= s ? 'bg-[var(--brand)] text-white' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]',
+                step >= s ? 'bg-[var(--accent)] text-[var(--accent-contrast)]' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]',
               )}>{s}</span>
               {s < 3 && <div className={cn('h-px flex-1', step > s ? 'bg-[var(--brand)]' : 'bg-[var(--border-subtle)]')} />}
             </div>
@@ -126,14 +132,14 @@ export function CreateKeyWizard({
         {step === 2 && (
           <>
             <h3 className="mb-1 text-base font-semibold">权限范围（Scopes）</h3>
-            <p className="mb-4 text-xs text-[var(--text-tertiary)]">最小权限原则：默认仅读取上下文，写操作需显式授予</p>
+            <p className="mb-4 text-xs text-[var(--text-tertiary)]">最小权限原则：默认只读；可申请的权限不会超过你的角色。写操作需显式勾选。</p>
             <div className="mb-4 space-y-2">
-              {Object.entries(SCOPE_TOOLS).map(([scope, tools]) => (
+              {visibleScopes.map(([scope, tools]) => (
                 <label key={scope} className="flex cursor-pointer items-start gap-2.5 rounded-lg border border-[var(--border-subtle)] p-2.5 hover:bg-[var(--bg-elevated)]">
                   <input type="checkbox" className="mt-0.5" checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} />
                   <div>
-                    <p className="text-[13px] font-medium text-[var(--text-primary)]">{scope}</p>
-                    <p className="text-[11px] text-[var(--text-tertiary)]">{tools.join(' · ')}</p>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">{scope}</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">{tools.join(' · ')}</p>
                   </div>
                 </label>
               ))}
@@ -166,9 +172,9 @@ export function CreateKeyWizard({
         {step === 3 && result && (
           <>
             <h3 className="mb-1 text-base font-semibold">密钥已创建</h3>
-            <p className="mb-3 text-xs text-[var(--danger)]">请立即复制保存——关闭此窗口后不可再查看，遗失只能轮换。</p>
-            <div className="mb-4 rounded-[14px] border-2 border-[var(--gold)] bg-[var(--gold-bg)] p-3">
-              <code className="block break-all font-mono text-[13px] text-[var(--gold-bright)]">{result.key}</code>
+            <p className="mb-3 text-xs text-[var(--danger)]">先复制到 IDE 配置；之后可在列表点「查看」再次复制，遗失或泄露请立即轮换。</p>
+            <div className="mb-4 rounded-2xl border-2 border-[var(--gold)] bg-[var(--gold-bg)] p-3">
+              <code className="block break-all font-mono text-sm text-[var(--gold-bright)]">{result.key}</code>
               <button className="mt-2 flex items-center gap-1 text-xs text-[var(--gold)] cursor-pointer" onClick={() => void copy(result.key, 'key')}>
                 {copied === 'key' ? <Check size={12} /> : <Copy size={12} />}
                 {copied === 'key' ? '已复制' : '复制密钥'}
@@ -177,8 +183,8 @@ export function CreateKeyWizard({
 
             <p className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">MCP 配置（添加到 ~/.cursor/mcp.json）</p>
             <div className="relative mb-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-page)] p-3">
-              <pre className="overflow-x-auto font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">{mcpConfig}</pre>
-              <button className="absolute right-2 top-2 flex items-center gap-1 rounded-md border border-[var(--border-strong)] px-2 py-1 text-[11px] text-[var(--text-secondary)] cursor-pointer hover:bg-[var(--bg-elevated)]" onClick={() => void copy(mcpConfig, 'config')}>
+              <pre className="overflow-x-auto font-mono text-xs leading-relaxed text-[var(--text-secondary)]">{mcpConfig}</pre>
+              <button className="absolute right-2 top-2 flex items-center gap-1 rounded-md border border-[var(--border-strong)] px-2 py-1 text-xs text-[var(--text-secondary)] cursor-pointer hover:bg-[var(--bg-elevated)]" onClick={() => void copy(mcpConfig, 'config')}>
                 {copied === 'config' ? <Check size={11} /> : <Copy size={11} />}
                 复制
               </button>
@@ -238,7 +244,7 @@ export function KeyUsageChart({ keyId }: { keyId: string }) {
               style={{ height: `${Math.max(2, (p.calls / max) * 100)}%` }}
               title={`${p.day}: ${p.calls} 次`}
             />
-            <span className="mt-1 hidden text-[9px] text-[var(--text-tertiary)] group-hover:block">{p.day.slice(5)}</span>
+            <span className="mt-1 hidden text-xs text-[var(--text-tertiary)] group-hover:block">{p.day.slice(5)}</span>
           </div>
         ))}
       </div>

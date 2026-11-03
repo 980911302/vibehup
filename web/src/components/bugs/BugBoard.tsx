@@ -133,7 +133,7 @@ export function BugBoard({
           >
             <div className="flex items-center justify-between px-3 py-2">
               <span className="text-xs font-semibold text-[var(--text-secondary)]">{col.label}</span>
-              <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)]">{bugs.length}</span>
+              <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-xs text-[var(--text-tertiary)]">{bugs.length}</span>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
               {bugs.map((bug) => (

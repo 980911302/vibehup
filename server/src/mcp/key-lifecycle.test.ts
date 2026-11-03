@@ -4,7 +4,7 @@ import { resetDb, createApiKey, createUser } from '../test-helpers.js';
 import { mcpStore } from './context-store.js';
 import { guarded } from './guard.js';
 import { loadKeyedContext } from './context.js';
-import { revokeKey } from '../services/api-keys.js';
+import { revokeKeyById } from '../services/api-keys.js';
 import { removeUser } from '../services/users.js';
 
 /**
@@ -31,7 +31,7 @@ describe('SSE 会话内的密钥状态即时生效', () => {
     const call = await openSession(key.key);
     expect((await call()).isError).toBeFalsy();
 
-    await revokeKey(key.id);
+    await revokeKeyById(key.id);
 
     const res = await call();
     expect(res.isError).toBe(true);

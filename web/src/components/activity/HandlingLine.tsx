@@ -26,7 +26,7 @@ export function HandlingLine({ item, className = 'mb-1.5' }: { item: HandlingIte
   return (
     // 行内排版：窄列里名字与时长自然折行，不把名字截成一个字
     <div
-      className={`${className} break-all text-[11px] leading-snug ${h.stale ? 'text-[var(--warn)]' : 'text-[var(--text-tertiary)]'}`}
+      className={`${className} break-all text-xs leading-snug ${h.stale ? 'text-[var(--warn)]' : 'text-[var(--text-tertiary)]'}`}
       title={`${who}${h.stale ? `已停留 ${h.span}，处理方可能已中断` : `已处理 ${h.span}`}`}
       data-testid="handling-line"
       data-stale={h.stale ? 'true' : 'false'}

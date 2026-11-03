@@ -7,7 +7,6 @@ import { useCanEdit } from '@/lib/auth';
 import { api } from '@/lib/api';
 import type { Skill } from '@/lib/api-types';
 import { buildSearchIndex, matchIndex } from '@/lib/search';
-import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 import { SkillCard } from '@/components/skills/SkillCard';
 import { SkillDetailDialog } from '@/components/skills/SkillDetailDialog';
 import { SkillUploadDialog } from '@/components/skills/SkillUploadDialog';
@@ -55,7 +54,6 @@ export default function SkillsPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
-        <CurrentProjectSwitcher />
         <div className="flex gap-1 rounded-lg bg-[var(--bg-elevated)] p-0.5">
           {SCOPE_TABS.map((t) => (
             <button

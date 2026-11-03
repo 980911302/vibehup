@@ -100,7 +100,7 @@ export async function gotoBoardWithSession(page: Page, session: OwnerSession): P
     },
     [session.token],
   );
-  await page.goto('/board');
+  await page.goto('/work/bugs');
   await expect(page.getByPlaceholder('搜索缺陷')).toBeVisible();
 }
 

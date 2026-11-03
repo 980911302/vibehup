@@ -57,7 +57,7 @@ export function NoteCard({ note, onTogglePin, onUpdate, onDelete, onTagClick }: 
     >
       {/* 顶栏：置顶标记与操作（悬停显现） */}
       <div className="mb-1.5 flex items-center gap-1">
-        {pinned && <span className="text-[10px] font-medium text-[var(--gold)]">置顶</span>}
+        {pinned && <span className="text-xs font-medium text-[var(--gold)]">置顶</span>}
         <div className="flex-1" />
         {canEdit && <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
           <button
@@ -91,7 +91,7 @@ export function NoteCard({ note, onTogglePin, onUpdate, onDelete, onTagClick }: 
       {editing ? (
         <div>
           <textarea
-            className="w-full resize-none rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] p-2 text-[13px] leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--brand)]"
+            className="w-full resize-none rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] p-2 text-sm leading-relaxed text-[var(--text-primary)] outline-none focus:border-[var(--brand)]"
             rows={5}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -129,7 +129,7 @@ export function NoteCard({ note, onTogglePin, onUpdate, onDelete, onTagClick }: 
           {note.tags.map((t) => (
             <button
               key={t}
-              className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[10px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--gold)]"
+              className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-xs text-[var(--text-tertiary)] transition-colors hover:text-[var(--gold)]"
               onClick={() => onTagClick(t)}
               data-testid="note-tag-chip"
             >
@@ -140,7 +140,7 @@ export function NoteCard({ note, onTogglePin, onUpdate, onDelete, onTagClick }: 
       )}
 
       {/* 底栏：相对时间 + 附件数 */}
-      <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
+      <div className="mt-2 flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
         <span title={new Date(note.created_at).toLocaleString()}>{relativeTime(note.created_at)}</span>
         {note.attachment_count > 0 && (
           <span className="flex items-center gap-0.5" title={`${note.attachment_count} 个附件`}>

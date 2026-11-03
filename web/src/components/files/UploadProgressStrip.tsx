@@ -40,16 +40,16 @@ export function UploadProgressStrip({
           ) : (
             <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--gold)]" />
           )}
-          <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-secondary)]" title={it.name}>
+          <span className="min-w-0 flex-1 truncate text-xs text-[var(--text-secondary)]" title={it.name}>
             {it.name}
           </span>
           {it.status === 'error' ? (
             <>
-              <span className="shrink-0 text-[10px] text-[var(--danger)]" title={it.error}>
+              <span className="shrink-0 text-xs text-[var(--danger)]" title={it.error}>
                 {it.error ?? '失败'}
               </span>
               <button
-                className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-[var(--gold)] transition-colors hover:bg-[var(--gold-bg)]"
+                className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--gold)] transition-colors hover:bg-[var(--gold-bg)]"
                 onClick={() => onRetry(it.id)}
                 data-testid="upload-retry"
               >
@@ -58,7 +58,7 @@ export function UploadProgressStrip({
               </button>
             </>
           ) : (
-            <span className="shrink-0 text-[10px] tabular-nums text-[var(--text-tertiary)]">
+            <span className="shrink-0 text-xs tabular-nums text-[var(--text-tertiary)]">
               {it.status === 'done' ? '完成' : `${it.percent}%`}
             </span>
           )}

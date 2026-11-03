@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { prisma } from '../core/prisma.js';
 import { verifyPassword } from '../core/password.js';
 import { hashToken } from '../core/tokens.js';
-import { createKey, revokeKey } from '../services/api-keys.js';
+import { createKey, revokeKeyById } from '../services/api-keys.js';
 import * as loginThrottle from '../services/login-throttle.js';
 import { SCOPES } from '../mcp/scopes.js';
 import { renderOAuthPage, type OAuthPageData } from '../core/oauth-page.js';
@@ -212,7 +212,7 @@ export const oauthRoutes: FastifyPluginAsync = async (app) => {
     const body = parsedBody(request);
     if (body.token) {
       const key = await prisma.apiKey.findFirst({ where: { keyHash: hashToken(body.token) } });
-      if (key && !key.revokedAt) await revokeKey(key.id);
+      if (key && !key.revokedAt) await revokeKeyById(key.id);
     }
     return reply.code(200).send({});
   });

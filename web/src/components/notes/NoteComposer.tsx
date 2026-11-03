@@ -51,7 +51,7 @@ export function NoteComposer({ open, onClose, onCreate }: NoteComposerProps) {
     <div className="rounded-[14px] border border-[var(--gold)] bg-[var(--bg-card)] p-3" data-testid="note-composer">
       <textarea
         ref={areaRef}
-        className="w-full resize-none bg-transparent text-[13px] leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
+        className="w-full resize-none bg-transparent text-sm leading-relaxed text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
         rows={4}
         placeholder="写点什么…支持 Markdown，⌘↵ 发送"
         value={draft}
@@ -60,7 +60,7 @@ export function NoteComposer({ open, onClose, onCreate }: NoteComposerProps) {
       />
       <div className="mt-2 flex items-center gap-2">
         <input
-          className="h-7 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2 text-[11px] outline-none focus:border-[var(--brand)]"
+          className="h-7 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2 text-xs outline-none focus:border-[var(--brand)]"
           placeholder="标签（空格分隔，如 tech-debt）"
           value={tagText}
           onChange={(e) => setTagText(e.target.value)}

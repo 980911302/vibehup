@@ -22,13 +22,13 @@ export function SkillCard({ skill, projectName, onOpen }: SkillCardProps) {
     >
       <div className="flex items-center gap-2">
         <FileCode2 size={15} className="shrink-0 text-[var(--brand)]" />
-        <span className="flex-1 truncate font-mono text-[13px] font-medium text-[var(--text-primary)]">{skill.name}</span>
+        <span className="flex-1 truncate font-mono text-sm font-medium text-[var(--text-primary)]">{skill.name}</span>
         {skill.source === 'ai' && (
           <span className="vh-ai-badge" title="由 AI 经 MCP 上传"><Sparkles size={9} strokeWidth={2.4} />AI</span>
         )}
       </div>
       <p className="line-clamp-3 flex-1 text-xs leading-relaxed text-[var(--text-secondary)]">{skill.description}</p>
-      <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+      <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
         {skill.scope === 'global' ? (
           <span className="flex items-center gap-1 rounded bg-[var(--gold-bg)] px-1.5 py-0.5 text-[var(--gold)]"><Globe2 size={10} />全团队通用</span>
         ) : (

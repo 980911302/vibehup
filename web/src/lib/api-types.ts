@@ -204,6 +204,7 @@ export interface ApiKeyView {
   /** 明文是否可恢复（R87：false = 建于加密存储之前或签名密钥已更换） */
   can_reveal: boolean;
   created_by: string | null;
+  created_by_name: string | null;
   created_at: string;
 }
 

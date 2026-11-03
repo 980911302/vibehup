@@ -3,16 +3,24 @@
 import { useState } from 'react';
 import { ChevronDown, FolderPlus } from 'lucide-react';
 import { buildSearchIndex, matchIndex } from '@/lib/search';
+import { cn } from '@/lib/utils';
 import type { Project } from '@/lib/api-types';
 
-/** 项目切换器（设计文档 5.1：支持拼音/模糊检索） */
+/** 项目切换器（支持拼音/模糊检索；顶栏右对齐与紧凑两种形态） */
 export function ProjectSwitcher({
-  projects, current, onSelect, onCreate,
+  projects,
+  current,
+  onSelect,
+  onCreate,
+  align = 'left',
+  compact = false,
 }: {
   projects: Project[];
   current: Project | null;
   onSelect: (projectId: string) => void;
   onCreate: (name: string) => void;
+  align?: 'left' | 'right';
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -22,36 +30,57 @@ export function ProjectSwitcher({
     ? projects.filter((p) => matchIndex(query, buildSearchIndex(p.name, `${p.slug} ${p.description ?? ''}`)))
     : projects;
 
+  const create = () => {
+    const name = newName.trim();
+    if (!name) return;
+    onCreate(name);
+    setNewName('');
+    setOpen(false);
+  };
+
   return (
     <div className="relative">
       <button
-        className="vh-btn ghost h-8 gap-1.5 text-xs"
+        className={cn(
+          'vh-btn ghost h-9 gap-1.5 border-[var(--border-subtle)] px-3 text-[var(--text-secondary)]',
+          compact && 'max-w-[190px]',
+        )}
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label="切换当前项目"
         data-testid="project-switcher"
       >
-        <span className="max-w-[180px] truncate">{current?.name ?? '选择项目'}</span>
-        <ChevronDown size={13} className="opacity-60" />
+        <span className="truncate">{current?.name ?? '选择项目'}</span>
+        <ChevronDown size={13} className="shrink-0 opacity-60" />
       </button>
 
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-9 z-40 w-72 rounded-[14px] border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-2 shadow-lg">
+          <div
+            className={cn(
+              'absolute top-11 z-40 w-80 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-2 shadow-[var(--shadow-2)]',
+              align === 'right' ? 'right-0' : 'left-0',
+            )}
+          >
             <input
               autoFocus
-              className="mb-2 h-8 w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2 text-xs outline-none focus:border-[var(--brand)]"
-              placeholder="搜索项目（拼音，如 yhzx）"
+              className="mb-2 h-9 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)]"
+              placeholder="搜索项目，支持拼音"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               data-testid="project-search-input"
             />
-            <div className="max-h-56 space-y-0.5 overflow-y-auto">
+            <div className="max-h-64 space-y-0.5 overflow-y-auto">
               {filtered.map((p) => (
                 <button
                   key={p.id}
-                  className={`flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors cursor-pointer hover:bg-[var(--bg-panel)] ${
-                    p.id === current?.id ? 'bg-[var(--bg-panel)] text-[var(--brand)]' : 'text-[var(--text-secondary)]'
-                  }`}
+                  className={cn(
+                    'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors cursor-pointer',
+                    p.id === current?.id
+                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]',
+                  )}
                   onClick={() => {
                     onSelect(p.id);
                     setOpen(false);
@@ -59,38 +88,23 @@ export function ProjectSwitcher({
                   }}
                 >
                   <span className="truncate">{p.name}</span>
-                  <span className="ml-2 shrink-0 text-[10px] text-[var(--text-tertiary)]">{p.slug}</span>
+                  <span className="t-caption-5 ml-2 shrink-0 text-[var(--text-tertiary)]">{p.slug}</span>
                 </button>
               ))}
               {filtered.length === 0 && (
-                <p className="px-2.5 py-3 text-center text-xs text-[var(--text-tertiary)]">未找到匹配项目</p>
+                <p className="t-caption-2 px-3 py-4 text-center text-[var(--text-tertiary)]">未找到匹配项目</p>
               )}
             </div>
-            <div className="mt-2 flex gap-1.5 border-t border-[var(--border-subtle)] pt-2">
+            <div className="mt-2 flex gap-2 border-t border-[var(--border-subtle)] pt-2">
               <input
-                className="h-8 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2 text-xs outline-none focus:border-[var(--brand)]"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)]"
                 placeholder="新建项目名称"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newName.trim()) {
-                    onCreate(newName.trim());
-                    setNewName('');
-                    setOpen(false);
-                  }
-                }}
+                onKeyDown={(e) => e.key === 'Enter' && create()}
               />
-              <button
-                className="vh-btn h-8 text-xs"
-                disabled={!newName.trim()}
-                onClick={() => {
-                  if (!newName.trim()) return;
-                  onCreate(newName.trim());
-                  setNewName('');
-                  setOpen(false);
-                }}
-              >
-                <FolderPlus size={13} />
+              <button className="vh-btn px-3" disabled={!newName.trim()} onClick={create} aria-label="创建项目">
+                <FolderPlus size={14} />
               </button>
             </div>
           </div>

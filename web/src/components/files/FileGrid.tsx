@@ -22,7 +22,7 @@ export function FileGrid({
         <span className="vh-empty-icon"><FolderOpen size={28} strokeWidth={1.6} /></span>
         <p className="vh-empty-title">还没有文件</p>
         <p className="vh-empty-hint">拖文件到页面任意处，或 Ctrl+V 粘贴截图</p>
-        <button className="vh-btn" onClick={() => router.push('/board')} data-testid="files-empty-goto-board">
+        <button className="vh-btn" onClick={() => router.push('/work/bugs')} data-testid="files-empty-goto-board">
           去录一笔缺陷（带截图）
         </button>
         <p className="vh-empty-hint">
@@ -50,16 +50,16 @@ export function FileGrid({
                 onClick={() => isText(a) && onOpenText(a)}
               >
                 <FileText className="h-7 w-7" />
-                <span className="px-2 text-[11px] line-clamp-2">{a.file_name}</span>
-                {isText(a) && <span className="text-[10px] text-[var(--brand)]">在线查看</span>}
+                <span className="px-2 text-xs line-clamp-2">{a.file_name}</span>
+                {isText(a) && <span className="text-xs text-[var(--brand)]">在线查看</span>}
               </button>
             )}
             <div className="flex items-center justify-between px-2.5 py-2">
-              <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--text-tertiary)]">
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
                 {isImage(a) ? <ImageIcon size={12} className="shrink-0" /> : <FileText size={12} className="shrink-0" />}
                 <span className="truncate">{a.file_name}</span>
               </span>
-              <span className="shrink-0 text-[11px] text-[var(--text-tertiary)]">{formatSize(a.file_size)}</span>
+              <span className="shrink-0 text-xs text-[var(--text-tertiary)]">{formatSize(a.file_size)}</span>
             </div>
             {isAi && <span className="vh-ai-badge absolute left-2 top-2" title="MCP 密钥上传">AI</span>}
             {canDeleteFile(a) && (
@@ -72,7 +72,7 @@ export function FileGrid({
               </button>
             )}
             {a.entity_type === 'bug' && a.entity_id && (
-              <span className="absolute bottom-12 left-2 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-white">
+              <span className="absolute bottom-12 left-2 rounded bg-black/50 px-1.5 py-0.5 text-xs text-white">
                 关联缺陷
               </span>
             )}

@@ -114,9 +114,9 @@ export function McpConfigPanel({ open, keys, onClose }: { open: boolean; keys: A
                 <option key={k.id} value={k.id}>{k.name} · {k.masked}</option>
               ))}
             </select>
-            {busy && <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">正在取回密钥…</p>}
+            {busy && <p className="mt-1 text-xs text-[var(--text-tertiary)]">正在取回密钥…</p>}
             {!busy && keyId && !plain && (
-              <p className="mt-1 text-[11px] text-[var(--warn)]">该密钥明文不可恢复，请在列表里轮换生成新密钥。</p>
+              <p className="mt-1 text-xs text-[var(--warn)]">该密钥明文不可恢复，请在列表里轮换生成新密钥。</p>
             )}
           </div>
 
@@ -127,7 +127,7 @@ export function McpConfigPanel({ open, keys, onClose }: { open: boolean; keys: A
                 <Copy size={12} /> 复制地址
               </button>
             </div>
-            <div className="space-y-2 font-mono text-[11px] text-[var(--text-secondary)]">
+            <div className="space-y-2 font-mono text-xs text-[var(--text-secondary)]">
               <div className="break-all">URL: {workUrl}</div>
               <div className="break-all">Authorization: {workAuthorization || '（选择一把可用密钥后显示）'}</div>
             </div>
@@ -136,7 +136,7 @@ export function McpConfigPanel({ open, keys, onClose }: { open: boolean; keys: A
                 <Copy size={12} /> 复制 Bearer 凭证
               </button>
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+            <p className="mt-2 text-xs leading-relaxed text-[var(--text-tertiary)]">
               在 Work 的自定义 MCP 连接中填写 URL 与 Bearer 凭证。远程服务需通过 HTTPS 提供；当前页面若是 HTTP 地址，请先配置 HTTPS 反向代理。
             </p>
           </div>
@@ -153,7 +153,7 @@ export function McpConfigPanel({ open, keys, onClose }: { open: boolean; keys: A
                 <Copy size={12} /> 复制
               </button>
             </div>
-            <pre className="overflow-x-auto rounded-[10px] bg-[var(--bg-elevated)] p-3 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">
+            <pre className="overflow-x-auto rounded-[10px] bg-[var(--bg-elevated)] p-3 font-mono text-xs leading-relaxed text-[var(--text-secondary)]">
 {sseConfig || '// 选择一把可用密钥后生成'}
             </pre>
           </div>
@@ -167,12 +167,12 @@ export function McpConfigPanel({ open, keys, onClose }: { open: boolean; keys: A
                 <Copy size={12} /> 复制
               </button>
             </div>
-            <pre className="overflow-x-auto rounded-[10px] bg-[var(--bg-elevated)] p-3 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)]">
+            <pre className="overflow-x-auto rounded-[10px] bg-[var(--bg-elevated)] p-3 font-mono text-xs leading-relaxed text-[var(--text-secondary)]">
 {installCmd}
             </pre>
           </div>
 
-          <p className="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+          <p className="text-xs leading-relaxed text-[var(--text-tertiary)]">
             地址取当前页面所在来源（{origin}）。若队友走 ZeroTier，把域名换成虚拟内网 IP 即可；
             密钥明文只在本次请求中返回，不会写入浏览器存储。
           </p>

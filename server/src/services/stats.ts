@@ -73,6 +73,8 @@ export function resolveTaskOutcome(task: StatusFields): TaskOutcome | null {
 export interface StatsScope {
   /** null = 全部项目 */
   projectId: string | null;
+  /** 可选：只统计这些项目（今日页排除归档项目、避免 count 口径漂移） */
+  projectIds?: string[];
 }
 
 interface ActiveItem {
@@ -133,7 +135,11 @@ function getOrCreateActorRow(map: Map<string, ByActorRow>, actor: ActorRef): ByA
 }
 
 export async function getStats(scope: StatsScope, now: Date = new Date()): Promise<StatsResult> {
-  const where = scope.projectId ? { projectId: scope.projectId } : {};
+  const where = scope.projectIds
+    ? { projectId: { in: scope.projectIds } }
+    : scope.projectId
+      ? { projectId: scope.projectId }
+      : {};
   const [bugs, tasks] = await Promise.all([
     prisma.bug.findMany({
       where,

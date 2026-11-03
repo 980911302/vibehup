@@ -29,7 +29,7 @@ export function LabelEditor({ value, suggestions, disabled, onChange }: LabelEdi
   return (
     <div className="flex flex-wrap items-center gap-1.5" data-testid="label-editor">
       {value.map((l) => (
-        <span key={l} className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)]">
+        <span key={l} className="flex items-center gap-1 rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">
           #{l}
           {!disabled && (
             <button type="button" className="cursor-pointer text-[var(--text-tertiary)] hover:text-[var(--danger)]" onClick={() => onChange(value.filter((x) => x !== l))} aria-label={`移除标签 ${l}`}>
@@ -43,7 +43,7 @@ export function LabelEditor({ value, suggestions, disabled, onChange }: LabelEdi
           <div className="flex items-center gap-1 rounded border border-dashed border-[var(--border-strong)] px-1.5">
             <Plus size={10} className="text-[var(--text-tertiary)]" />
             <input
-              className="h-6 w-24 bg-transparent text-[11px] outline-none"
+              className="h-6 w-24 bg-transparent text-xs outline-none"
               placeholder="加标签，回车"
               value={draft}
               maxLength={MAX_LABEL_LENGTH}
@@ -60,7 +60,7 @@ export function LabelEditor({ value, suggestions, disabled, onChange }: LabelEdi
           {hints.length > 0 && (
             <div className="absolute left-0 top-7 z-10 min-w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-elevated)] p-1 shadow-lg">
               {hints.map((h) => (
-                <button key={h} type="button" className="block w-full cursor-pointer rounded px-2 py-1 text-left text-[11px] hover:bg-[var(--bg-panel)]" onMouseDown={(e) => { e.preventDefault(); add(h); }}>
+                <button key={h} type="button" className="block w-full cursor-pointer rounded px-2 py-1 text-left text-xs hover:bg-[var(--bg-panel)]" onMouseDown={(e) => { e.preventDefault(); add(h); }}>
                   #{h}
                 </button>
               ))}

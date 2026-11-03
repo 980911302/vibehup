@@ -2,7 +2,7 @@
 
 面向 AI Native 研发团队的「双端同步研发上下文总线」：
 
-- **给人**：极简 Web 看板与截屏上传端（Next.js + Tailwind + shadcn/ui 风格组件）
+- **给人**：四区 Web 工作台（今日 / 工作 / 上下文 / 设置）与截屏上传端（Next.js + Tailwind + shadcn/ui 风格组件）
 - **给 AI**：原生 MCP 服务（`@modelcontextprotocol/sdk`，**stdio + SSE 双传输**），让 Cursor / Windsurf 等 IDE Agent 直接读取缺陷复现步骤、截图与日志
 
 解决 Vibe Coding 中的**上下文撕裂**问题：测试人员在 Web 端粘贴截图即录缺陷，AI 通过 MCP 冷启动拉取完整上下文，修复后回填状态与 commit，看板实时同步。
@@ -26,18 +26,20 @@
 | 模块 | 能力 |
 | --- | --- |
 | 团队账户 | 注册/登录、角色 RBAC（Owner/Admin/Member/Viewer）、成员管理、注册开关；**首启三步向导**（建项目 → 接 AI → 邀队友） |
+| 今日工作台 | 跨项目只读行动台：**待我处理 / 待验收 / AI 进行中 / 正在干 / 今天**；点击直达工作项，卡住项标黄；完整统计退为二级 |
 | 缺陷看板 | 六列（待处理/进行中/已解决/验证中/已验证/已关闭），卡片直显截图缩略图与「谁 · 多久」，**拖拽变更状态**、多选批量、右键菜单、活动流；**<900px 移动端「录缺陷」常驻按钮** |
 | 随手记 | 瀑布流便签（实时 Markdown 渲染）、**置顶浮顶**、标签过滤、行内编辑（`G N`） |
 | 文件管理 | 我的/全部文件、三上传入口（**逐文件进度条 + 失败重试**）、图片灯箱、**在线文本查看（分片 + grep 高亮）**、删除与回收站 |
 | 快速录入 | 按 `C` → `Ctrl+V` 粘贴截图 → 异步上传生成缩略图 → 模板填充 → `⌘+Enter` 发送 |
 | 任务与项目 | 任务六列流转（待办 → 进行中 → 待验证 → 验证中 → 已完成，外加已取消；不能跳级，打回要写原因）、点开详情编辑标题/描述/优先级/负责人/**标签**、删除、转缺陷；项目表格、slug 复制（AI 匹配用）、归档、删除确认 |
 | 技能 | 团队的 Claude Code skill（SKILL.md + 附带文件）：选文件夹或 zip 上传、查看正文与附带文件、打包下载；挂在项目下或设为全团队通用；AI 经 MCP 查看、下载、上传 |
-| 当前项目 | 看板、任务、随手记、文件、技能各页共享当前项目并都带切换器，刷新后仍记得 |
-| MCP 密钥 | 三步创建向导、一次性明文、scope 最小权限、轮换（24h 宽限）、撤销、30 天用量图 |
+| 四区导航 | **今日 / 工作 / 上下文 / 设置** 四个一级入口；工作复用缺陷/任务看板，上下文复用随手记/文件/技能，设置收个人资料、密钥、偏好与团队管理；旧路由保留为二级/回滚入口 |
+| 当前项目 | 全站浮动顶栏统一切换当前项目，刷新后仍记得；页面内不再重复放切换器 |
+| MCP 密钥 | **每个成员自助**：三步创建向导、一次性明文、scope 不超过本人角色、轮换（24h 宽限）、撤销、30 天用量图；管理员可看团队全部并审计 |
 | AI 活动可见流 | 顶栏 ✦ 面板：全员可见「AI 刚才读了什么」（脱敏：密钥名/前缀/工具/耗时） |
 | 语义检索 | ⌘K 搜索内置 pgvector 语义近邻（`text-embedding-v3` 可配），独立「✦ 语义相似（AI）」分组 |
 | 项目切换 | 顶栏切换工作区，支持**中文/拼音/首字母模糊检索**（`yhzx` → 用户中心） |
-| 角色化导航 | 日常五项平铺，密钥/成员/设置收进「更多」折叠；非管理员见锁定态；「简洁模式」可隐藏次要入口 |
+| 视觉系统 | Geist Sans/Mono、暖黑/纸白 token、单一暖金强调色、四区浮动顶栏 + 移动端全屏菜单；按 `ai-design-skills` Part B 重做 |
 | 实时同步 | SSE 推送（Web）+ **PG LISTEN/NOTIFY 跨进程通道**（MCP stdio 写入 <1s 可达）；5s 轮询仅作双保险 |
 | MCP Tools | **27 个工具**（读取 11 + 写入 16）：见下方工具矩阵 |
 | 双主题 | Midnight 暗色（默认）/ Daylight 纸白，全快捷键驱动（? 查看）；全站 Lucide 图标 |
@@ -129,12 +131,16 @@ GET    /api/projects/:id                   项目详情
 PATCH  /api/projects/:id                   更新项目
 DELETE /api/projects/:id                   删除项目（级联清理附件文件）
 
+GET    /api/today                         今日工作台聚合（跨项目只读：待我处理/待验收/AI 进行中/正在干/今天）
+
 GET    /api/bugs?project_id=&status=&severity=&q=&page=&page_size=
 GET    /api/bugs/board/:projectId          看板分组（按状态机：open/in_progress/resolved/verifying/verified/closed）
 POST   /api/bugs                           创建缺陷（attachment_ids 关联上传产物）
 GET    /api/bugs/:bugId                    缺陷详情 + 附件清单
 PATCH  /api/bugs/:bugId                    更新（拖拽改状态走这里）
 DELETE /api/bugs/:bugId
+
+GET    /api/api-keys[?all=1]              我的密钥（Admin+ 传 all=1 看团队全部）
 
 GET    /api/tasks?project_id=&status=&priority=&label=&q=
 GET    /api/tasks/:taskId                  任务详情（含附件、可走的下一步）

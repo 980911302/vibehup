@@ -23,7 +23,7 @@ export function PendingAttachmentThumbs({ attachments, onRemove }: { attachments
             // eslint-disable-next-line @next/next/no-img-element
             <img src={a.public_url ?? ''} alt={a.file_name} className="h-full w-full object-cover" />
           ) : (
-            <div className="flex h-full w-full items-center justify-center p-1 text-center text-[10px] text-[var(--text-tertiary)]">{a.file_name}</div>
+            <div className="flex h-full w-full items-center justify-center p-1 text-center text-xs text-[var(--text-tertiary)]">{a.file_name}</div>
           )}
           <button
             className="absolute right-1 top-1 cursor-pointer rounded bg-black/60 p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"

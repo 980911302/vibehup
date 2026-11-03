@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { FolderPlus, ListTodo } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useCanEdit } from '@/lib/auth';
@@ -9,7 +9,6 @@ import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import type { Task } from '@/lib/api-types';
 import type { TaskStatus } from '@/lib/task-flow';
-import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 import { TaskBoard } from '@/components/tasks/TaskBoard';
 import { TaskDetailDialog } from '@/components/tasks/TaskDetailDialog';
 
@@ -50,11 +49,14 @@ export default function TasksPage() {
     void load();
   }, [load, store.taskRevision]);
 
-  const router = useRouter();
   const closeDetail = () => {
     setDetailId(null);
-    // 清掉 ?task=，下次从 ⌘K 点同一个任务还能再打开
-    if (window.location.search.includes('task=')) router.replace('/tasks');
+    // 清掉 ?task=，下次从 ⌘K 点同一个任务还能再打开；保留当前路径（/tasks 或 /work/tasks）
+    if (window.location.search.includes('task=')) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('task');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    }
   };
 
   const allLabels = useMemo(() => [...new Set(tasks.flatMap((t) => t.labels))].sort(), [tasks]);
@@ -81,7 +83,7 @@ export default function TasksPage() {
       await api.deleteTask(task.id);
       await load();
       toast.success(`已转为缺陷 ${bug.id.slice(0, 12)}…`, {
-        action: { label: '查看', onClick: () => { window.location.href = `/board?bug=${bug.id}`; } },
+        action: { label: '查看', onClick: () => { window.location.href = `/work/bugs?bug=${bug.id}`; } },
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '转缺陷失败');
@@ -91,7 +93,6 @@ export default function TasksPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
-        <CurrentProjectSwitcher />
         <span className="text-xs text-[var(--text-tertiary)]">{visible.length} 个任务</span>
         {allLabels.length > 0 && (
           <select

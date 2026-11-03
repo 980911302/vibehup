@@ -75,7 +75,8 @@ test('技能：选文件夹上传 → 渲染 SKILL.md → 查看附带文件', a
   fs.writeFileSync(path.join(root, 'scripts', 'check.sh'), 'echo 检查迁移\n');
 
   await gotoBoardWithSession(page, session);
-  await page.getByTestId('nav-skills').click();
+  await page.getByTestId('nav-context').click();
+  await page.getByTestId('context-skills').click();
   await page.getByTestId('skill-upload-open').click();
   await page.getByTestId('skill-pick-folder').setInputFiles(root);
   await expect(page.getByTestId('skill-picked')).toContainText('SKILL.md + 1 个附带文件');

@@ -2,44 +2,65 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Moon, Sun } from 'lucide-react';
+import {
+  ArrowRight,
+  BarChart3,
+  FolderKanban,
+  KeyRound,
+  LogOut,
+  Moon,
+  ShieldCheck,
+  Sun,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import { api } from '@/lib/api';
+import { PasswordCard } from '@/components/settings/PasswordCard';
+import { TeamCard } from '@/components/settings/TeamCard';
 import { useAuth } from '@/lib/auth';
 import { useTheme } from '@/lib/theme';
 import { useToast } from '@/lib/toast';
-import { NAV_SIMPLE_KEY, readNavFlag, writeNavFlag } from '@/lib/nav-prefs';
 import { cn } from '@/lib/utils';
 
-const AVATAR_COLORS = [
-  '#4C7DD9', '#3ECF8E', '#D4A76A', '#F2617A',
-  '#AF52DE', '#5AC8FA', '#F2A95C', '#8A94A6',
-];
+const ROLE_LABEL: Record<string, string> = {
+  owner: '拥有者',
+  admin: '管理员',
+  member: '成员',
+  viewer: '只读成员',
+};
 
-/** 设置页（步骤 07 §7.7）：个人 / 偏好 / 系统 */
+const inputClass =
+  'h-10 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent)]';
+
+/** 设置（R89）：我的 / 团队；密钥自助，Admin+ 管成员、项目与系统。 */
 export default function SettingsPage() {
   const { user, refreshUser, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const toast = useToast();
   const router = useRouter();
 
-  const [name, setName] = useState('');
-  const [oldPwd, setOldPwd] = useState('');
-  const [newPwd, setNewPwd] = useState('');
-  const [trashDays, setTrashDays] = useState('30');
-  const [savingName, setSavingName] = useState(false);
-  const [simpleMode, setSimpleMode] = useState(false);
-
+  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
   const isOwner = user?.role === 'owner';
+
+  const [tab, setTab] = useState<'me' | 'team'>('me');
+  const [name, setName] = useState('');
+  const [trashDays, setTrashDays] = useState('30');
+  const [activeKeys, setActiveKeys] = useState<number | null>(null);
+  const [savingName, setSavingName] = useState(false);
 
   useEffect(() => {
     if (user) setName(user.name);
-    setSimpleMode(readNavFlag(NAV_SIMPLE_KEY));
-    void api.getSettings().then((s) => {
-      if (s.attachment_trash_days) setTrashDays(s.attachment_trash_days);
-    });
+    void api
+      .getSettings()
+      .then((s) => {
+        if (s.attachment_trash_days) setTrashDays(s.attachment_trash_days);
+      })
+      .catch(() => undefined);
+    void api.me().then((me) => setActiveKeys(me.stats.active_keys)).catch(() => undefined);
   }, [user]);
 
   const saveName = async () => {
+    if (!name.trim()) return;
     setSavingName(true);
     try {
       await api.updateMe({ name: name.trim() });
@@ -52,184 +73,178 @@ export default function SettingsPage() {
     }
   };
 
-  const changePassword = async () => {
-    try {
-      await api.changePassword(oldPwd, newPwd);
-      setOldPwd('');
-      setNewPwd('');
-      toast.success('密码已修改，其他设备需重新登录');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : '修改失败');
-    }
-  };
-
-  const strength = (p: string) => {
-    let s = 0;
-    if (p.length >= 8) s++;
-    if (/[a-zA-Z]/.test(p) && /\d/.test(p)) s++;
-    if (p.length >= 12) s++;
-    return Math.min(s, 2);
-  };
-
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
-      {/* 个人资料 */}
-      <section className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5">
-        <h2 className="mb-4 text-sm font-semibold text-[var(--text-primary)]">个人资料</h2>
-        <div className="mb-4 flex items-center gap-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xl font-semibold text-[var(--brand)]">
-            {user?.name.slice(0, 1)}
-          </span>
-          <div className="flex flex-wrap gap-1.5">
-            {AVATAR_COLORS.map((c) => (
-              <button
-                key={c}
-                className="h-6 w-6 rounded-full border-2 border-transparent transition-transform hover:scale-110 cursor-pointer"
-                style={{ background: c }}
-                onClick={() => toast.info('头像色板：阶段二开放')}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <input
-            className="h-9 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none focus:border-[var(--brand)]"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="名字"
-          />
-          <button className="vh-btn" disabled={savingName || !name.trim()} onClick={saveName}>保存</button>
-        </div>
-      </section>
+    <div className="vh-page">
+      <header>
+        <p className="t-caption-4 flex items-center gap-2 text-[var(--text-tertiary)]">
+          <ShieldCheck size={14} /> 设置
+        </p>
+        <h1 className="t-heading-4 mt-2">我的与团队</h1>
+        <p className="t-body-3 mt-2 max-w-[680px] text-[var(--text-secondary)]">
+          个人资料、密钥与偏好在这里；成员、项目与系统由管理员统一管。
+        </p>
+      </header>
 
-      {/* 修改密码 */}
-      <section className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5">
-        <h2 className="mb-4 text-sm font-semibold text-[var(--text-primary)]">修改密码</h2>
-        <div className="space-y-2">
-          <input
-            type="password"
-            className="h-9 w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none focus:border-[var(--brand)]"
-            placeholder="当前密码"
-            value={oldPwd}
-            onChange={(e) => setOldPwd(e.target.value)}
-          />
-          <input
-            type="password"
-            className="h-9 w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none focus:border-[var(--brand)]"
-            placeholder="新密码（至少 8 位，含字母和数字）"
-            value={newPwd}
-            onChange={(e) => setNewPwd(e.target.value)}
-          />
-          {newPwd && (
-            <div className="flex items-center gap-2">
-              <div className="flex gap-1">
-                {[0, 1, 2].map((i) => (
-                  <span key={i} className={cn('h-1 w-8 rounded-full', strength(newPwd) > i ? (strength(newPwd) === 2 ? 'bg-[var(--ok)]' : 'bg-[var(--warn)]') : 'bg-[var(--bg-elevated)]')} />
-                ))}
-              </div>
-              <span className="text-[11px] text-[var(--text-tertiary)]">{['弱', '中', '强'][strength(newPwd)]}</span>
-            </div>
-          )}
-          <button className="vh-btn" disabled={!oldPwd || !newPwd} onClick={changePassword}>修改密码</button>
-        </div>
-      </section>
-
-      {/* 偏好 */}
-      <section className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5">
-        <h2 className="mb-4 text-sm font-semibold text-[var(--text-primary)]">偏好</h2>
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-[var(--text-secondary)]">主题</span>
-          <div className="flex gap-1 rounded-lg bg-[var(--bg-elevated)] p-0.5">
-            <button
-              className={cn('flex items-center gap-1.5 rounded-md px-3 py-1 text-xs cursor-pointer', theme === 'midnight' ? 'bg-[var(--bg-page)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]')}
-              onClick={() => setTheme('midnight')}
-            >
-              <Moon size={12} />
-              暗色
-            </button>
-            <button
-              className={cn('flex items-center gap-1.5 rounded-md px-3 py-1 text-xs cursor-pointer', theme === 'daylight' ? 'bg-[var(--bg-page)] text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]')}
-              onClick={() => setTheme('daylight')}
-            >
-              <Sun size={12} />
-              纸白
-            </button>
-          </div>
-        </div>
-        {/* 简洁模式（卡片 35）：侧边栏只保留日常五项，隐藏「更多」入口 */}
-        <div className="mt-4 flex items-center justify-between">
-          <div>
-            <span className="text-sm text-[var(--text-secondary)]">简洁模式</span>
-            <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">侧边栏只显示看板、文件、随手记、任务、项目；设置等收进命令面板（⌘K）直达</p>
-          </div>
-          <button
-            role="switch"
-            aria-checked={simpleMode}
-            className={cn(
-              'relative h-5 w-9 shrink-0 rounded-full border transition-colors cursor-pointer',
-              simpleMode ? 'border-[var(--gold)] bg-[var(--gold-bg)]' : 'border-[var(--border-strong)] bg-[var(--bg-elevated)]',
-            )}
-            onClick={() => {
-              const next = !simpleMode;
-              setSimpleMode(next);
-              writeNavFlag(NAV_SIMPLE_KEY, next);
-              toast.success(next ? '已开启简洁模式' : '已关闭简洁模式');
-            }}
-            data-testid="simple-mode-switch"
-          >
-            <span
-              className={cn(
-                'absolute top-0.5 h-3.5 w-3.5 rounded-full transition-all',
-                simpleMode ? 'left-4.5 bg-[var(--gold)]' : 'left-0.5 bg-[var(--text-tertiary)]',
-              )}
-            />
+      {isAdmin && (
+        <div className="vh-segmented mt-6">
+          <button className={cn(tab === 'me' && 'active')} onClick={() => setTab('me')} data-testid="settings-me">
+            <UserRound size={13} className="mr-1 inline" /> 我的
+          </button>
+          <button className={cn(tab === 'team' && 'active')} onClick={() => setTab('team')} data-testid="settings-team">
+            <Users size={13} className="mr-1 inline" /> 团队
           </button>
         </div>
-      </section>
+      )}
 
-      {/* 系统（Owner） */}
-      {isOwner && (
-        <section className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5">
-          <h2 className="mb-4 text-sm font-semibold text-[var(--text-primary)]">系统</h2>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-[var(--text-secondary)]">附件回收站保留天数</p>
-              <p className="text-[11px] text-[var(--text-tertiary)]">删除的附件文件在回收站保留指定天数后自动清理</p>
+      {tab === 'me' ? (
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          {/* 个人资料 */}
+          <section className="vh-card p-5">
+            <h2 className="t-title-3">个人资料</h2>
+            <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">AI 的动作会记在你名下，用真名方便团队辨认。</p>
+            <div className="mt-4 flex items-center gap-3">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-soft)] text-lg font-semibold text-[var(--accent)]">
+                {(user?.name ?? '?').slice(0, 1)}
+              </span>
+              <div className="min-w-0">
+                <p className="t-title-4 truncate">{user?.name}</p>
+                <p className="t-caption-5 truncate text-[var(--text-tertiary)]">{user?.email}</p>
+                <p className="t-caption-4 mt-0.5 text-[var(--accent)]">{ROLE_LABEL[user?.role ?? ''] ?? user?.role}</p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="mt-4 flex gap-2">
               <input
-                className="h-9 w-20 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2 text-sm outline-none"
+                className={inputClass}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="名字"
+                aria-label="名字"
+              />
+              <button className="vh-btn shrink-0" disabled={savingName || !name.trim()} onClick={() => void saveName()}>
+                保存
+              </button>
+            </div>
+          </section>
+
+          {/* 密钥 */}
+          <section className="vh-card p-5">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 className="t-title-3">密钥与连接</h2>
+                <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">每个客户端一把；密钥即你的个人 AI 身份。</p>
+              </div>
+              <KeyRound size={18} className="text-[var(--text-tertiary)]" />
+            </div>
+            <p className="t-heading-5 mt-4">{activeKeys === null ? '…' : activeKeys} 把活跃密钥</p>
+            <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">权限不超过你的角色；撤销立即生效，轮换保留 24 小时宽限。</p>
+            <button className="vh-btn mt-4" onClick={() => router.push('/keys')} data-testid="settings-keys">
+              管理我的密钥 <ArrowRight size={14} />
+            </button>
+          </section>
+
+          <PasswordCard />
+
+          {/* 偏好 */}
+          <section className="vh-card p-5">
+            <h2 className="t-title-3">偏好</h2>
+            <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">默认暗色；纸白适合白天与打印。</p>
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <span className="t-caption-1 text-[var(--text-secondary)]">主题</span>
+              <div className="vh-segmented">
+                <button className={cn(theme === 'midnight' && 'active')} onClick={() => setTheme('midnight')}>
+                  <Moon size={13} className="mr-1 inline" /> 暗色
+                </button>
+                <button className={cn(theme === 'daylight' && 'active')} onClick={() => setTheme('daylight')}>
+                  <Sun size={13} className="mr-1 inline" /> 纸白
+                </button>
+              </div>
+            </div>
+            <p className="t-caption-5 mt-4 text-[var(--text-tertiary)]">
+              快捷键：<span className="vh-kbd">G</span> 后按 <span className="vh-kbd">D</span> 去今日，
+              <span className="vh-kbd">W</span> 去工作，<span className="vh-kbd">C</span> 去上下文。
+            </p>
+          </section>
+
+          <section className="vh-card flex flex-wrap items-center justify-between gap-3 p-5 lg:col-span-2">
+            <div>
+              <h2 className="t-title-3">退出登录</h2>
+              <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">退出后需重新登录才能继续使用。</p>
+            </div>
+            <button
+              className="vh-btn ghost danger"
+              onClick={async () => {
+                await logout();
+                router.replace('/login');
+              }}
+            >
+              <LogOut size={14} /> 退出登录
+            </button>
+          </section>
+        </div>
+      ) : !isAdmin ? (
+        <div className="vh-card mt-6">
+          <div className="vh-empty">
+            <span className="vh-empty-icon">
+              <ShieldCheck size={22} />
+            </span>
+            <p className="vh-empty-title">团队设置需要管理员</p>
+            <p className="vh-empty-hint">让拥有者或管理员把你调整为管理员后，才能管理成员、项目与系统。</p>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+          <TeamCard
+            icon={Users}
+            title="成员与角色"
+            description="邀请成员、调整角色、移除离职人员；密钥随账号停用。"
+            action="管理成员"
+            onClick={() => router.push('/members')}
+          />
+          <TeamCard
+            icon={FolderKanban}
+            title="项目"
+            description="新建、归档与删除项目；项目是 AI 匹配仓库的入口。"
+            action="管理项目"
+            onClick={() => router.push('/projects')}
+          />
+          <TeamCard
+            icon={BarChart3}
+            title="完整统计"
+            description="今天产出、还剩多少、谁在做什么、按密钥归集与 14 天趋势。"
+            action="看统计"
+            onClick={() => router.push('/stats')}
+          />
+          <section className="vh-card p-5">
+            <h2 className="t-title-3 flex items-center gap-2">
+              <ShieldCheck size={16} /> 系统
+            </h2>
+            <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">附件回收站保留天数；到点自动清理。</p>
+            <div className="mt-4 flex items-end gap-2">
+              <input
+                className={cn(inputClass, 'w-24')}
                 value={trashDays}
                 onChange={(e) => setTrashDays(e.target.value)}
+                aria-label="附件回收站保留天数"
               />
               <button
                 className="vh-btn"
+                disabled={!isOwner}
                 onClick={async () => {
-                  await api.updateSettings({ attachment_trash_days: trashDays });
-                  toast.success('已保存');
+                  try {
+                    await api.updateSettings({ attachment_trash_days: trashDays });
+                    toast.success('已保存');
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : '保存失败');
+                  }
                 }}
               >
                 保存
               </button>
             </div>
-          </div>
-        </section>
+            {!isOwner && <p className="t-caption-5 mt-2 text-[var(--text-tertiary)]">仅拥有者可修改系统设置。</p>}
+          </section>
+        </div>
       )}
-
-      {/* 危险区 */}
-      <section className="rounded-[14px] border border-[var(--danger)]/40 p-5">
-        <h2 className="mb-2 text-sm font-semibold text-[var(--danger)]">退出登录</h2>
-        <p className="mb-3 text-xs text-[var(--text-tertiary)]">退出后需重新登录才能继续使用</p>
-        <button
-          className="vh-btn ghost danger text-xs"
-          onClick={async () => {
-            await logout();
-            router.replace('/login');
-          }}
-        >
-          退出登录
-        </button>
-      </section>
     </div>
   );
 }
