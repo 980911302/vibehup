@@ -501,8 +501,7 @@
 }
 .vh-menu-item:hover { background: var(--bg-panel); color: var(--text-primary); }
 
-/* ---- 随手记（卡片 27）：瀑布流卡片 + Markdown 排版 + 底部标签栏 ---- */
-.vh-note-card { break-inside: avoid; }
+/* ---- 随手记（卡片 27）：Markdown 排版 + 底部标签栏 ---- */
 .vh-note-prose { font-size: 14px; line-height: 1.65; color: var(--text-secondary); word-break: break-word; }
 .vh-note-prose > :first-child { margin-top: 0; }
 .vh-note-prose > :last-child { margin-bottom: 0; }
@@ -524,6 +523,14 @@
 .vh-note-prose hr { border: none; border-top: 1px solid var(--border-subtle); margin: 8px 0; }
 .vh-note-prose table { border-collapse: collapse; margin: 0 0 6px; font-size: 12px; }
 .vh-note-prose th, .vh-note-prose td { border: 1px solid var(--border-subtle); padding: 3px 8px; }
+/* 详情阅读栏（R93）：列表是摘要，全文才需要标题层级与更松的行距 */
+.vh-note-prose.vh-note-detail { line-height: 1.7; }
+.vh-note-prose.vh-note-detail h1 { font-size: 22px; line-height: 30px; margin: 0 0 10px; }
+.vh-note-prose.vh-note-detail h2 { font-size: 17px; line-height: 24px; margin: 14px 0 6px; }
+.vh-note-prose.vh-note-detail h3 { font-size: 15px; line-height: 22px; margin: 12px 0 4px; }
+.vh-note-prose.vh-note-detail p { margin-bottom: 8px; }
+.vh-note-prose.vh-note-detail ul, .vh-note-prose.vh-note-detail ol { margin-bottom: 8px; }
+.vh-note-prose.vh-note-detail li { margin: 3px 0; }
 
 /* 浮层遮罩（⌘K 命令面板与 ? 快捷键帮助共用）。
    原先只写在 ShortcutsHelp 的 styled-jsx 里，帮助面板没打开时规则不存在，

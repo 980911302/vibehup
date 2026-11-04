@@ -35,11 +35,12 @@ test('任务：六列、详情改标签、提交验证、打回写原因、删�
   const auth = { authorization: `Bearer ${session.token}` };
   const created = await session.api.post('/api/tasks', { headers: auth, data: { project_id: session.project.id, title: '接入企业微信扫码登录' } });
   expect(created.status(), await created.text()).toBe(201);
+  const createdTask = await created.json();
   await gotoBoardWithSession(page, session);
   await page.getByTestId('nav-tasks').click();
 
   await expect(page.locator('[data-testid^="task-column-"]')).toHaveCount(4);
-  await page.getByText('接入企业微信扫码登录').click();
+  await page.getByTestId(`task-card-${createdTask.id}`).click();
   const detail = page.getByTestId('task-detail');
   await expect(detail).toBeVisible();
 
