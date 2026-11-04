@@ -8,7 +8,7 @@ import { useCanEdit } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import type { Task } from '@/lib/api-types';
-import type { TaskStatus } from '@/lib/task-flow';
+import { TASK_STATUS_LABELS, type TaskStatus } from '@/lib/task-flow';
 import { TaskBoard } from '@/components/tasks/TaskBoard';
 import { TaskDetailDialog } from '@/components/tasks/TaskDetailDialog';
 
@@ -92,6 +92,8 @@ export default function TasksPage() {
     }
   };
 
+  const mobileTasks = hideTerminal ? visible.filter((t) => t.status !== 'done' && t.status !== 'cancelled') : visible;
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
@@ -112,7 +114,19 @@ export default function TasksPage() {
       </div>
 
       <div className="flex-1 overflow-hidden p-4">
-        <TaskBoard tasks={visible} canEdit={canEdit} hideTerminal={hideTerminal} onOpen={setDetailId} onMove={(t, to) => void move(t, to)} />
+        <div className="hidden h-full md:block">
+          <TaskBoard tasks={visible} canEdit={canEdit} hideTerminal={hideTerminal} onOpen={setDetailId} onMove={(t, to) => void move(t, to)} />
+        </div>
+        <div className="h-full space-y-2 overflow-y-auto md:hidden">
+          {mobileTasks.length === 0 && <p className="t-caption-2 py-10 text-center text-[var(--text-tertiary)]">当前筛选下没有任务。</p>}
+          {mobileTasks.map((t) => (
+            <button key={t.id} className="vh-card w-full p-3 text-left" onClick={() => setDetailId(t.id)}>
+              <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-tertiary)]">{TASK_STATUS_LABELS[t.status as TaskStatus]}</span>
+              <p className="t-caption-1 mt-1.5 line-clamp-2 text-[var(--text-primary)]">{t.title}</p>
+              <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">{t.assignee?.name ?? '未指派'}</p>
+            </button>
+          ))}
+        </div>
       </div>
 
       <Suspense fallback={null}>

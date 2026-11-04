@@ -15,6 +15,8 @@ import { BatchBar } from '@/components/bugs/BatchBar';
 import { BugContextMenu } from '@/components/bugs/BugContextMenu';
 import { BoardFilterPanel, WhoSegment } from '@/components/bugs/BoardFilterControls';
 import { activeFilterCount, filterBoard, type WhoFilter } from '@/lib/bug-filters';
+import { BUG_STATUS_LABELS, type Bug } from '@/lib/api-types';
+import { BUG_STATUSES } from '@/lib/bug-flow';
 
 /**
  * 地址栏 ?bug=<id> 打开详情、?new=1 打开录入（命令面板/今日页跨页跳转用）。
@@ -164,6 +166,9 @@ export default function BoardPage() {
 
   const activeFilters = activeFilterCount(boardFilters);
 
+  const mobileStatuses = hideTerminal ? BUG_STATUSES.filter((s) => s !== 'verified' && s !== 'closed') : BUG_STATUSES;
+  const mobileBugs = mobileStatuses.flatMap((status) => (filteredBoard[status] ?? []).map((bug: Bug) => ({ bug, status })));
+
   return (
     <div className="flex h-full flex-col">
       {/* 筛选条 */}
@@ -218,6 +223,7 @@ export default function BoardPage() {
 
       {/* 看板 */}
       <div className="flex-1 overflow-hidden p-4">
+        <div className="hidden h-full md:block">
         <BugBoard
           board={filteredBoard}
           thumbnails={thumbnails}
@@ -239,6 +245,28 @@ export default function BoardPage() {
             setMenu({ bugId, x: e.clientX, y: e.clientY });
           }}
         />
+        </div>
+
+        {/* 移动端：看板列横向滚动不适合小屏，改为按状态的纵向列表 */}
+        <div className="h-full space-y-2 overflow-y-auto md:hidden">
+          {mobileBugs.length === 0 && (
+            <p className="t-caption-2 py-10 text-center text-[var(--text-tertiary)]">当前筛选下没有问题。</p>
+          )}
+          {mobileBugs.map(({ bug, status }) => (
+            <button
+              key={bug.id}
+              className="vh-card w-full p-3 text-left"
+              onClick={() => setDetailId(bug.id)}
+            >
+              <div className="flex items-center gap-2">
+                <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-tertiary)]">{BUG_STATUS_LABELS[status]}</span>
+                <span className="t-caption-5 text-[var(--text-tertiary)]">{bug.priority}</span>
+              </div>
+              <p className="t-caption-1 mt-1.5 line-clamp-2 text-[var(--text-primary)]">{bug.title}</p>
+              <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">{bug.assignee?.name ?? '未指派'}</p>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* 批量栏 */}

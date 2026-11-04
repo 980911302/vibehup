@@ -138,8 +138,8 @@ export default function MembersPage() {
       )}
 
       {/* 成员表格 */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        <table className="w-full text-sm" data-testid="members-table">
+      <div className="flex-1 overflow-x-auto overflow-y-auto px-4 py-3">
+        <table className="w-full min-w-[680px] text-sm" data-testid="members-table">
           <thead>
             <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
               <th className="pb-2 pl-2 font-medium">成员</th>

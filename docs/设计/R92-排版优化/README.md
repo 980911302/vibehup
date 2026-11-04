@@ -22,3 +22,5 @@
 - `before-context.png`：旧上下文页（全宽工具条 + 记忆色带 + 空态在底部）。
 - `after-context-light.png` / `after-context-dark.png`：新上下文页。
 - `after-work-light.png`：新工作页头/队列。
+- `after-mobile-work-bugs.png` / `after-mobile-work-tasks.png`：390px 下看板改为纵向列表，不再横向拖列。
+- `after-mobile-members.png`：成员表可在容器内横向滚动，不再撑破页面。
