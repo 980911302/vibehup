@@ -21,7 +21,7 @@ export interface OwnerSession {
   api: APIRequestContext;
   token: string;
   user: { id: string; name: string };
-  project: { id: string; slug: string };
+  project: { id: string; name: string; slug: string };
 }
 
 let seq = 0;
@@ -76,7 +76,7 @@ export async function createOwnerWithProject(projectName = 'E2E 项目'): Promis
   });
   expect(projectRes.status(), await projectRes.text()).toBe(201);
   const project = await projectRes.json();
-  return { api, token, user: { id: cred.userId, name: cred.name }, project: { id: project.id, slug: project.slug } };
+  return { api, token, user: { id: cred.userId, name: cred.name }, project: { id: project.id, name: project.name, slug: project.slug } };
 }
 
 /** 通过管理接口建一个 member 账号（用于指派场景）；/api/users 响应为 { user, one_time_password } */
@@ -102,6 +102,8 @@ export async function gotoBoardWithSession(page: Page, session: OwnerSession): P
   );
   await page.goto('/work/bugs');
   await expect(page.getByPlaceholder('搜索缺陷')).toBeVisible();
+  // 等 store 恢复当前项目再操作：项目未就绪时点「录缺陷」会误触发首启向导
+  await expect(page.getByTestId('project-switcher')).toContainText(session.project.name);
 }
 
 /** 打开「录缺陷」对话框并等标题输入框就绪 */
