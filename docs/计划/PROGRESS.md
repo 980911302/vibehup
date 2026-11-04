@@ -4,10 +4,11 @@
 前置：仓库已纳入 git（main 含 R85，合并提交 6a8e398；每轮结束按 AGENTS.md §10 提交）；
       测试库 vibehub-test-db(55432，破坏性，只供测试/acceptance.sh)；
       起库脚本可自动拉起已停止的容器；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB
-加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/09（冻结范围）→ 对应卡片的归属文档
+加载顺序：vibehub-build 技能 → vibehub/AGENTS.md（§0.1 默认任务通道）→ docs/计划/09（冻结范围）→ 对应卡片的归属文档
 F0 查询（只读）：docker exec vibehub psql -U vibehub -d vibehub -c
       "SELECT id, title, status FROM bugs WHERE 'trial' = ANY(labels) AND status IN ('open','in_progress') ORDER BY created_at"
 边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
+默认通道：所有 Agent 按 AGENTS.md §0.1 连接 VibeHub MCP；每个请求/缺陷/任务在 VibeHub 留卡并按状态机流转，失败要报告、禁止静默绕过
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
       MCP 工具多项目时必须传 project_slug；MCP stdio 子进程必须显式传 DATABASE_URL（否则继承 server/.env 的 dev 库）
 R84 本机须知：服务已改为 Docker 单容器 vibehub（1.7，:3210，卷 vibehub_vibehub-pg / vibehub_vibehub-data），vibehub-dev-db 及其卷已按用户要求删除——
@@ -255,10 +256,13 @@ R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI
 
 | R88 | 用户要求美化 OAuth 登录授权页；将裸 HTML 改为复用 Daylight 主题的双栏授权卡片，中文权限按实际 scope 展示，包含写入/删除说明；账号名、密码显隐、取消、错误反馈与手机布局完整；登录失败保留有效 nonce，成功时原子消费，取消通过 OAuth callback 返回 access_denied/state | 本地及远端 npm run build exit 0；更新前已归档旧 oauth 源码/产物；重启后 health 200；浏览器查看线上真实授权页，390px 手机预览；未执行授权提交或自动化测试 | 用户下次连接时自动展示新页面；旧授权请求受原有内存生命周期限制，重启前打开的页面需重新从应用发起连接。技能：沿用构建/完成前验证流程，无新通用技能 |
 
+| R89 | 用户要求把「VibeHub MCP 作为默认任务通道」写进强制契约，让所有 Agent 按同一标准执行，用真实使用验证产品优缺点——在 AGENTS.md 新增 §0.1「默认任务通道契约（R89，强制）」：连接与密钥纪律、开工顺序、必须落卡、失败不得静默绕过、试用反馈五条；PROGRESS §4 登记、§5 起点指令同步；不改代码/接口 | `git diff --check` 通过；纯文档变更，未跑代码门禁（无代码改动） | 所有后续 Agent（定时构建/人工会话/Super Agent 执行器/IDE Agent）开工前按 §0.1 执行；真实任务、流转与卡点沉淀为试用反馈，用于暴露产品优缺点。技能：无新通用工作流；`vibehub-mcp` 技能无需改流转规则 |
+
 ## 4. 偏差与调整记录（发现 plan 问题必须在此登记，格式：问题→决策→影响）
 
 | 时间 | 问题 | 决策/调整 | 影响范围 |
 | --- | --- | --- | --- |
+| R89 | 用户要求把「VibeHub MCP 作为默认任务通道」写到强制契约里，让所有 Agent 按同一标准执行、用真实使用验证产品优缺点 | AGENTS.md 新增 §0.1「默认任务通道契约（R89，强制）」：连接方式与密钥纪律、开工先读 instructions 与 `get_project_context`、每个请求/缺陷/任务必须建卡并按状态机流转、交付证据与交接、失败不得静默绕过、试用反馈入口；PROGRESS §3/§5 同步 | 所有参与 VibeHub 的 Agent 行为；纯文档，无代码/接口/数据变更 |
 | R87 | 用户在试用冻结期要求接入 ChatGPT Work，并提供现有 VibeHub MCP 凭证供连接验证 | 按用户请求定向解冻，增加 Streamable HTTP / MCP Events，并提供 Admin+ 密钥查看/复制；普通 MCP 工具签名与 `/mcp/sse` 兼容性保持 | MCP 传输、订阅持久化、业务事件投递、密钥管理、README 与 MCP 契约 |
 | R1 | 计划文档 §1.3.0 写 pg17/5432/dev，但 pg17 镜像需长时间拉取，本机已有 pgvector/pgvector:pg16 | 用 pg16（00-总览技术栈声明允许 16/17）；容器名 vibehub-test-db、端口 55432、密码 test，与步骤 05 的 scripts/test-db.sh 约定对齐 | 测试库/开发库连接串；部署镜像规格以 03 规范 §2 的 pg17 为准不变（构建时拉取） |
 | R1 | core/password.ts（v2 预备模块）util.promisify(scrypt) 不支持 options 参数，tsc 报错阻塞验证门禁 | 改为手动 new Promise 包装 scryptCb（属卡片 6 内容，因阻塞本轮验证提前修） | core/password.ts；卡片 6 接线时直接复用 |
@@ -364,14 +368,15 @@ R85 须知：统计页口径 =「经手人」取最近一次改状态的人（AI
 
 ```
 状态：🧊 试用冻结期（R77 起，见 docs/计划/09）+ R80 / R81 / R83 / R85 / R87 定向解冻；R80/R81/R83/R84 已合并 main；R85 统计页 /stats（只读聚合：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势）已完成并经 PR #6 合入 main（合并提交 6a8e398）；R87 HTTPS/OAuth/工具读取与11事件发现已打通，此前原生订阅被云主机出站回调 DNS/TLS 阻塞，现已用用户指定内网 Mac 中转修复；后台 MCP 会话恢复已部署，原生订阅与新任务自动读取完整描述的闭环已验证；卡片 51 / 39 已按 R78 彻底删除；第三批（通知、AI 活动流可读化、技能版本、跨项目我的待办）留待试用后再定
-下一步：R87 连接与原生事件闭环、R88 OAuth 授权页美化已部署（未执行授权提交）；保留现有 Work 监控（仅验证项目）；按用户后续要求推进，冻结期常规工作先查 F0。若用户希望其他项目或执行任务，先明确监控范围与执行行为；不要默认为所有项目执行代码。运维须知：中转依赖指定 Mac 在线、用户会话与本机 Clash；源码/环境回滚备份已留在云主机。
+下一步：所有 Agent 开工前按 AGENTS.md §0.1 连接 VibeHub MCP 并落卡；R87 连接与原生事件闭环、R88 OAuth 授权页美化已部署（未执行授权提交）；保留现有 Work 监控（仅验证项目）；按用户后续要求推进，冻结期常规工作先查 F0。若用户希望其他项目或执行任务，先明确监控范围与执行行为；不要默认为所有项目执行代码。运维须知：中转依赖指定 Mac 在线、用户会话与本机 Clash；源码/环境回滚备份已留在云主机。
 前置：仓库已纳入 git（main 含 R85，合并提交 6a8e398；每轮结束按 AGENTS.md §10 提交）；
       测试库 vibehub-test-db(55432，破坏性，只供测试/acceptance.sh)；
       起库脚本可自动拉起已停止的容器；浏览器回归统一走 Playwright E2E（`tests/e2e/`，经 acceptance.sh 第 5 步），不再依赖不稳定的 IAB
-加载顺序：vibehub-build 技能 → vibehub/AGENTS.md → docs/计划/09（冻结范围）→ 对应卡片的归属文档
+加载顺序：vibehub-build 技能 → vibehub/AGENTS.md（§0.1 默认任务通道）→ docs/计划/09（冻结范围）→ 对应卡片的归属文档
 F0 查询（只读）：docker exec vibehub psql -U vibehub -d vibehub -c
       "SELECT id, title, status FROM bugs WHERE 'trial' = ANY(labels) AND status IN ('open','in_progress') ORDER BY created_at"
 边界：冻结期禁止新功能（新增用户可见功能/入口/配置项即算）；新想法只登记 §4「试用后评审」
+默认通道：所有 Agent 按 AGENTS.md §0.1 连接 VibeHub MCP；每个请求/缺陷/任务在 VibeHub 留卡并按状态机流转，失败要报告、禁止静默绕过
 R76 须知：附件图片只用 serializeAttachment 返回的签名 public_url（禁自拼 /raw）；刷新令牌只能经 lib/token-refresh.ts；
       MCP 工具多项目时必须传 project_slug；MCP stdio 子进程必须显式传 DATABASE_URL（否则继承 server/.env 的 dev 库）
 R84 本机须知：服务已改为 Docker 单容器 vibehub（1.7，:3210，卷 vibehub_vibehub-pg / vibehub_vibehub-data），vibehub-dev-db 及其卷已按用户要求删除——

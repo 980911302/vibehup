@@ -26,6 +26,16 @@
 > **R90（用户决定，验收闭环第一切片）**：给缺陷/任务加交付证据包 `evidence`（JSONB：commit / pr_url / tests / changed_files / screenshots / notes / no_code_reason）；AI 在 `update_bug_status` / `update_task` 标记 resolved/review 时写入，人也可在详情页补。今日待验收卡展示证据摘要；验证中但无证据时只能「补证据」，不能直接「验收通过」；非代码交付可写 `no_code_reason`。MCP `get_bug_detail` / `get_task_detail` / update 返回值带 evidence。MCP 身份与交接已落：`get_me`（人类/密钥/能力/项目）、`list_members`（active 成员，非 admin 不带邮箱）、`handoff_work`（缺陷写活动流、任务记用量；viewer 拒绝）；站内通知已落（顶栏铃铛+抽屉、未读、全部已读；交接/待验收/打回触发；不做每日摘要/飞书）；项目记忆已落：上下文页顶部「项目记忆」= 项目一句话 + 置顶笔记（最多 5 条），`GET /api/projects/:id/memory` 与 `get_project_context.memory` 同源；不开启向量。>
 > **R91（阶段 A，用户批准「按目前的去调整」）**：Work Item 统一读模型落地 `GET /api/work-items?project_id=&scope=my|verify|active`——复用 `/api/today` 聚合后按项目切片，返回 `{items, scope, project_id}`；工作队列改用该接口，旧 `/api/bugs`、`/api/tasks` 与表结构保持不动。表合并按 `docs/设计/R91-WorkItem合并方案.md` 等阶段 B，不在本刀。
 
+## 0.1 默认任务通道契约（R89，强制）
+
+> **所有参与本项目的 Agent（定时构建、人工会话、Super Agent 执行器、IDE Agent、验证 / 运维 Agent）必须把 VibeHub MCP 作为默认任务与缺陷通道。** 这不是建议，是开工前置条件；任何 Agent 不得只在本地、聊天窗口或自己的上下文里推进任务而不在 VibeHub 留卡。
+
+- **连接**：按执行环境提供的 VibeHub MCP 地址与密钥连接（优先 Streamable HTTP `/mcp`，旧客户端用 `/mcp/sse`）。密钥只进部署环境变量或本机 600 权限配置，**禁止**写入仓库、文档、示例、提交信息或聊天；权限按最小 scope 申请，换机 / 人员变动即撤销。
+- **开工顺序**：连接后先读服务端 `initialize` 下发的 `instructions`，确认「我代表谁、有哪些 scope、交接规则是什么」，再调 `get_project_context` 读当前项目与已有卡片；多项目时必须传 `project_slug`，按当前代码仓库对应的项目选择，禁止猜项目或把工作写进别的项目。
+- **必须落卡**：每个用户请求、缺陷、任务先 `search` 查重，再在 VibeHub 建卡 / 认领；按 §5 状态流转协议推进（不能跳级），开始做就改「进行中」，做完写 `resolution_notes` 与交付证据（commit / PR / 测试 / 截图），交接按服务端下发的交接规则写清原因。**看板状态是团队看到的事实**：不得只在回复里说「做完了」而卡片停在旧状态。
+- **失败处理**：MCP 连不上、密钥失效或工具报错时，先重试并报告具体错误；确需离线处理，必须在回复 / 卡片中说明原因与补记计划，**禁止静默绕过通道**继续干活。
+- **目的与反馈**：让真实任务、真实流转、真实卡点都经过 VibeHub，用产品自己的数据暴露优缺点（对应 `docs/计划/09` 真实试用）；任何 Agent 发现通道难用、信息缺失或流程卡住，按试用反馈登记到 `docs/计划/PROGRESS.md` §4，而不是私自换一套做法。
+
 ## 1. 权威文档索引（施工前必读）
 
 | 文档 | 作用 |
