@@ -25,7 +25,7 @@ function ActiveRow({ item, now, onOpen }: { item: StatsActiveItem; now: number; 
       data-testid="stats-active-row"
       data-stale={item.stale ? 'true' : 'false'}
     >
-      <span className={`rounded px-1.5 py-0.5 text-[10px] shrink-0 ${item.stale ? 'bg-[var(--danger)]/15 text-[var(--danger)]' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'}`}>
+      <span className={`rounded px-1.5 py-0.5 text-xs shrink-0 ${item.stale ? 'bg-[var(--danger)]/15 text-[var(--danger)]' : 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]'}`}>
         {statusLabel(item)}
       </span>
       <span className="flex-1 truncate text-[var(--text-primary)]">{item.title}</span>

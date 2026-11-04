@@ -10,6 +10,17 @@ export interface PublicUser {
   created_at: string;
 }
 
+/** 交付证据包（R90）：AI/人标记 resolved/review 时留下，验收先看证据 */
+export interface DeliveryEvidence {
+  commit?: string;
+  pr_url?: string;
+  tests?: string;
+  changed_files?: string[];
+  screenshots?: string[];
+  notes?: string;
+  no_code_reason?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -45,6 +56,7 @@ export interface Bug {
   git_commit_hash: string | null;
   created_by: 'human' | 'ai';
   resolution_notes: string | null;
+  evidence: DeliveryEvidence | null;
   attachment_count: number;
   comment_count: number;
   created_at: string;
@@ -84,6 +96,7 @@ export interface Task {
   assignee: { id: string; name: string } | null;
   /** 最近一次打回的原因 */
   reopen_reason: string | null;
+  evidence: DeliveryEvidence | null;
   reopened_count: number;
   status_changed_at: string | null;
   status_actor: StatusActor | null;
@@ -204,6 +217,7 @@ export interface ApiKeyView {
   /** 明文是否可恢复（R87：false = 建于加密存储之前或签名密钥已更换） */
   can_reveal: boolean;
   created_by: string | null;
+  created_by_name: string | null;
   created_at: string;
 }
 
@@ -298,4 +312,30 @@ export function formatTime(iso: string): string {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** 站内通知（R90） */
+export interface NotificationItem {
+  id: string;
+  type: 'handoff' | 'verify' | 'reopen' | 'assigned' | string;
+  title: string;
+  body: string | null;
+  entity_type: 'bug' | 'task' | null;
+  entity_id: string | null;
+  project_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  items: NotificationItem[];
+  total: number;
+  unread: number;
+  has_more: boolean;
+}
+
+export interface ProjectMemory {
+  project: { id: string; name: string; slug: string; description: string | null };
+  decisions: { id: string; content: string; tags: string[]; pinned_at: string | null; updated_at: string }[];
+  updated_at: string;
 }

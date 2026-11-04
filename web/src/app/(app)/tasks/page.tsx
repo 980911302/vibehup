@@ -1,15 +1,14 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { FolderPlus, ListTodo } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { useCanEdit } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import type { Task } from '@/lib/api-types';
-import type { TaskStatus } from '@/lib/task-flow';
-import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
+import { TASK_STATUS_LABELS, type TaskStatus } from '@/lib/task-flow';
 import { TaskBoard } from '@/components/tasks/TaskBoard';
 import { TaskDetailDialog } from '@/components/tasks/TaskDetailDialog';
 
@@ -30,6 +29,8 @@ function TaskUrlSync({ onOpen }: { onOpen: (taskId: string) => void }) {
 /** 任务页：六列流转（待办 → 进行中 → 待验证 → 验证中 → 已完成 / 已取消）、标签筛选、点卡片看详情 */
 export default function TasksPage() {
   const store = useVibeHub();
+  const pathname = usePathname();
+  const hideTerminal = pathname.startsWith('/work');
   const toast = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [labelFilter, setLabelFilter] = useState('');
@@ -50,11 +51,14 @@ export default function TasksPage() {
     void load();
   }, [load, store.taskRevision]);
 
-  const router = useRouter();
   const closeDetail = () => {
     setDetailId(null);
-    // 清掉 ?task=，下次从 ⌘K 点同一个任务还能再打开
-    if (window.location.search.includes('task=')) router.replace('/tasks');
+    // 清掉 ?task=，下次从 ⌘K 点同一个任务还能再打开；保留当前路径（/tasks 或 /work/tasks）
+    if (window.location.search.includes('task=')) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('task');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    }
   };
 
   const allLabels = useMemo(() => [...new Set(tasks.flatMap((t) => t.labels))].sort(), [tasks]);
@@ -81,17 +85,18 @@ export default function TasksPage() {
       await api.deleteTask(task.id);
       await load();
       toast.success(`已转为缺陷 ${bug.id.slice(0, 12)}…`, {
-        action: { label: '查看', onClick: () => { window.location.href = `/board?bug=${bug.id}`; } },
+        action: { label: '查看', onClick: () => { window.location.href = `/work/bugs?bug=${bug.id}`; } },
       });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '转缺陷失败');
     }
   };
 
+  const mobileTasks = hideTerminal ? visible.filter((t) => t.status !== 'done' && t.status !== 'cancelled') : visible;
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-2">
-        <CurrentProjectSwitcher />
         <span className="text-xs text-[var(--text-tertiary)]">{visible.length} 个任务</span>
         {allLabels.length > 0 && (
           <select
@@ -109,7 +114,19 @@ export default function TasksPage() {
       </div>
 
       <div className="flex-1 overflow-hidden p-4">
-        <TaskBoard tasks={visible} canEdit={canEdit} onOpen={setDetailId} onMove={(t, to) => void move(t, to)} />
+        <div className="hidden h-full md:block">
+          <TaskBoard tasks={visible} canEdit={canEdit} hideTerminal={hideTerminal} onOpen={setDetailId} onMove={(t, to) => void move(t, to)} />
+        </div>
+        <div className="h-full space-y-2 overflow-y-auto md:hidden">
+          {mobileTasks.length === 0 && <p className="t-caption-2 py-10 text-center text-[var(--text-tertiary)]">当前筛选下没有任务。</p>}
+          {mobileTasks.map((t) => (
+            <button key={t.id} className="vh-card w-full p-3 text-left" onClick={() => setDetailId(t.id)}>
+              <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-tertiary)]">{TASK_STATUS_LABELS[t.status as TaskStatus]}</span>
+              <p className="t-caption-1 mt-1.5 line-clamp-2 text-[var(--text-primary)]">{t.title}</p>
+              <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">{t.assignee?.name ?? '未指派'}</p>
+            </button>
+          ))}
+        </div>
       </div>
 
       <Suspense fallback={null}>

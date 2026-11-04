@@ -1,21 +1,26 @@
 import type { ApiKey, Prisma } from '@prisma/client';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { prisma } from '../core/prisma.js';
 import { ids } from '../core/ids.js';
 import { hashToken } from '../core/tokens.js';
-import { NotFoundError, ValidationError } from '../core/errors.js';
+import { ForbiddenError, NotFoundError, ValidationError } from '../core/errors.js';
 import { decryptSecret, encryptSecret } from '../core/key-cipher.js';
-import { isKnownScope, SCOPES, type Scope } from '../mcp/scopes.js';
+import { allowedScopesForRole, disallowedScopes, isKnownScope, SCOPES } from '../mcp/scopes.js';
 
 /**
- * MCP 密钥管理（商业产品计划 §4）。
- * 库中存 SHA-256 哈希（鉴权用）+ AES-256-GCM 密文（R87：供 Admin+ 随时查看/复制）。
- * 明文仍只在创建/轮换响应里出现一次——查看接口需显式调用 revealKey 并二次确认。
+ * MCP 密钥管理（R89：密钥即个人 AI 身份）。
+ * 每个成员都能为自己创建密钥，权限上限跟随本人角色；管理员可审计/管理全部密钥。
+ * 库中存 SHA-256 哈希（鉴权用）+ AES-256-GCM 密文（R87：本人可随时查看/复制）。
  */
 
 /** 默认有效期 90 天；轮换宽限期 24h */
 const DEFAULT_TTL_DAYS = 90;
 export const ROTATION_GRACE_HOURS = 24;
+
+export interface KeyActor {
+  id: string;
+  role: string;
+}
 
 export interface ApiKeyView {
   id: string;
@@ -31,8 +36,11 @@ export interface ApiKeyView {
   /** 明文是否可恢复（R87：false 表示该密钥建于加密存储之前或签名密钥已更换） */
   can_reveal: boolean;
   created_by: string | null;
+  created_by_name: string | null;
   created_at: string;
 }
+
+type KeyWithCreator = ApiKey & { creator?: { name: string } | null };
 
 function maskOf(prefix: string): string {
   return `${prefix}${'•'.repeat(8)}`;
@@ -44,7 +52,7 @@ function statusOf(key: { revokedAt: Date | null; expiresAt: Date | null }): ApiK
   return 'active';
 }
 
-function toView(key: ApiKey): ApiKeyView {
+function toView(key: KeyWithCreator): ApiKeyView {
   return {
     id: key.id,
     name: key.name,
@@ -57,6 +65,7 @@ function toView(key: ApiKey): ApiKeyView {
     status: statusOf(key),
     can_reveal: Boolean(key.keyCipher),
     created_by: key.createdBy,
+    created_by_name: key.creator?.name ?? null,
     created_at: key.createdAt.toISOString(),
   };
 }
@@ -69,16 +78,34 @@ export interface CreateKeyInput {
   createdBy: string;
 }
 
-/** 创建密钥：返回一次性明文 */
+/** 创建密钥：返回一次性明文；scope 上限由创建人的真实角色决定 */
 export async function createKey(input: CreateKeyInput): Promise<{ key: string; view: ApiKeyView }> {
   if (!input.name?.trim()) throw new ValidationError('密钥名称不能为空');
-  const scopes = input.scopes ?? ['context:read'];
+  if (input.rateLimit !== undefined && (input.rateLimit < 1 || input.rateLimit > 10_000)) {
+    throw new ValidationError('rate_limit 需在 1-10000 之间');
+  }
+
+  const creator = await prisma.user.findUnique({
+    where: { id: input.createdBy },
+    select: { role: true, status: true },
+  });
+  if (!creator) throw new ValidationError('密钥所属用户不存在，请重新登录后重试');
+  if (creator.status !== 'active') {
+    throw new ForbiddenError('该账号已被禁用，不能创建或轮换密钥；请联系管理员恢复账号');
+  }
+  // R89 用户反馈：密钥不再让用户选权限；默认继承本人角色允许的全部能力。
+  // 显式 scopes 仍供 API/OAuth 兼容，并继续按角色校验上限。
+  const scopes = input.scopes ?? [...allowedScopesForRole(creator.role)];
   for (const s of scopes) {
     if (!isKnownScope(s)) throw new ValidationError(`未知 scope: ${s}。可用: ${SCOPES.join(' / ')}`);
   }
-  // 防过度授权：无 admin scope 时不得包含未知组合之外的越权项（admin 仅显式授予）
-  if (input.rateLimit !== undefined && (input.rateLimit < 1 || input.rateLimit > 10_000)) {
-    throw new ValidationError('rate_limit 需在 1-10000 之间');
+  const denied = disallowedScopes(creator.role, scopes);
+  if (denied.length > 0) {
+    const message =
+      creator.role === 'viewer'
+        ? `只读成员只能创建读取类密钥，以下权限超出角色：${denied.join(' / ')}。需要写入请联系管理员调整角色`
+        : `以下 scope 超出当前角色（${creator.role}）：${denied.join(' / ')}`;
+    throw new ForbiddenError(message);
   }
 
   const plaintext = `vhk_live_${randomBytes(24).toString('base64url')}`;
@@ -98,33 +125,62 @@ export async function createKey(input: CreateKeyInput): Promise<{ key: string; v
       expiresAt: ttlDays === null ? null : new Date(Date.now() + ttlDays * 86_400_000),
       createdBy: input.createdBy,
     },
+    include: { creator: { select: { name: true } } },
   });
   return { key: plaintext, view: toView(row) };
 }
 
-/** 密钥列表（掩码；不含明文与哈希） */
 /** 密钥创建人（MCP 建单时记为缺陷提出人）；密钥不存在或创建人已移除返回 null */
 export async function getKeyCreatorId(keyId: string): Promise<string | null> {
   const key = await prisma.apiKey.findUnique({ where: { id: keyId }, select: { createdBy: true } });
   return key?.createdBy ?? null;
 }
 
-export async function listKeys(): Promise<ApiKeyView[]> {
-  const keys = await prisma.apiKey.findMany({ orderBy: { createdAt: 'desc' } });
+/**
+ * 密钥列表（掩码；不含明文与哈希）。
+ * ownerId 为空 = 团队全部（仅管理员路由这样调用）；普通成员只拿到自己的密钥。
+ */
+export async function listKeys(ownerId?: string): Promise<ApiKeyView[]> {
+  const keys = await prisma.apiKey.findMany({
+    where: ownerId ? { createdBy: ownerId } : undefined,
+    orderBy: { createdAt: 'desc' },
+    include: { creator: { select: { name: true } } },
+  });
   return keys.map(toView);
 }
 
+function isAdmin(role: string): boolean {
+  return role === 'owner' || role === 'admin';
+}
+
+/** 本人或管理员才可管理该密钥；普通成员拿别人的 id 直接 403（不泄露是否存在） */
+async function loadManageable(keyId: string, actor: KeyActor): Promise<ApiKey> {
+  const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
+  if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
+  if (!isAdmin(actor.role) && key.createdBy !== actor.id) {
+    throw new ForbiddenError('只能管理自己的密钥；团队密钥由管理员处理');
+  }
+  return key;
+}
+
 /**
- * 轮换：签发新密钥（同名/同 scope/同限速），旧密钥进入 24h 宽限期
- * （用 expiresAt=now+24h 表达宽限——loadKeyedContext 已按 expiresAt 校验，语义一致且无需新字段）。
+ * 轮换：签发新密钥（同名/同 scope/同限速），旧密钥进入 24h 宽限期。
+ * 管理员替别人轮换时，新密钥仍归原主人，避免「一换就变成管理员的钥匙」。
  */
-export async function rotateKey(keyId: string, operatorId: string): Promise<{ key: string; view: ApiKeyView; previous_grace_until: string }> {
-  const old = await prisma.apiKey.findUnique({ where: { id: keyId } });
-  if (!old) throw new NotFoundError(`密钥不存在: ${keyId}`);
+export async function rotateKey(
+  keyId: string,
+  actor: KeyActor,
+): Promise<{ key: string; view: ApiKeyView; previous_grace_until: string }> {
+  const old = await loadManageable(keyId, actor);
   if (old.revokedAt) throw new ValidationError('已撤销的密钥不能轮换，请创建新密钥');
 
   const graceUntil = new Date(Date.now() + ROTATION_GRACE_HOURS * 3_600_000);
-  const created = await createKey({ name: old.name, scopes: old.scopes, rateLimit: old.rateLimit, createdBy: operatorId });
+  const created = await createKey({
+    name: old.name,
+    scopes: old.scopes,
+    rateLimit: old.rateLimit,
+    createdBy: old.createdBy ?? actor.id,
+  });
 
   // 旧密钥有效期压缩到宽限期结束（不晚于原有效期）
   const newExpiry = old.expiresAt && old.expiresAt < graceUntil ? old.expiresAt : graceUntil;
@@ -133,20 +189,25 @@ export async function rotateKey(keyId: string, operatorId: string): Promise<{ ke
   return { ...created, previous_grace_until: newExpiry.toISOString() };
 }
 
-/** 撤销：立即失效（行保留，列表显示「已撤销」） */
-export async function revokeKey(keyId: string): Promise<void> {
+/** 内部撤销（OAuth token revocation 等协议路径）：凭令牌本身授权，不再校验用户归属 */
+export async function revokeKeyById(keyId: string): Promise<void> {
   const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
   if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
   await prisma.apiKey.update({ where: { id: keyId }, data: { revokedAt: new Date() } });
 }
 
+/** 撤销：立即失效（行保留，列表显示「已撤销」）；本人或管理员可操作 */
+export async function revokeKey(keyId: string, actor: KeyActor): Promise<void> {
+  await loadManageable(keyId, actor);
+  await revokeKeyById(keyId);
+}
+
 /**
- * 查看明文（R87）：Admin+ 显式调用，解密 AES-256-GCM 密文。
+ * 查看明文（R87）：本人或管理员显式调用，解密 AES-256-GCM 密文。
  * 撤销后不再返回——撤销即凭据作废，避免「撤销了还能看到明文」的错觉。
  */
-export async function revealKey(keyId: string): Promise<{ key: string; name: string }> {
-  const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
-  if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
+export async function revealKey(keyId: string, actor: KeyActor): Promise<{ key: string; name: string }> {
+  const key = await loadManageable(keyId, actor);
   if (key.revokedAt) throw new ValidationError('已撤销的密钥不能再查看明文，请创建新密钥');
   if (!key.keyCipher) {
     throw new ValidationError('该密钥创建于加密存储上线之前，明文已不可恢复；请轮换生成新密钥');
@@ -162,9 +223,8 @@ export async function revealKey(keyId: string): Promise<{ key: string; name: str
  * 彻底删除（R87 用户决定）：与「撤销」不同，行从库中移除，列表不再出现。
  * 历史用量保留但不再归属该密钥（UsageEvent.apiKeyId 外键为 SetNull）。
  */
-export async function deleteKey(keyId: string): Promise<void> {
-  const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
-  if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
+export async function deleteKey(keyId: string, actor: KeyActor): Promise<void> {
+  await loadManageable(keyId, actor);
   await prisma.apiKey.delete({ where: { id: keyId } });
 }
 
@@ -174,9 +234,12 @@ export interface KeyUsagePoint {
 }
 
 /** 用量聚合：按日调用次数（近 60 天） */
-export async function keyUsage(keyId: string, days = 30): Promise<{ total: number; points: KeyUsagePoint[] }> {
-  const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
-  if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
+export async function keyUsage(keyId: string, days = 30, actor?: KeyActor): Promise<{ total: number; points: KeyUsagePoint[] }> {
+  if (actor) await loadManageable(keyId, actor);
+  else {
+    const key = await prisma.apiKey.findUnique({ where: { id: keyId } });
+    if (!key) throw new NotFoundError(`密钥不存在: ${keyId}`);
+  }
 
   const since = new Date(Date.now() - days * 86_400_000);
   // Postgres date_trunc 聚合（AGENTS.md：聚合类 raw SQL 例外，须注释）。

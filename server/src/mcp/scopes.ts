@@ -28,3 +28,25 @@ export function isKnownScope(scope: string): scope is Scope {
 export function hasScope(scopes: ReadonlySet<string>, required: Scope): boolean {
   return scopes.has(required) || scopes.has('admin');
 }
+
+/**
+ * 角色 → 密钥 scope 上限（R89：密钥即个人 AI 身份）。
+ * 密钥 scope 是安全边界，不能超过人的角色；管理员也不能把自己的角色「借」给别人的密钥，
+ * 因为创建时会按密钥所属人的真实角色重新校验。
+ */
+export const ROLE_SCOPES: Record<string, readonly Scope[]> = {
+  viewer: ['context:read', 'task:read', 'attachment:read'],
+  member: ['context:read', 'task:read', 'attachment:read', 'attachment:write', 'bug:write', 'note:write', 'task:write', 'skill:write'],
+  admin: [...SCOPES],
+  owner: [...SCOPES],
+};
+
+export function allowedScopesForRole(role: string): readonly Scope[] {
+  return ROLE_SCOPES[role] ?? ROLE_SCOPES.viewer;
+}
+
+/** 返回角色不允许的 scope（空数组 = 全部合法） */
+export function disallowedScopes(role: string, scopes: readonly string[]): string[] {
+  const allowed = new Set<string>(allowedScopesForRole(role));
+  return scopes.filter((s) => !allowed.has(s));
+}

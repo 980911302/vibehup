@@ -18,7 +18,7 @@ import { recordToolCall } from './usage.js';
 import { paginate, truncateText, enforceSizeBudget } from './token-budget.js';
 import sharp from 'sharp';
 
-/** MCP 单测：27 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
+/** MCP 单测：30 工具矩阵 + ctx/scopes/usage/token-budget 四模块（步骤 05） */
 
 beforeEach(async () => {
   await resetDb();
@@ -26,8 +26,8 @@ beforeEach(async () => {
 });
 
 describe('工具矩阵', () => {
-  it('TOOL_NAMES = 27 个且与注册一致', async () => {
-    expect(TOOL_NAMES).toHaveLength(27);
+  it('TOOL_NAMES = 30 个且与注册一致', async () => {
+    expect(TOOL_NAMES).toHaveLength(30);
     const expected = [
       'get_project_context', 'list_bugs', 'get_bug_detail', 'read_attachment_text',
       'inspect_image_asset', 'update_bug_status', 'append_scratchpad',
@@ -36,6 +36,7 @@ describe('工具矩阵', () => {
       'get_task_detail', 'delete_task', 'delete_bug', 'update_note', 'delete_note', 'delete_attachment',
       'list_skills', 'download_skill', 'upload_skill', 'delete_skill',
       'create_upload_url',
+      'get_me', 'list_members', 'handoff_work',
     ].sort();
     expect([...TOOL_NAMES].sort()).toEqual(expected);
     expect(createMcpServer()).toBeDefined();

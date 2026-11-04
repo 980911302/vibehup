@@ -37,11 +37,11 @@ export function TsvImportPanel({ rows, importing, onConfirm, onCancel }: TsvImpo
             className={cnRow(r.error)}
             data-testid="tsv-import-row"
           >
-            <span className="w-5 shrink-0 text-right text-[10px] text-[var(--text-tertiary)]">{i + 1}</span>
-            <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--text-primary)]">{r.title || '（无标题）'}</span>
-            {r.severity && <span className="shrink-0 text-[10px] text-[var(--text-tertiary)]">{severityLabel(r.severity)}</span>}
-            {r.error && <span className="shrink-0 text-[10px] text-[var(--danger)]">{r.error}</span>}
-            {r.steps && <span className="w-32 shrink-0 truncate text-[10px] text-[var(--text-tertiary)]">{r.steps}</span>}
+            <span className="w-5 shrink-0 text-right text-xs text-[var(--text-tertiary)]">{i + 1}</span>
+            <span className="min-w-0 flex-1 truncate text-xs text-[var(--text-primary)]">{r.title || '（无标题）'}</span>
+            {r.severity && <span className="shrink-0 text-xs text-[var(--text-tertiary)]">{severityLabel(r.severity)}</span>}
+            {r.error && <span className="shrink-0 text-xs text-[var(--danger)]">{r.error}</span>}
+            {r.steps && <span className="w-32 shrink-0 truncate text-xs text-[var(--text-tertiary)]">{r.steps}</span>}
           </li>
         ))}
       </ul>

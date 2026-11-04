@@ -59,12 +59,12 @@ export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =>
         }
         @media (max-width: 640px) { .vh-shortcuts-grid { grid-template-columns: 1fr; } }
         .vh-shortcuts-grid h3 {
-          margin: 12px 0 6px; font-size: 11px; text-transform: uppercase;
+          margin: 12px 0 6px; font-size: 12px; text-transform: uppercase;
           letter-spacing: .08em; color: var(--text-tertiary);
         }
         .vh-shortcut-row {
           display: flex; align-items: center; gap: 10px;
-          padding: 5px 0; font-size: 13px; color: var(--text-secondary);
+          padding: 5px 0; font-size: 14px; color: var(--text-secondary);
         }
       `}</style>
     </div>

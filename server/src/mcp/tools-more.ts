@@ -17,6 +17,7 @@ import { isTextFile } from '../services/assets.js';
 /** get_task_detail —— 任务全貌：描述、标签、负责人、打回原因、附件与可走的下一步 */
 export async function getTaskDetail(_ctx: McpContext, input: { task_id: string; full?: boolean }) {
   const task = await tasksService.getTaskDetail(input.task_id);
+  const evidence = task.evidence ?? null;
   const [project, names] = await Promise.all([
     projectsService.getProject(task.projectId),
     tasksService.resolveAssigneeNames([task.assigneeId]),
@@ -34,6 +35,7 @@ export async function getTaskDetail(_ctx: McpContext, input: { task_id: string; 
     labels: task.labels,
     assignee: task.assigneeId ? { id: task.assigneeId, name: names.get(task.assigneeId) ?? null } : null,
     reopen_reason: task.reopenReason,
+    evidence,
     reopened_count: task.reopenedCount,
     attachments: task.attachments.map((a) => ({
       id: a.id,

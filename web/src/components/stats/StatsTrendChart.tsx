@@ -12,7 +12,7 @@ export function StatsTrendChart({ points }: { points: StatsTrendPoint[] }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center gap-3 text-[10px] text-[var(--text-tertiary)]">
+      <div className="flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
         <span className="flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-sm bg-[var(--gold)]" />缺陷修复完成</span>
         <span className="flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-sm bg-[var(--brand)]" />任务完成</span>
       </div>
@@ -32,7 +32,7 @@ export function StatsTrendChart({ points }: { points: StatsTrendPoint[] }) {
                 title={`${p.date}：完成 ${p.tasks_done} 个任务`}
               />
             </div>
-            <span className="hidden text-[9px] text-[var(--text-tertiary)] group-hover:block">{p.date.slice(5)}</span>
+            <span className="hidden text-xs text-[var(--text-tertiary)] group-hover:block">{p.date.slice(5)}</span>
           </div>
         ))}
       </div>

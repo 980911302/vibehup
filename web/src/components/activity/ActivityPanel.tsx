@@ -58,8 +58,8 @@ export function ActivityPanel({ open, onClose }: { open: boolean; onClose: () =>
         <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-4 py-3">
           <Sparkles size={15} className="text-[var(--gold)]" />
           <div>
-            <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">AI 活动</h2>
-            <p className="text-[10px] text-[var(--text-tertiary)]">IDE 里的 Agent 最近读了什么</p>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">AI 活动</h2>
+            <p className="text-xs text-[var(--text-tertiary)]">IDE 里的 Agent 最近读了什么</p>
           </div>
           <div className="flex-1" />
           <button className="vh-icon-btn" onClick={onClose} title="关闭（Esc）" data-testid="activity-panel-close">
@@ -86,16 +86,16 @@ export function ActivityPanel({ open, onClose }: { open: boolean; onClose: () =>
                 data-testid="activity-item"
               >
                 <div className="flex items-center gap-1.5">
-                  <code className="text-[12px] font-medium text-[var(--text-primary)]">{it.tool ?? it.event_type}</code>
+                  <code className="text-xs font-medium text-[var(--text-primary)]">{it.tool ?? it.event_type}</code>
                   {it.result === 'error' && (
-                    <span className="rounded-full bg-[var(--danger)]/15 px-1.5 py-0.5 text-[10px] text-[var(--danger)]">失败</span>
+                    <span className="rounded-full bg-[var(--danger)]/15 px-1.5 py-0.5 text-xs text-[var(--danger)]">失败</span>
                   )}
                   <div className="flex-1" />
-                  <span className="text-[10px] text-[var(--text-tertiary)]" title={new Date(it.created_at).toLocaleString()}>
+                  <span className="text-xs text-[var(--text-tertiary)]" title={new Date(it.created_at).toLocaleString()}>
                     {relativeTime(it.created_at)}
                   </span>
                 </div>
-                <div className="mt-1 flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
+                <div className="mt-1 flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
                   {it.key_name ? (
                     <span className="flex items-center gap-1">
                       <Sparkles size={9} className="text-[var(--gold)]" />

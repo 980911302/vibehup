@@ -81,25 +81,25 @@ export default function ProjectsPage() {
               return (
                 <tr key={p.id} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--bg-panel)]" data-testid="project-row">
                   <td className="py-2.5 pl-2">
-                    <button className="font-medium text-[var(--text-primary)] hover:text-[var(--brand)] cursor-pointer" onClick={() => { store.selectProject(p.id); router.push('/board'); }}>
+                    <button className="font-medium text-[var(--text-primary)] hover:text-[var(--brand)] cursor-pointer" onClick={() => { store.selectProject(p.id); router.push('/work/bugs'); }}>
                       {p.name}
                     </button>
-                    {p.description && <p className="text-[11px] text-[var(--text-tertiary)] line-clamp-1">{p.description}</p>}
+                    {p.description && <p className="text-xs text-[var(--text-tertiary)] line-clamp-1">{p.description}</p>}
                   </td>
                   <td className="py-2.5">
-                    <button className="flex items-center gap-1.5 rounded bg-[var(--bg-elevated)] px-2 py-1 font-mono text-[11px] text-[var(--text-secondary)] hover:text-[var(--brand)] cursor-pointer" onClick={() => void copySlug(p)} title="点击复制">
+                    <button className="flex items-center gap-1.5 rounded bg-[var(--bg-elevated)] px-2 py-1 font-mono text-xs text-[var(--text-secondary)] hover:text-[var(--brand)] cursor-pointer" onClick={() => void copySlug(p)} title="点击复制">
                       {p.slug}
                       <Copy size={11} className="opacity-50" />
                     </button>
                   </td>
                   <td className="py-2.5">
                     {archived ? (
-                      <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">已归档</span>
+                      <span className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-tertiary)]">已归档</span>
                     ) : (
-                      <span className="rounded bg-[var(--ok)]/15 px-1.5 py-0.5 text-[10px] text-[var(--ok)]">活跃</span>
+                      <span className="rounded bg-[var(--ok)]/15 px-1.5 py-0.5 text-xs text-[var(--ok)]">活跃</span>
                     )}
                   </td>
-                  <td className="py-2.5 text-[11px] text-[var(--text-tertiary)]">{p.created_at.slice(0, 10)}</td>
+                  <td className="py-2.5 text-xs text-[var(--text-tertiary)]">{p.created_at.slice(0, 10)}</td>
                   <td className="py-2.5 pr-2">
                     <div className="flex items-center justify-end gap-1.5">
                       <button className="vh-btn ghost h-7 text-xs" onClick={() => void toggleArchive(p)} title={archived ? '恢复项目' : '归档项目'}>

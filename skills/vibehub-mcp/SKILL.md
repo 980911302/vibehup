@@ -9,6 +9,13 @@ description: 用 VibeHub MCP 读写团队的缺陷（bug_ 开头）、任务（t
 
 > **动手就改状态，做完当场流转，不等人提醒。每轮回复前自查一遍。**
 
+## 0. 身份与交接
+
+1. 开工前先 `get_me`：确认自己代表哪个人、密钥有哪些能力、当前项目。不要替错人、不要越权。
+2. 要把活交给别人：先 `list_members` 取 active 成员，再 `handoff_work(entity_type, entity_id, assignee_id, reason)`；原因必填。只读成员不能接活。
+3. 缺陷转交会写进活动流；任务转交记入 MCP 用量。转交后自己不再是负责人，后续状态由接手人流转。
+4. 交付时尽量带 `evidence`（commit / pr_url / tests / screenshots / notes；非代码交付写 no_code_reason），否则今日页不能直接验收。
+
 ## 1. 开工
 
 1. `get_project_context(project_slug="白泽团队")`：看 `reminders`（该流转却还没流转的存量，照做）、`open_bugs`、`awaiting_verification`（已解决、等人验证）、`verifying_bugs` / `verifying_tasks`（验证中：`status_actor` 是谁在验，`status_changed_at` 是从什么时候开始）、`stale_items`（处理中停留过久、处理方可能已中断的）、`doing_tasks`、`review_tasks`（待验收）、`todo_tasks`，以及 `skills`（本项目和全团队通用的技能，只有名称和描述）。
@@ -23,7 +30,7 @@ description: 用 VibeHub MCP 读写团队的缺陷（bug_ 开头）、任务（t
 | 什么时候 | 谁来 | 怎么调 |
 |---|---|---|
 | 开始定位或修复 | 修的人 | `status=in_progress`（**开工第一件事**） |
-| 修完、自测通过 | 修的人 | `status=resolved`，`resolution_notes` 写**根因、改了什么、怎么自测的**；有提交就带 `commit_hash`，没提交就写明改动在哪个分支、哪些文件 |
+| 修完、自测通过 | 修的人 | `status=resolved`，`resolution_notes` 写**根因、改了什么、怎么自测的**，并带 `evidence`（commit / pr_url / tests / screenshots）；有提交就带 `commit_hash` |
 | 开始验证 | 验证方：幕僚、报告人或验收方 | `status=verifying`（**先改再动手**，团队靠它知道有人在验） |
 | 按复现步骤验证，不再复现 | 验证方 | `status=verified`，`resolution_notes` 写在哪个环境、怎么验的 |
 | 验证没通过 | 验证方 | `status=in_progress`（或 `open`），**必须**填 `reopen_reason`（写清楚现象；活动流记为「验证不通过」） |

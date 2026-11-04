@@ -1,9 +1,11 @@
-import type { Task, Prisma } from '@prisma/client';
+import { Prisma, type Task } from '@prisma/client';
 import { prisma } from '../core/prisma.js';
 import { ids } from '../core/ids.js';
 import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
+import { normalizeEvidence } from './evidence.js';
+import { notifyUser, notifyWriters } from './notifications.js';
 import { countAttachmentsFor } from './attachments.js';
 import { resolveStatusActor, type StatusActor } from './stale.js';
 
@@ -132,6 +134,8 @@ export interface TaskPatch {
   labels?: string[];
   /** 打回原因（待验证/已完成 → 进行中 时必填） */
   reopenReason?: string;
+  /** 交付证据包（R90）；null 清空 */
+  evidence?: unknown;
 }
 
 function buildTaskUpdate(existing: Task, patch: TaskPatch): Prisma.TaskUncheckedUpdateInput {
@@ -142,6 +146,10 @@ function buildTaskUpdate(existing: Task, patch: TaskPatch): Prisma.TaskUnchecked
   if (patch.priority !== undefined) data.priority = patch.priority;
   if (patch.assigneeId !== undefined) data.assigneeId = patch.assigneeId;
   if (patch.labels !== undefined) data.labels = normalizeLabels(patch.labels);
+  if (patch.evidence !== undefined) {
+    const evidence = normalizeEvidence(patch.evidence);
+    data.evidence = evidence === null ? Prisma.DbNull : (evidence as Prisma.InputJsonValue);
+  }
 
   if (patch.status !== undefined) {
     assertStatus(patch.status);
@@ -169,6 +177,28 @@ export async function updateTask(taskId: string, patch: TaskPatch, actor?: Statu
     Object.assign(data, await resolveStatusActor(actor));
   }
   const task = await prisma.task.update({ where: { id: taskId }, data });
+  if (data.status === 'review') {
+    await notifyWriters({
+      type: 'verify',
+      title: `待验收：${task.title}`,
+      body: '任务已提交验证，先看交付证据再验收',
+      entityType: 'task',
+      entityId: task.id,
+      projectId: task.projectId,
+      excludeUserId: actor?.type === 'user' ? actor.id : null,
+    });
+  }
+  if (data.status === 'doing' && task.assigneeId && task.assigneeId !== (actor?.type === 'user' ? actor.id : null) && patch.reopenReason) {
+    await notifyUser({
+      userId: task.assigneeId,
+      type: 'reopen',
+      title: `打回：${task.title}`,
+      body: patch.reopenReason.trim(),
+      entityType: 'task',
+      entityId: task.id,
+      projectId: task.projectId,
+    });
+  }
   eventBus.publish({
     type: 'task.updated',
     projectId: task.projectId,

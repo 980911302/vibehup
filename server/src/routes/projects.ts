@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import * as projectsService from '../services/projects.js';
+import * as memoryService from '../services/memory.js';
 import { ValidationError } from '../core/errors.js';
 import { serializeProject } from '../core/serialize.js';
 
@@ -48,4 +49,10 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
     reply.code(204);
     return null;
   });
+  // 项目记忆（R90）：项目一句话 + 置顶笔记；全员可读
+  fastify.get('/:projectId/memory', async (request) => {
+    const { projectId } = request.params as { projectId: string };
+    return memoryService.getProjectMemory(projectId);
+  });
+
 };

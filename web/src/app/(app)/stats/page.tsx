@@ -7,7 +7,6 @@ import { useVibeHub } from '@/hooks/use-vibehub';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { sortByActorActivity } from '@/lib/stats-view';
-import { CurrentProjectSwitcher } from '@/components/layout/CurrentProjectSwitcher';
 import { StatsActiveList } from '@/components/stats/StatsActiveList';
 import { StatsTrendChart } from '@/components/stats/StatsTrendChart';
 import type { StatsActiveItem, StatsResponse } from '@/lib/stats-types';
@@ -52,14 +51,13 @@ export default function StatsPage() {
 
   const openActiveItem = (item: StatsActiveItem) => {
     if (item.project_id !== store.currentProject?.id) store.selectProject(item.project_id);
-    router.push(item.kind === 'bug' ? '/board' : `/tasks?task=${item.id}`);
+    router.push(item.kind === 'bug' ? `/work/bugs?bug=${item.id}` : `/work/tasks?task=${item.id}`);
   };
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       {/* 页头 */}
       <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5">
-        <CurrentProjectSwitcher />
         <div className="flex gap-1 rounded-lg bg-[var(--bg-elevated)] p-0.5">
           {(['current', 'all'] as const).map((s) => (
             <button
@@ -75,7 +73,7 @@ export default function StatsPage() {
           ))}
         </div>
         <div className="flex-1" />
-        {data && <span className="text-[11px] text-[var(--text-tertiary)]">{data.scope.today}</span>}
+        {data && <span className="text-xs text-[var(--text-tertiary)]">{data.scope.today}</span>}
         <button className="vh-btn ghost h-8 text-xs" onClick={() => void load()} title="刷新" data-testid="stats-refresh">
           <RefreshCw size={13} className={loading ? 'animate-spin' : undefined} />
         </button>
@@ -96,7 +94,7 @@ export default function StatsPage() {
                 <Tile label="新增任务" value={data.today.tasks_created} />
               </div>
               {data.today.bugs_closed_unfixed > 0 && (
-                <p className="mt-1.5 text-[11px] text-[var(--text-tertiary)]">另有 {data.today.bugs_closed_unfixed} 个缺陷今天按「不修 / 重复」关闭</p>
+                <p className="mt-1.5 text-xs text-[var(--text-tertiary)]">另有 {data.today.bugs_closed_unfixed} 个缺陷今天按「不修 / 重复」关闭</p>
               )}
             </section>
 
@@ -128,7 +126,7 @@ export default function StatsPage() {
               ) : (
                 <table className="w-full text-xs" data-testid="stats-by-actor-table">
                   <thead>
-                    <tr className="border-b border-[var(--border-subtle)] text-left text-[10px] text-[var(--text-tertiary)]">
+                    <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
                       <th className="pb-1.5 pl-1 font-medium">经手人</th>
                       <th className="pb-1.5 font-medium">手上缺陷</th>
                       <th className="pb-1.5 font-medium">手上任务</th>
@@ -141,7 +139,7 @@ export default function StatsPage() {
                       <tr key={`${row.type}-${row.name}`} className="border-b border-[var(--border-subtle)]/50">
                         <td className="py-1.5 pl-1 font-medium text-[var(--text-primary)]">
                           {row.name}
-                          {row.type === 'ai' && <span className="ml-1.5 rounded bg-[var(--brand-soft)] px-1 py-0.5 text-[9px] text-[var(--brand)]">AI</span>}
+                          {row.type === 'ai' && <span className="ml-1.5 rounded bg-[var(--brand-soft)] px-1 py-0.5 text-xs text-[var(--brand)]">AI</span>}
                         </td>
                         <td className="py-1.5">{row.in_hand_bugs}</td>
                         <td className="py-1.5">{row.in_hand_tasks}</td>
@@ -171,7 +169,7 @@ export default function StatsPage() {
 function Tile({ label, value, accent }: { label: string; value: number; accent?: string }) {
   return (
     <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3.5 py-2.5">
-      <p className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)]"><BarChart3 size={11} />{label}</p>
+      <p className="flex items-center gap-1 text-xs text-[var(--text-tertiary)]"><BarChart3 size={11} />{label}</p>
       <p className="mt-0.5 text-xl font-semibold" style={{ color: accent ?? 'var(--text-primary)' }}>{value}</p>
     </div>
   );

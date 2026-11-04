@@ -12,6 +12,7 @@ import { allowedNextTaskStatuses } from '../services/tasks.js';
 /** initialize 时下发给客户端的服务说明（Claude Code 等会把它放进系统提示） */
 export const SERVER_INSTRUCTIONS = [
   'VibeHub 是团队的缺陷与任务看板，看板上的状态就是团队看到的事实。',
+  '开工先调 get_me 确认「我代表谁、能做什么」；要交活先 list_members，再 handoff_work 并写原因。',
   '开工先调 get_project_context；有多个项目时必须传 project_slug（不传会报错并列出可选值，按当前代码仓库对应的项目选）。',
   '【状态流转硬规则：谁经手谁流转，做完当场改，不等人提醒】',
   '缺陷 open → in_progress → resolved → verifying → verified，不能跳级，verified 就是修复完成的终点：',
@@ -22,6 +23,7 @@ export const SERVER_INSTRUCTIONS = [
   '任务 todo → doing → review → verifying → done，不能跳级：开始做 → doing；做完并自测通过 → review（待验证）；',
   '开始验收 → 先改 verifying（验证中）；验收通过 → done（自己做的不算验收；用户说「验收过了/没问题」时由当前 AI 代为流转）；验收不通过 → doing 并填 reopen_reason；验不了 → 改回 review；',
   '不做了 → cancelled（未完成的任务都可以取消），取消的要重做 → todo；受阻保持 doing 并在回复里说明。',
+  '【交付证据】标记 resolved/review 时尽量同时传 evidence（commit / pr_url / tests / changed_files / screenshots / notes；非代码交付写 no_code_reason）；缺证据时今日页不能直接验收。',
   '每轮回复前自查：本轮碰过的 bug_/tsk_ 状态是否与实际一致，并在回复末尾列出流转记录。',
   '角色职责里「vibehub 由幕僚统一写 / 不写 vibehub」只指便签和新建记录，不包括状态流转：自己经手的缺陷和任务一律自己流转。',
   '新建缺陷/任务前先 search 查重。完整规范见技能 vibehub-mcp（SKILL.md，服务端 /skills/vibehub-mcp/SKILL.md）。',

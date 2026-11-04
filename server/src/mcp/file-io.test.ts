@@ -11,7 +11,7 @@ import * as attachmentsService from '../services/attachments.js';
 import { storage } from '../services/storage.js';
 import { randomIdAttachment } from '../core/ids.js';
 import { readTextSlice } from '../services/assets.js';
-import { revokeKey } from '../services/api-keys.js';
+import { revokeKeyById } from '../services/api-keys.js';
 import { signUploadGrant } from '../core/upload-grant.js';
 import * as ext from './tools-extended.js';
 import * as mcpTools from './tools.js';
@@ -156,7 +156,7 @@ describe('create_upload_url：本地文件用 curl 直传，内容不经过对�
     await projectsService.createProject({ name: '撤销' });
     const { key, ctx } = await keyedCtx();
     const r = await ext.createUploadUrl(ctx, { file_name: 'a.txt' });
-    await revokeKey(key.id);
+    await revokeKeyById(key.id);
     const u = new URL(r.upload_url);
     const put = await app.inject({ method: 'PUT', url: u.pathname + u.search, payload: 'x' });
     expect(put.statusCode).toBe(401);

@@ -36,7 +36,7 @@ export default function MembersPage() {
 
   useEffect(() => {
     if (!isAdmin) {
-      router.replace('/board');
+      router.replace('/work/bugs');
       return;
     }
     void load();
@@ -138,8 +138,8 @@ export default function MembersPage() {
       )}
 
       {/* 成员表格 */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        <table className="w-full text-sm" data-testid="members-table">
+      <div className="flex-1 overflow-x-auto overflow-y-auto px-4 py-3">
+        <table className="w-full min-w-[680px] text-sm" data-testid="members-table">
           <thead>
             <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
               <th className="pb-2 pl-2 font-medium">成员</th>
@@ -157,11 +157,11 @@ export default function MembersPage() {
                   <div className="flex items-center gap-2.5">
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-semibold text-[var(--brand)]">{u.name.slice(0, 1)}</span>
                     <div>
-                      <p className="text-[13px] font-medium text-[var(--text-primary)]">
+                      <p className="text-sm font-medium text-[var(--text-primary)]">
                         {u.name}
-                        {u.id === me?.id && <span className="ml-1.5 text-[10px] text-[var(--text-tertiary)]">（我）</span>}
+                        {u.id === me?.id && <span className="ml-1.5 text-xs text-[var(--text-tertiary)]">（我）</span>}
                       </p>
-                      <p className="text-[11px] text-[var(--text-tertiary)]">{u.email}</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">{u.email}</p>
                     </div>
                   </div>
                 </td>
@@ -177,14 +177,14 @@ export default function MembersPage() {
                   </select>
                 </td>
                 <td className="py-2.5">
-                  <span className={cn('rounded px-1.5 py-0.5 text-[10px]', u.status === 'active' ? 'bg-[var(--ok)]/15 text-[var(--ok)]' : 'bg-[var(--danger)]/15 text-[var(--danger)]')}>
+                  <span className={cn('rounded px-1.5 py-0.5 text-xs', u.status === 'active' ? 'bg-[var(--ok)]/15 text-[var(--ok)]' : 'bg-[var(--danger)]/15 text-[var(--danger)]')}>
                     {u.status === 'active' ? '正常' : '已禁用'}
                   </span>
                 </td>
-                <td className="py-2.5 text-[11px] text-[var(--text-tertiary)]">
+                <td className="py-2.5 text-xs text-[var(--text-tertiary)]">
                   {u.last_login_at ? u.last_login_at.slice(5, 16).replace('T', ' ') : '从未登录'}
                 </td>
-                <td className="py-2.5 text-[11px] text-[var(--text-tertiary)]">
+                <td className="py-2.5 text-xs text-[var(--text-tertiary)]">
                   建单 {u.stats.bugs_created} · 文件 {u.stats.files_uploaded} · 密钥 {u.stats.active_keys}
                 </td>
                 <td className="py-2.5 pr-2">

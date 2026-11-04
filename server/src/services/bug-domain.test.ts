@@ -18,6 +18,25 @@ async function seedProject() {
   return prisma.project.create({ data: { id: 'prj_dom', name: '缺陷域', slug: 'dom' } });
 }
 
+describe('交付证据（R90）', () => {
+  it('缺陷保存结构化证据，可清空', async () => {
+    const p = await seedProject();
+    const bug = await bugsService.createBug({ projectId: p.id, title: '带证据' });
+    const saved = await bugsService.updateBug(bug.id, {
+      evidence: { commit: 'abc123', pr_url: 'https://github.com/o/r/pull/1', tests: 'vitest 348 passed' },
+    });
+    expect(saved.evidence).toMatchObject({ commit: 'abc123', tests: 'vitest 348 passed' });
+    const cleared = await bugsService.updateBug(bug.id, { evidence: null });
+    expect(cleared.evidence).toBeNull();
+  });
+
+  it('非法 evidence 拒绝写入', async () => {
+    const p = await seedProject();
+    const bug = await bugsService.createBug({ projectId: p.id, title: '坏证据' });
+    await expect(bugsService.updateBug(bug.id, { evidence: { commit: 123 } })).rejects.toThrow(/commit 必须是字符串/);
+  });
+});
+
 describe('状态机', () => {
   it('合法迁移通过，非法迁移 400 人话', async () => {
     const p = await seedProject();

@@ -6,6 +6,7 @@ import * as projectsService from '../services/projects.js';
 import * as bugsService from '../services/bugs.js';
 import * as tasksService from '../services/tasks.js';
 import * as skillsService from '../services/skills.js';
+import * as memoryService from '../services/memory.js';
 import * as notesService from '../services/notes.js';
 import * as attachmentsService from '../services/attachments.js';
 import { readTextSlice, isTextFile, inspectImageAsset } from '../services/assets.js';
@@ -50,7 +51,7 @@ function handledBy(x: { statusActorName: string | null; statusChangedAt: Date | 
 /** 1. get_project_context —— 冷启动：项目活跃状态简报 */
 export async function getProjectContext(input: { project_slug?: string }) {
   const project = await projectsService.resolveProject(input.project_slug);
-  const [board, tasks, doingTasks, reviewTasks, verifyingTasks, notes, skills] = await Promise.all([
+  const [board, tasks, doingTasks, reviewTasks, verifyingTasks, notes, skills, memory] = await Promise.all([
     bugsService.getBugBoard(project.id, 20),
     tasksService.listTasks({ projectId: project.id, status: 'todo' }),
     tasksService.listTasks({ projectId: project.id, status: 'doing' }),
@@ -58,6 +59,7 @@ export async function getProjectContext(input: { project_slug?: string }) {
     tasksService.listTasks({ projectId: project.id, status: 'verifying' }),
     notesService.listNotes({ projectId: project.id, limit: 5 }),
     skillsService.listSkills({ projectId: project.id }),
+    memoryService.getProjectMemoryForMcp(project.id),
   ]);
 
   const openBugs = [...board.open, ...board.in_progress].map(briefBug);
@@ -105,6 +107,7 @@ export async function getProjectContext(input: { project_slug?: string }) {
     stale_items: [...staleBugs.map(briefBug), ...staleTasks.map(briefTask)].slice(0, DEFAULT_BUDGET.listLimit),
     todo_tasks: tasks.slice(0, 20).map(briefTask),
     // 团队技能：只给名称与描述，要用时 download_skill 取全文
+    memory,
     skills: skills.slice(0, DEFAULT_BUDGET.listLimit).map((s) => ({
       name: s.name,
       description: truncateText(s.description, DEFAULT_BUDGET.noteMax).value,
@@ -173,6 +176,7 @@ export async function getBugDetail(input: { bug_id: string }) {
     status: bug.status,
     ...bugNextStep(bug.status),
     resolution_notes: bug.resolutionNotes,
+    evidence: bug.evidence ?? null,
     git_commit_hash: bug.gitCommitHash,
     created_by: bug.createdBy,
     created_at: bug.createdAt.toISOString(),
@@ -279,6 +283,7 @@ export async function updateBugStatus(
     resolution_notes?: string;
     commit_hash?: string;
     reopen_reason?: string;
+    evidence?: Record<string, unknown>;
   },
   actor?: { type: 'ai'; id?: string | null; name?: string | null },
 ) {
@@ -287,6 +292,7 @@ export async function updateBugStatus(
     resolutionNotes: input.resolution_notes,
     gitCommitHash: input.commit_hash,
     reopenReason: input.reopen_reason,
+    evidence: input.evidence,
     actor,
   });
   return {
@@ -298,6 +304,7 @@ export async function updateBugStatus(
       severity: bug.severity,
       resolution_notes: bug.resolutionNotes,
       git_commit_hash: bug.gitCommitHash,
+      evidence: bug.evidence ?? null,
       updated_at: bug.updatedAt.toISOString(),
     },
     ...bugNextStep(bug.status),

@@ -40,10 +40,10 @@ export function TaskCard({ task, dragging, draggable, onOpen, onDragStart, onDra
       )}
     >
       <div className="flex items-start gap-2">
-        <p className="line-clamp-2 flex-1 text-[13px] font-medium text-[var(--text-primary)]">{task.title}</p>
+        <p className="line-clamp-2 flex-1 text-sm font-medium text-[var(--text-primary)]">{task.title}</p>
         {task.assignee && (
           <span
-            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-[10px] text-[var(--brand)]"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs text-[var(--brand)]"
             title={`负责人 ${task.assignee.name}`}
           >
             {task.assignee.name.slice(0, 1)}
@@ -51,20 +51,20 @@ export function TaskCard({ task, dragging, draggable, onOpen, onDragStart, onDra
         )}
       </div>
       {task.description && (
-        <p className="mt-1 line-clamp-2 text-[11px] text-[var(--text-tertiary)]">{task.description}</p>
+        <p className="mt-1 line-clamp-2 text-xs text-[var(--text-tertiary)]">{task.description}</p>
       )}
       <HandlingLine item={task} className="mt-1.5" />
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className="flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]" title="优先级">
+        <span className="flex items-center gap-1 text-xs text-[var(--text-tertiary)]" title="优先级">
           <i className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: PRIORITY_COLOR[task.priority] }} />
           {PRIORITY_LABEL[task.priority]}
         </span>
         {task.labels.slice(0, MAX_LABELS).map((l) => (
-          <span key={l} className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-secondary)]">#{l}</span>
+          <span key={l} className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-secondary)]">#{l}</span>
         ))}
-        {extra > 0 && <span className="text-[10px] text-[var(--text-tertiary)]">+{extra}</span>}
+        {extra > 0 && <span className="text-xs text-[var(--text-tertiary)]">+{extra}</span>}
         {task.reopened_count > 0 && (
-          <span className="flex items-center gap-0.5 text-[10px] text-[var(--warn)]" title={`被打回 ${task.reopened_count} 次`}>
+          <span className="flex items-center gap-0.5 text-xs text-[var(--warn)]" title={`被打回 ${task.reopened_count} 次`}>
             <RotateCcw size={10} />
             {task.reopened_count}
           </span>

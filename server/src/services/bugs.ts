@@ -1,9 +1,11 @@
-import type { Bug, Prisma } from '@prisma/client';
+import { Prisma, type Bug } from '@prisma/client';
 import { prisma } from '../core/prisma.js';
 import { ids, slugify } from '../core/ids.js';
 import { buildSearchIndex, matchIndex } from '../core/search.js';
 import { eventBus } from '../core/events.js';
 import { NotFoundError, ValidationError } from '../core/errors.js';
+import { normalizeEvidence } from './evidence.js';
+import { notifyUser, notifyWriters } from './notifications.js';
 import { countAttachmentsFor } from './attachments.js';
 import { upsertEntityEmbedding, deleteEntityEmbedding } from './embedding.js';
 import { BUG_STATUSES, assertTransition, bugStatusLabel as label, isBugReopen, reopenReasonLabel, type BugStatus } from './bug-flow.js';
@@ -129,6 +131,8 @@ export async function updateBug(
     createdBy?: string;
     /** 重开原因（回流到 open/in_progress 时必填） */
     reopenReason?: string;
+    /** 交付证据包（R90）；null 清空 */
+    evidence?: unknown;
     /** 操作者：写活动流 + 记「谁在处理」（user=人类取名字, ai=MCP 取密钥名） */
     actor?: StatusActor;
   },
@@ -170,6 +174,10 @@ export async function updateBug(
   if (patch.resolutionNotes !== undefined) data.resolutionNotes = patch.resolutionNotes;
   if (patch.gitCommitHash !== undefined) data.gitCommitHash = patch.gitCommitHash;
   if (patch.createdBy !== undefined) data.createdBy = patch.createdBy;
+  if (patch.evidence !== undefined) {
+    const evidence = normalizeEvidence(patch.evidence);
+    data.evidence = evidence === null ? Prisma.DbNull : (evidence as Prisma.InputJsonValue);
+  }
   if (isReopen) data.reopenedCount = existing.reopenedCount + 1;
   if (statusChanged) {
     data.statusChangedAt = new Date();
@@ -195,6 +203,30 @@ export async function updateBug(
     } catch (err) {
       console.error('[vibehub] 活动流写入失败:', err);
     }
+  }
+
+  if (statusChanged && patch.status === 'resolved') {
+    const actorUserId = patch.actor?.type === 'user' ? patch.actor.id : null;
+    await notifyWriters({
+      type: 'verify',
+      title: `待验收：${bug.title}`,
+      body: 'AI/同事已交付，先看交付证据再验收',
+      entityType: 'bug',
+      entityId: bug.id,
+      projectId: bug.projectId,
+      excludeUserId: actorUserId,
+    });
+  }
+  if (isReopen && bug.assigneeId && bug.assigneeId !== (patch.actor?.type === 'user' ? patch.actor.id : null)) {
+    await notifyUser({
+      userId: bug.assigneeId,
+      type: 'reopen',
+      title: `打回：${bug.title}`,
+      body: patch.reopenReason?.trim() || '验证没通过，请继续处理',
+      entityType: 'bug',
+      entityId: bug.id,
+      projectId: bug.projectId,
+    });
   }
 
   eventBus.publish({

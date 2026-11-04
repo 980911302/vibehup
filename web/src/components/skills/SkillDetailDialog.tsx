@@ -107,7 +107,7 @@ function FileList({ skill, active, onSelect }: { skill: SkillDetail; active: str
           >
             <FileText size={12} className="shrink-0" />
             <span className="flex-1 truncate font-mono" title={f.path}>{f.path}</span>
-            <span className="text-[10px] text-[var(--text-tertiary)]">{formatSize(f.size)}</span>
+            <span className="text-xs text-[var(--text-tertiary)]">{formatSize(f.size)}</span>
           </button>
         </li>
       ))}

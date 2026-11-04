@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, FolderKanban, Image as ImageIcon, ListChecks, Moon, Puzzle, BarChart3, Search, Sparkles, StickyNote, Sun } from 'lucide-react';
+import { FileText, FolderKanban, Image as ImageIcon, ListChecks, Moon, Puzzle, BarChart3, Search, Sparkles, StickyNote, Sun, Sunrise, Activity, BookOpen, Settings2, KeyRound, Users } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useVibeHub } from '@/hooks/use-vibehub';
 import { useTheme } from '@/lib/theme';
 import { useToast } from '@/lib/toast';
 import { BUG_STATUS_LABELS, SEVERITY_LABELS, type SearchResults } from '@/lib/api-types';
@@ -18,6 +19,7 @@ interface CommandPaletteProps {
 /** 命令面板（⌘K）：搜索 + 导航 + 动作（步骤 06 §6.5） */
 export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps) {
   const router = useRouter();
+  const store = useVibeHub();
   const { theme, toggle } = useTheme();
   const toast = useToast();
   const [query, setQuery] = useState('');
@@ -66,15 +68,17 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
 
   const actions = useMemo(
     () => [
-      { id: 'nav-board', icon: FolderKanban, label: '跳转：缺陷看板', hint: 'G B', run: () => router.push('/board') },
-      { id: 'nav-files', icon: ImageIcon, label: '跳转：文件', hint: 'G F', run: () => router.push('/files') },
-      { id: 'nav-notes', icon: StickyNote, label: '跳转：随手记', hint: 'G N', run: () => router.push('/notes') },
-      { id: 'nav-tasks', icon: ListChecks, label: '跳转：任务', hint: 'G T', run: () => router.push('/tasks') },
-      { id: 'nav-skills', icon: Puzzle, label: '跳转：技能', hint: 'G S', run: () => router.push('/skills') },
-      { id: 'nav-stats', icon: BarChart3, label: '跳转：统计', hint: 'G D', run: () => router.push('/stats') },
-      { id: 'nav-projects', icon: FolderKanban, label: '跳转：项目', hint: 'G P', run: () => router.push('/projects') },
-      { id: 'nav-keys', icon: FileText, label: '跳转：MCP 密钥', hint: 'G K', run: () => router.push('/keys') },
-      { id: 'nav-members', icon: StickyNote, label: '跳转：成员', hint: 'G M', run: () => router.push('/members') },
+      { id: 'nav-today', icon: Sunrise, label: '跳转：今日', hint: 'G D', run: () => router.push('/today') },
+      { id: 'nav-work-bug', icon: Activity, label: '跳转：工作 · 缺陷', hint: 'G B', run: () => router.push('/work/bugs') },
+      { id: 'nav-work-task', icon: ListChecks, label: '跳转：工作 · 任务', hint: 'G T', run: () => router.push('/work/tasks') },
+      { id: 'nav-context-notes', icon: StickyNote, label: '跳转：上下文 · 随手记', hint: 'G N', run: () => router.push('/context/notes') },
+      { id: 'nav-context-files', icon: ImageIcon, label: '跳转：上下文 · 文件', hint: 'G F', run: () => router.push('/context/files') },
+      { id: 'nav-context-skills', icon: Puzzle, label: '跳转：上下文 · 技能', hint: '', run: () => router.push('/context/skills') },
+      { id: 'nav-settings', icon: Settings2, label: '跳转：设置', hint: 'G S', run: () => router.push('/settings') },
+      { id: 'nav-keys', icon: KeyRound, label: '跳转：我的密钥', hint: 'G K', run: () => router.push('/keys') },
+      { id: 'nav-members', icon: Users, label: '跳转：团队成员', hint: 'G M', run: () => router.push('/members') },
+      { id: 'nav-projects', icon: FolderKanban, label: '跳转：项目', hint: 'G P', run: () => router.push('/settings') },
+      { id: 'nav-stats', icon: BarChart3, label: '跳转：完整统计', hint: '', run: () => router.push('/stats') },
       { id: 'act-new-bug', icon: FileText, label: '动作：新建缺陷', hint: 'C', run: onNewBug },
       {
         id: 'act-theme',
@@ -109,7 +113,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       icon: FileText,
       label: b.title,
       hint: `${BUG_STATUS_LABELS[b.status]} · ${SEVERITY_LABELS[b.severity]}`,
-      run: () => router.push(`/board?bug=${b.id}`),
+      run: () => router.push(`/work/bugs?bug=${b.id}`),
     }));
     const taskRows: Row[] = (results?.tasks ?? []).map((t) => ({
       kind: 'task' as const,
@@ -117,7 +121,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       icon: ListChecks,
       label: t.title,
       hint: TASK_STATUS_LABELS[t.status as TaskStatus] ?? t.status,
-      run: () => router.push(`/tasks?task=${t.id}`),
+      run: () => router.push(`/work/tasks?task=${t.id}`),
     }));
     const projectRows: Row[] = (results?.projects ?? []).map((p) => ({
       kind: 'project' as const,
@@ -125,7 +129,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       icon: FolderKanban,
       label: p.name,
       hint: p.slug,
-      run: () => router.push('/projects'),
+      run: () => { store.selectProject(p.id); router.push('/work/bugs'); },
     }));
     const noteRows: Row[] = (results?.notes ?? []).map((n) => ({
       kind: 'note' as const,
@@ -133,7 +137,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       icon: StickyNote,
       label: n.content.slice(0, 50),
       hint: n.tags.join(' · '),
-      run: () => router.push('/notes'),
+      run: () => router.push('/context/notes'),
     }));
     // 语义相似分组（卡片 34）：AI 近邻结果金色星尘标识，与关键词结果区分；为空不渲染
     const semanticRows: Row[] = [
@@ -143,7 +147,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
         icon: Sparkles,
         label: b.title,
         hint: 'AI 语义命中',
-        run: () => router.push(`/board?bug=${b.id}`),
+        run: () => router.push(`/work/bugs?bug=${b.id}`),
       })),
       ...(results?.similar?.notes ?? []).map((n) => ({
         kind: 'sem' as const,
@@ -151,7 +155,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
         icon: Sparkles,
         label: n.content.slice(0, 50),
         hint: 'AI 语义命中',
-        run: () => router.push('/notes'),
+        run: () => router.push('/context/notes'),
       })),
     ];
     // 行数预算 12：语义组占 1 行标题 + N 行，从关键词结果里预留，保证语义组可见
@@ -161,7 +165,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
       ? [{ kind: 'sem-header' as const, id: 'sem-header' }, ...semanticRows.slice(0, semanticBudget - 1)]
       : [];
     return [...keywordRows, ...semanticSection];
-  }, [actions, results, query, router]);
+  }, [actions, results, query, router, store]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -182,7 +186,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
           <Search size={16} />
           <input
             ref={inputRef}
-            placeholder="搜索缺陷、项目、便签，或输入动作…"
+            placeholder="搜索缺陷、任务、便签，或输入动作…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -203,8 +207,8 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
         <div className="vh-palette-list">
           {rows.length === 0 && (
             <div className="py-6 text-center">
-              <p className="text-[13px] text-[var(--text-secondary)]">没有匹配的结果</p>
-              <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">换个说法试试——搜索支持语义理解，“按钮点了没反应”也能找到相关缺陷</p>
+              <p className="text-sm text-[var(--text-secondary)]">没有匹配的结果</p>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">换个说法试试——搜索支持语义理解，“按钮点了没反应”也能找到相关缺陷</p>
             </div>
           )}
           {rows.map((row, i) => {
@@ -241,7 +245,7 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
           background: var(--bg-panel); border: 1px solid var(--border-strong);
           border-radius: var(--r-panel); box-shadow: var(--shadow-3);
           backdrop-filter: var(--glass); overflow: hidden;
-          animation: vh-modal-in 220ms var(--ease) 1;
+          animation: vh-modal-in 300ms var(--ease) 1;
         }
         .vh-palette-input {
           display: flex; align-items: center; gap: 10px; padding: 14px 16px;
@@ -254,20 +258,20 @@ export function CommandPalette({ open, onClose, onNewBug }: CommandPaletteProps)
         .vh-palette-list { max-height: 46vh; overflow-y: auto; padding: 6px; }
         .vh-palette-row {
           display: flex; align-items: center; gap: 10px; width: 100%;
-          padding: 9px 10px; border: none; border-radius: 10px; background: none;
-          color: var(--text-secondary); font-size: 13px; cursor: pointer; text-align: left;
+          padding: 9px 10px; border: none; border-radius: 8px; background: none;
+          color: var(--text-secondary); font-size: 14px; cursor: pointer; text-align: left;
           border-left: 2px solid transparent;
         }
         .vh-palette-row.active { background: var(--gold-bg); color: var(--text-primary); border-left-color: var(--gold); }
         .vh-palette-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .vh-palette-hint { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
-        .vh-palette-empty { text-align: center; color: var(--text-tertiary); font-size: 13px; padding: 24px 0; }
+        .vh-palette-hint { font-size: 12px; color: var(--text-tertiary); flex-shrink: 0; }
+        .vh-palette-empty { text-align: center; color: var(--text-tertiary); font-size: 14px; padding: 24px 0; }
               .vh-palette-group {
           display: flex; align-items: center; gap: 6px;
-          padding: 8px 16px 4px; font-size: 11px; font-weight: 600;
+          padding: 8px 16px 4px; font-size: 12px; font-weight: 600;
           color: var(--gold); letter-spacing: .02em;
         }
-        .vh-palette-group-star { font-size: 10px; }
+        .vh-palette-group-star { font-size: 12px; }
         .vh-palette-group-note { font-weight: 400; color: var(--text-tertiary); }
         .vh-palette-row.sem .vh-palette-hint { color: var(--gold); }
 `}</style>

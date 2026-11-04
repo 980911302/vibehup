@@ -29,7 +29,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 访问地址 | Web/API/MCP SSE 为 `http://<ZeroTier IP>:3210` 或 `http://<公网IP>:3210`（安全组已放行 3210）；ChatGPT Work Streamable HTTP 为 `/mcp`，需另配 HTTPS 域名与 TLS 后方可连接 |
+| 访问地址 | Web/API/MCP SSE 为 `http://<内网IP>:3210`、`http://<公网IP>:3210`；公网 IP 的 443 仍保留（`121.36.215.70` IP 证书 + Nginx 反代）。ChatGPT Work 的域名 HTTPS（`mcp.zhanglinlin.top`）已按用户要求于 2026-11-03 移除；如恢复 Work 需重新配域名/TLS |
 | 代码目录 | **`/app`**（monorepo：`server/` + `web/` + `skills/`） |
 | 进程管理 | **systemd**：`vibehub.service`（`enabled`，开机自启；异常 5s 自动重启） |
 | 启动命令 | `node dist/bootstrap.js`，工作目录 `/app/server` |
@@ -340,3 +340,26 @@ VIBEHUB_MCP_EVENT_RELAY_TOKEN=<与中转主机相同的独立令牌>
 - 更新前旧路由源码和产物已归档到 `/root/vibehub-backups/oauth-ui-<时间戳>/oauth-before.tar.gz`。回滚还原旧路由、重建后端并重启。
 - 本地与远端 Server build exit 0；服务重启后 health 正常；浏览器已查看线上真实 OAuth 授权页。没有提交登录/授权，也未运行自动化测试。
 - 错误回显不含密码；有效请求在登录失败后仍可重试，成功验证时原子消费 nonce；取消通过既有已校验 redirect_uri 返回 OAuth access_denied 与 state。
+
+### R89 产品重做第一切片（2026-11-03）
+
+- 备份：`/root/vibehub-backups/pg-before-r89-*.dump`、`app-before-r89-*.tar.gz`、`data-before-r89-*.tar.gz`；数据库、附件目录与原 `/app` 均在替换前留档。
+- 部署：本机构建 `web/out` → rsync 到 `/app/web/out`（并同步 `/app/out`）；`server/src` 同步后在服务器执行 `npm run build -w server`；`vibehub.service` 重启。旧 PostgreSQL 集群启动并确认 `postgresql@16-main` / `vibehub` 均 enabled。
+- 验证：`/api/health` 本地与 HTTPS 均 200；`/today`、`/work/bugs`、`/work/tasks`、`/context/*`、`/settings`、`/keys`、`/stats` 均 200；未登录 `/api/today` 401；`prisma migrate status` 12 个迁移全部最新；库数据保持 `users=1 / projects=1 / bugs=0 / tasks=2 / api_keys=3`；服务 active、enabled，内存约 227 MB；日志无 error/exception。
+- 说明：本次只替换代码与静态产物，保留数据库、`/var/lib/vibehub/data` 与 `/etc/vibehub/env`；注册开关仍为 false。登录页与配色按用户反馈恢复原版，四区结构/今日/密钥自助保留。凭据与真实地址不写入本文件。
+
+### 域名 / TLS 收敛（2026-11-03，用户要求）
+
+- 用户已自行删除 `mcp.zhanglinlin.top` 的 DNS 映射，并要求移除对应的 Nginx 443 与 Let's Encrypt 配置。
+- 删除前备份：`/root/vibehub-backups/domain-removal-2026-11-03-1936.tar.gz`（Nginx 配置 + `/etc/letsencrypt`，权限 600）。
+- 已删除 Nginx 中两个 `mcp.zhanglinlin.top` server block，`nginx -t` + `reload` 通过；`certbot delete --cert-name mcp.zhanglinlin.top` 已移除域名证书与续期配置。
+- 保留 `121.36.215.70` 的 IP 证书和 443 反代；`VIBEHUB_PUBLIC_URL` 改为 `https://121.36.215.70`；重启后 `/api/health` 200、`/today` 200。
+- 当前入口：`http://<内网IP>:3210` / `http://<公网IP>:3210`，以及 `https://121.36.215.70`。域名不再由本机提供。
+
+### 2026-11-04 今日页 500（Prisma 客户端未重新生成）
+
+- 现象：`/api/today` 返回 500，日志 `Unknown field evidence for select statement on model Bug/Task`。
+- 根因：只同步了 `prisma/schema.prisma` + `dist`，没有在服务器执行 `npx prisma generate`；运行时 Prisma Client 仍是旧 schema。
+- 修复：`cd /app/server && npx prisma generate` + `systemctl restart vibehub`。
+- 以后每次改 Prisma schema：同步 `server/prisma` 后**先** `cd /app/server && npx prisma generate`，再重启；`prisma migrate deploy` 只改库，不会更新客户端。
+

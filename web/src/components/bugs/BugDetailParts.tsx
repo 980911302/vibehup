@@ -22,14 +22,14 @@ export function BugAttachments({ attachments, onOpenText }: { attachments: Attac
                 </a>
               ) : isText(a) ? (
                 <button
-                  className="flex aspect-[4/3] w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1 text-center text-[10px] text-[var(--text-tertiary)] hover:border-[var(--brand)]"
+                  className="flex aspect-[4/3] w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1 text-center text-xs text-[var(--text-tertiary)] hover:border-[var(--brand)]"
                   onClick={() => onOpenText(a.id, a.file_name)}
                 >
                   <span className="line-clamp-2 break-all">{a.file_name}</span>
                   <span className="text-[var(--brand)]">在线查看</span>
                 </button>
               ) : (
-                <div className="flex aspect-[4/3] w-full items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1 text-center text-[10px] text-[var(--text-tertiary)]">
+                <div className="flex aspect-[4/3] w-full items-center justify-center rounded-md border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-1 text-center text-xs text-[var(--text-tertiary)]">
                   {a.file_name} · {formatSize(a.file_size)}
                 </div>
               )}
@@ -63,7 +63,7 @@ export function BugActivity({ comments, canEdit, onComment }: ActivityProps) {
       <div className="space-y-2">
         {comments.map((c) => (
           <div key={c.id} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-2.5">
-            <div className="mb-1 flex items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+            <div className="mb-1 flex items-center gap-2 text-xs text-[var(--text-tertiary)]">
               {c.author_type === 'ai' ? (
                 <span className="vh-ai-badge"><Sparkles size={9} strokeWidth={2.4} />AI{c.author_name ? ` · ${c.author_name}` : ''}</span>
               ) : (

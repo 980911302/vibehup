@@ -27,6 +27,9 @@ import { bugExtrasRoutes } from './routes/bug-extras.js';
 import { apiKeyRoutes } from './routes/api-keys.js';
 import { systemRoutes } from './routes/system.js';
 import { statsRoutes } from './routes/stats.js';
+import { todayRoutes } from './routes/today.js';
+import { notificationRoutes } from './routes/notifications.js';
+import { workItemRoutes } from './routes/work-items.js';
 import { authenticate, requireRole } from './plugins/authenticate.js';
 
 async function ensureDirs(): Promise<void> {
@@ -114,6 +117,9 @@ export async function buildServer(opts: { loggerStream?: NodeJS.WritableStream }
     [apiKeyRoutes, '/api/api-keys'],
     [systemRoutes, '/api/system'],
     [statsRoutes, '/api/stats'],
+    [todayRoutes, '/api/today'],
+    [notificationRoutes, '/api/notifications'],
+    [workItemRoutes, '/api/work-items'],
   ] as const;
   for (const [routes, prefix] of guarded) {
     await app.register(async (scope) => {

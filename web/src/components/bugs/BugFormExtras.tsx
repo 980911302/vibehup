@@ -39,7 +39,7 @@ export function BugFormExtras({
       >
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         更多选项
-        <span className="ml-1 text-[10px] text-[var(--text-tertiary)]">复现步骤 · 严重度 · 指派 · 模板</span>
+        <span className="ml-1 text-xs text-[var(--text-tertiary)]">复现步骤 · 严重度 · 指派 · 模板</span>
       </button>
       {open && (
         <div className="space-y-2.5 border-t border-[var(--border-subtle)] p-3" data-testid="bug-extras-panel">

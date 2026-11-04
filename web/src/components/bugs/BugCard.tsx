@@ -51,11 +51,11 @@ export function BugCard({
       style={{ borderLeft: `3px solid ${SEVERITY_DOT[bug.severity]}` }}
     >
       <div className="mb-1.5 flex items-start justify-between gap-2">
-        <p className="line-clamp-2 text-[13px] font-medium leading-snug text-[var(--text-primary)]">{bug.title}</p>
+        <p className="line-clamp-2 text-sm font-medium leading-snug text-[var(--text-primary)]">{bug.title}</p>
         <div className="flex shrink-0 items-center gap-1">
           {bug.assignee ? (
             <span
-              className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--brand-soft)] text-[10px] font-semibold text-[var(--brand)]"
+              className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--brand-soft)] text-xs font-semibold text-[var(--brand)]"
               title={`负责人 ${bug.assignee.name}`}
               data-testid="bug-assignee-avatar"
             >
@@ -63,7 +63,7 @@ export function BugCard({
             </span>
           ) : (
             <span
-              className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-dashed border-[var(--border-strong)] text-[10px] text-[var(--text-tertiary)]"
+              className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-tertiary)]"
               title="未指派负责人"
               data-testid="bug-assignee-empty"
             >
@@ -87,12 +87,12 @@ export function BugCard({
       {bug.labels.length > 0 && (
         <div className="mb-1.5 flex flex-wrap gap-1">
           {bug.labels.slice(0, 3).map((l) => (
-            <span key={l} className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-[10px] text-[var(--text-tertiary)]">#{l}</span>
+            <span key={l} className="rounded bg-[var(--bg-elevated)] px-1.5 py-0.5 text-xs text-[var(--text-tertiary)]">#{l}</span>
           ))}
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 whitespace-nowrap text-[11px] text-[var(--text-tertiary)]">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 whitespace-nowrap text-xs text-[var(--text-tertiary)]">
         <span className="flex items-center gap-2">
           <span className="flex items-center gap-1">
             <i className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: SEVERITY_DOT[bug.severity] }} />

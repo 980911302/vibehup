@@ -212,6 +212,7 @@ export async function updateTask(ctx: McpContext, input: {
   priority?: string;
   labels?: string[];
   reopen_reason?: string;
+  evidence?: Record<string, unknown>;
 }) {
   if (input.title !== undefined && !input.title.trim()) {
     throw new ValidationError('title 不能为空');
@@ -223,10 +224,11 @@ export async function updateTask(ctx: McpContext, input: {
     priority: input.priority,
     labels: input.labels,
     reopenReason: input.reopen_reason,
+    evidence: input.evidence,
   }, mcpActor(ctx));
   return {
     ok: true,
-    task: { id: task.id, title: task.title, status: task.status, priority: task.priority, labels: task.labels },
+    task: { id: task.id, title: task.title, status: task.status, priority: task.priority, labels: task.labels, evidence: task.evidence ?? null },
     ...taskFlow(task.status),
   };
 }
