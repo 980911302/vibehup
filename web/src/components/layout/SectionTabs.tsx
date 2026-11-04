@@ -68,7 +68,7 @@ export function ContextTabs({ active }: { active: 'notes' | 'files' | 'skills' }
         <Tab active={active === 'files'} label="文件" icon={FolderOpen} href="/context/files" testId="context-files" />
         <Tab active={active === 'skills'} label="技能" icon={Puzzle} href="/context/skills" testId="context-skills" />
       </div>
-      <span className="t-caption-5 ml-auto hidden text-[var(--text-tertiary)] md:inline">
+      <span className="t-caption-5 ml-auto hidden max-w-[40%] min-w-0 truncate text-right text-[var(--text-tertiary)] md:inline-block">
         笔记、证据与技能，都是 AI 接活时的上下文
       </span>
     </div>

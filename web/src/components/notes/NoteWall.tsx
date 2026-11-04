@@ -63,7 +63,7 @@ export function NoteWall({
       {/* 瀑布流 */}
       <div className="flex-1 overflow-y-auto p-4">
         {filtered.length === 0 ? (
-          <div className="vh-empty" style={{ height: '100%' }}>
+          <div className="vh-empty min-h-[240px] px-4">
             <span className="vh-empty-icon"><StickyNote size={28} strokeWidth={1.6} /></span>
             <p className="vh-empty-title">还没有随手记</p>
             <p className="vh-empty-hint">按 N 或点「记一笔」记录灵感；IDE 里的 AI 也会通过 MCP 往这里写</p>

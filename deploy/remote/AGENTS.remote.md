@@ -356,3 +356,10 @@ VIBEHUB_MCP_EVENT_RELAY_TOKEN=<与中转主机相同的独立令牌>
 - 保留 `121.36.215.70` 的 IP 证书和 443 反代；`VIBEHUB_PUBLIC_URL` 改为 `https://121.36.215.70`；重启后 `/api/health` 200、`/today` 200。
 - 当前入口：`http://<内网IP>:3210` / `http://<公网IP>:3210`，以及 `https://121.36.215.70`。域名不再由本机提供。
 
+### 2026-11-04 今日页 500（Prisma 客户端未重新生成）
+
+- 现象：`/api/today` 返回 500，日志 `Unknown field evidence for select statement on model Bug/Task`。
+- 根因：只同步了 `prisma/schema.prisma` + `dist`，没有在服务器执行 `npx prisma generate`；运行时 Prisma Client 仍是旧 schema。
+- 修复：`cd /app/server && npx prisma generate` + `systemctl restart vibehub`。
+- 以后每次改 Prisma schema：同步 `server/prisma` 后**先** `cd /app/server && npx prisma generate`，再重启；`prisma migrate deploy` 只改库，不会更新客户端。
+
