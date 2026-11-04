@@ -137,6 +137,7 @@ PATCH  /api/projects/:id                   更新项目
 DELETE /api/projects/:id                   删除项目（级联清理附件文件）
 
 GET    /api/today                         今日工作台聚合（跨项目只读：待我处理/待验收/AI 进行中/正在干/今天）
+GET    /api/work-items?project_id=&scope=   Work Item 统一读模型（my/verify/active；复用 today 聚合）
 
 GET    /api/bugs?project_id=&status=&severity=&q=&page=&page_size=
 GET    /api/bugs/board/:projectId          看板分组（按状态机：open/in_progress/resolved/verifying/verified/closed）

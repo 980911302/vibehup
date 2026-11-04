@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Inbox, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -10,7 +10,7 @@ import { useVibeHub } from '@/hooks/use-vibehub';
 import { BUG_STATUS_LABELS } from '@/lib/api-types';
 import { TASK_STATUS_LABELS, type TaskStatus } from '@/lib/task-flow';
 import { hasDeliveryEvidence, evidenceSummary } from '@/lib/evidence';
-import type { TodayItem, TodayResponse } from '@/lib/today-types';
+import type { TodayItem } from '@/lib/today-types';
 import { TodayVerifyActions } from '@/components/today/TodayVerifyActions';
 import { TodayRejectDialog } from '@/components/today/TodayRejectDialog';
 
@@ -24,7 +24,8 @@ export function WorkQueue() {
   const canEdit = useCanEdit();
   const store = useVibeHub();
   const toast = useToast();
-  const [data, setData] = useState<TodayResponse | null>(null);
+  const [mine, setMine] = useState<TodayItem[]>([]);
+  const [verify, setVerify] = useState<TodayItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -32,8 +33,14 @@ export function WorkQueue() {
   const project = store.currentProject;
 
   const load = async () => {
+    if (!project) return;
     try {
-      setData(await api.getToday());
+      const [m, v] = await Promise.all([
+        api.getWorkItems(project.id, 'my'),
+        api.getWorkItems(project.id, 'verify'),
+      ]);
+      setMine(m.items);
+      setVerify(v.items);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : '队列加载失败');
@@ -46,15 +53,6 @@ export function WorkQueue() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, store.statsRevision]);
-
-  const { mine, verify } = useMemo(() => {
-    if (!data || !project) return { mine: [] as TodayItem[], verify: [] as TodayItem[] };
-    const inProject = (i: TodayItem) => i.project.id === project.id;
-    return {
-      mine: data.needs_me.filter(inProject),
-      verify: data.to_verify.filter(inProject),
-    };
-  }, [data, project]);
 
   const openItem = (item: TodayItem) => {
     router.push(item.kind === 'bug' ? `/work/bugs?bug=${item.id}` : `/work/tasks?task=${item.id}`);
@@ -171,8 +169,8 @@ export function WorkQueue() {
         </div>
       </header>
 
-      {loading && !data && <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-[var(--text-tertiary)]" /></div>}
-      {error && !data && (
+      {loading && <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-[var(--text-tertiary)]" /></div>}
+      {error && (
         <div className="vh-card mt-6 flex flex-col items-center gap-2 p-8 text-center">
           <AlertTriangle size={20} className="text-[var(--warn)]" />
           <p className="t-caption-2 text-[var(--text-tertiary)]">{error}</p>
@@ -180,7 +178,7 @@ export function WorkQueue() {
         </div>
       )}
 
-      {!loading && data && (
+      {!loading && (
         <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_1fr]">
           <section>
             <div className="mb-2 flex items-center justify-between">

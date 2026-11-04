@@ -51,3 +51,10 @@ export interface TodayResponse {
   };
   trend: { date: string; bugs_fixed: number; tasks_done: number }[];
 }
+
+/** GET /api/work-items 统一读模型（R91 阶段 A） */
+export interface WorkItemsResponse {
+  items: TodayItem[];
+  scope: 'my' | 'verify' | 'active';
+  project_id: string;
+}

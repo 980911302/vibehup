@@ -23,7 +23,7 @@ import type {
 import { ApiError, BASE, currentAccessToken, parseError, rawRequest, request, setTokenAccessors } from './http';
 import { taskApi, skillApi } from './api-more';
 import type { StatsResponse } from './stats-types';
-import type { TodayResponse } from './today-types';
+import type { TodayResponse, WorkItemsResponse } from './today-types';
 import type { NotificationsResponse, ProjectMemory } from './api-types';
 import { scopeParam } from './stats-view';
 
@@ -233,6 +233,8 @@ export const api = {
 
   // ============ 今日（R89，跨项目只读聚合） ============
   getToday: () => request<TodayResponse>('/today'),
+  getWorkItems: (projectId: string, scope: 'my' | 'verify' | 'active' = 'my') =>
+    request<WorkItemsResponse>(`/work-items?project_id=${encodeURIComponent(projectId)}&scope=${scope}`),
 
   getProjectMemory: (projectId: string) => request<ProjectMemory>(`/projects/${projectId}/memory`),
 
