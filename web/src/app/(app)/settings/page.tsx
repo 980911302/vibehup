@@ -86,7 +86,7 @@ export default function SettingsPage() {
       </header>
 
       {isAdmin && (
-        <div className="vh-segmented mt-6">
+        <div className="vh-segmented mt-8">
           <button className={cn(tab === 'me' && 'active')} onClick={() => setTab('me')} data-testid="settings-me">
             <UserRound size={13} className="mr-1 inline" /> 我的
           </button>
@@ -97,9 +97,9 @@ export default function SettingsPage() {
       )}
 
       {tab === 'me' ? (
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="mt-8 grid gap-5 lg:grid-cols-2">
           {/* 个人资料 */}
-          <section className="vh-card p-5">
+          <section className="vh-card p-6">
             <h2 className="t-title-3">个人资料</h2>
             <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">AI 的动作会记在你名下，用真名方便团队辨认。</p>
             <div className="mt-4 flex items-center gap-3">
@@ -127,7 +127,7 @@ export default function SettingsPage() {
           </section>
 
           {/* 密钥 */}
-          <section className="vh-card p-5">
+          <section className="vh-card p-6">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h2 className="t-title-3">密钥与连接</h2>
@@ -136,7 +136,7 @@ export default function SettingsPage() {
               <KeyRound size={18} className="text-[var(--text-tertiary)]" />
             </div>
             <p className="t-heading-5 mt-4">{activeKeys === null ? '…' : activeKeys} 把活跃密钥</p>
-            <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">权限不超过你的角色；撤销立即生效，轮换保留 24 小时宽限。</p>
+            <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">密钥自动继承你的角色；撤销立即生效，轮换保留 24 小时宽限。</p>
             <button className="vh-btn mt-4" onClick={() => router.push('/keys')} data-testid="settings-keys">
               管理我的密钥 <ArrowRight size={14} />
             </button>
@@ -145,7 +145,7 @@ export default function SettingsPage() {
           <PasswordCard />
 
           {/* 偏好 */}
-          <section className="vh-card p-5">
+          <section className="vh-card p-6">
             <h2 className="t-title-3">偏好</h2>
             <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">默认暗色；纸白适合白天与打印。</p>
             <div className="mt-4 flex items-center justify-between gap-3">
@@ -165,7 +165,7 @@ export default function SettingsPage() {
             </p>
           </section>
 
-          <section className="vh-card flex flex-wrap items-center justify-between gap-3 p-5 lg:col-span-2">
+          <section className="vh-card flex flex-wrap items-center justify-between gap-3 p-6 lg:col-span-2">
             <div>
               <h2 className="t-title-3">退出登录</h2>
               <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">退出后需重新登录才能继续使用。</p>
@@ -192,7 +192,7 @@ export default function SettingsPage() {
           </div>
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="mt-8 grid gap-5 lg:grid-cols-2">
           <TeamCard
             icon={Users}
             title="成员与角色"
@@ -214,7 +214,7 @@ export default function SettingsPage() {
             action="看统计"
             onClick={() => router.push('/stats')}
           />
-          <section className="vh-card p-5">
+          <section className="vh-card p-6">
             <h2 className="t-title-3 flex items-center gap-2">
               <ShieldCheck size={16} /> 系统
             </h2>

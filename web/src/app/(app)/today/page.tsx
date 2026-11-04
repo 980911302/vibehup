@@ -149,7 +149,7 @@ export default function TodayPage() {
   return (
     <div className="vh-page">
       {/* 页头 */}
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-6">
         <div>
           <p className="t-caption-4 flex items-center gap-2 text-[var(--text-tertiary)]">
             <CalendarDays size={14} />
@@ -174,7 +174,7 @@ export default function TodayPage() {
       </header>
 
       {noProject ? (
-        <div className="vh-card mt-8">
+        <div className="vh-card mt-10">
           <div className="vh-empty">
             <span className="vh-empty-icon">
               <Inbox size={22} />
@@ -193,7 +193,7 @@ export default function TodayPage() {
       ) : (
         <>
           {/* 行动三块 */}
-          <div className="mt-8 grid gap-4 lg:grid-cols-3">
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
             <ActionCard
               label="待我处理"
               hint="指派给你、还没收尾的活"
@@ -260,7 +260,7 @@ export default function TodayPage() {
             </div>
           )}
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+          <div className="mt-6 grid gap-5 lg:grid-cols-[1.5fr_1fr]">
             {/* 正在干 */}
             <section className="vh-card overflow-hidden">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-5 py-4">
@@ -286,7 +286,7 @@ export default function TodayPage() {
             </section>
 
             {/* 今天 + 趋势 */}
-            <section className="vh-card p-5">
+            <section className="vh-card p-6">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="t-title-3">今天</h2>

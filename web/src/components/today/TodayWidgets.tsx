@@ -74,7 +74,7 @@ export function ActionCard({
   actionsFor?: (item: TodayItem) => ReactNode;
 }) {
   return (
-    <section className="vh-card flex flex-col p-5" data-testid={testId}>
+    <section className="vh-card flex flex-col p-6" data-testid={testId}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="t-caption-4 text-[var(--text-tertiary)]">{label}</p>

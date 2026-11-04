@@ -132,7 +132,7 @@ export default function KeysPage() {
       </header>
 
       {/* 概览 */}
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Bento label="活跃密钥" value={`${activeKeys.length}`} suffix={teamView ? `全团队 ${keys.length}` : `共 ${keys.length}`} />
         <Bento label="角色" value={user?.name ?? ''} suffix={isAdmin ? '管理员可审计团队' : '个人身份'} />
         <Bento
@@ -161,7 +161,7 @@ export default function KeysPage() {
 
       <section className="vh-card mt-3 overflow-hidden" data-testid="keys-table">
         {loading ? (
-          <div className="space-y-2 p-5">
+          <div className="space-y-2 p-6">
             {[0, 1, 2].map((i) => (
               <div key={i} className="vh-skeleton h-14 w-full" />
             ))}
