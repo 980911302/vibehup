@@ -60,18 +60,18 @@ export function NoteComposer({ open, onClose, onCreate }: NoteComposerProps) {
       />
       <div className="mt-2 flex items-center gap-2">
         <input
-          className="h-7 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2 text-xs outline-none focus:border-[var(--brand)]"
+          className="h-7 min-w-0 flex-1 rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] px-2 text-xs outline-none focus:border-[var(--brand)]"
           placeholder="标签（空格分隔，如 tech-debt）"
           value={tagText}
           onChange={(e) => setTagText(e.target.value)}
           data-testid="note-composer-tags"
         />
-        <span className="vh-kbd">⌘↵</span>
-        <button className="vh-btn ghost" onClick={onClose}>
+        <span className="vh-kbd shrink-0">⌘↵</span>
+        <button className="vh-btn ghost shrink-0" onClick={onClose}>
           取消
         </button>
         <button
-          className="vh-btn"
+          className="vh-btn shrink-0"
           style={{ background: 'var(--gold-bg)', color: 'var(--gold)', border: '1px solid var(--gold)' }}
           onClick={() => void submit()}
           disabled={sending || !draft.trim()}
