@@ -7,6 +7,7 @@
 | 文件 | 说明 |
 | --- | --- |
 | `before-board-dark.png` | 旧壳：侧边栏 + 六列看板 + 蓝色品牌 |
+| `after-work-queue.png` | 工作默认「我的队列 + 待验收」；六列看板降为二级 Tab |
 | `after-work-bugs-dark.png` | 工作 · 缺陷：四区顶栏 + 默认隐藏已完成列；配色恢复原版 |
 | `after-work-archived-dark.png` | 工作 · 已归档：完成的缺陷/任务不占看板 |
 | `after-quick-capture.png` | 任意页按 C 的全局快速录单 |

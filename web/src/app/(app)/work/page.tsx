@@ -1,6 +1,16 @@
-import WorkBugsPage from './bugs/page';
+'use client';
 
-/** /work 默认落到缺陷看板；顶部 Tab 可切任务 */
+import { WorkTabs } from '@/components/layout/SectionTabs';
+import { WorkQueue } from '@/components/work/WorkQueue';
+
+/** 工作默认落到「我的队列」；缺陷/任务看板降为二级 Tab */
 export default function WorkPage() {
-  return <WorkBugsPage />;
+  return (
+    <div className="flex h-full flex-col">
+      <WorkTabs active="queue" />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <WorkQueue />
+      </div>
+    </div>
+  );
 }

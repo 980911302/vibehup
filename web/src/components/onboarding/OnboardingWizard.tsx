@@ -80,7 +80,7 @@ export function OnboardingWizard({ open, onOpenChange }: { open: boolean; onOpen
       <DialogContent className="max-w-lg" data-testid="onboarding-wizard">
         <DialogHeader>
           <DialogTitle>欢迎使用 VibeHub</DialogTitle>
-          <DialogDescription>三步完成初始设置，之后随时可以在侧边栏找到这些功能</DialogDescription>
+          <DialogDescription>三步完成初始设置，之后随时可以在顶部导航找到这些功能</DialogDescription>
         </DialogHeader>
 
         {/* 步骤指示 */}
@@ -170,7 +170,7 @@ export function OnboardingWizard({ open, onOpenChange }: { open: boolean; onOpen
                 让 Cursor / Windsurf 直连你的项目上下文
               </div>
               <p className="text-xs leading-relaxed text-[var(--text-tertiary)]">
-                MCP 密钥是 AI 读取缺陷、便签与附件的凭证。在密钥页一分钟就能创建，默认只给「读取上下文」的最小权限，需要 AI 回填状态时再勾选写权限。
+                MCP 密钥是 AI 读取缺陷、便签与附件的凭证。创建时只填名称，权限自动继承你的角色，不需要再选 scope。
               </p>
             </div>
             <div className="flex items-center justify-between">
@@ -225,7 +225,7 @@ export function OnboardingWizard({ open, onOpenChange }: { open: boolean; onOpen
             <div className="flex justify-end">
               <button className="vh-btn" onClick={finish} data-testid="onboarding-finish">
                 <PartyPopper size={14} />
-                进入看板
+                进入今日
               </button>
             </div>
           </div>

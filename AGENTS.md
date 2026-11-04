@@ -48,7 +48,7 @@
 - **计量契约**：所有 UsageEvent / 审计写入必须 `await`（logEvent 内部已 try-catch 不抛）；禁 `void logEvent(...)` 即发即弃——会导致紧随的用量查询漏账（R11 竞态教训）。
 - **SSE 鉴权契约**：浏览器 `EventSource` 不支持自定义头，`/api/events` 免全局守卫，路由内校验 `?token=<access_token>`；无/错 token 401。
 - **附件原文件访问契约（R76）**：`<img>`/新标签页同样带不了 Authorization 头——`/api/attachments/:id/raw` 免全局守卫，路由内「签名链接（`exp`+`sig`，HMAC 以 `asset:` 前缀与 JWT 共用密钥）或 Bearer」二选一；`public_url` 一律由 `serializeAttachment` 按**记录 ID** 签发（12h 分桶，轮询不闪烁），前端禁止自拼未签名 raw 地址；建附件时记录 ID = 落盘 ID（`createAttachment({ id })`，历史上二者不一致致 public_url 404），存量错误 publicUrl 由序列化层纠正。下发必带 `X-Content-Type-Options: nosniff` + `CSP: default-src 'none'; sandbox`，仅图片白名单与 text/plain 可 inline，html/svg 等强制 `attachment`——上传方 MIME 不可信，防止在应用同源执行脚本读走 localStorage 令牌。
-- **静态导出契约（output: 'export'）**：① 页面禁止用 `next/navigation` 的 `redirect()/notFound()`——预渲染期抛错会产出 `__next_error__` 页；根路径跳转用客户端 `window.location.replace` + `<meta refresh>`；② Fastify 托管 out/ 必须 `extensions: ['html']`，否则 `/login`、`/board` 这类干净 URL 回退 index.html 造成重定向死循环。
+- **静态导出契约（output: 'export'）**：⓪ `work.html`/`context.html` 与 `work/`/`context/` 同名目录会互相遮蔽——`web/scripts/postbuild-static.mjs` 在 build 后把同名 html 复制为目录 `index.html`，否则 `/work`、`/context` 会回退根 `index.html`；① 页面禁止用 `next/navigation` 的 `redirect()/notFound()`——预渲染期抛错会产出 `__next_error__` 页；根路径跳转用客户端 `window.location.replace` + `<meta refresh>`；② Fastify 托管 out/ 必须 `extensions: ['html']`，否则 `/login`、`/board` 这类干净 URL 回退 index.html 造成重定向死循环。
 
 ## 3. API 契约
 
@@ -96,6 +96,7 @@
 - 双传输：stdio（`VIBEHUB_API_KEY` 可选，无密钥=本地全权）+ SSE（`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=xxx`，Bearer 必需，session 即凭据；容器部署形态）。
 - scope 枚举：`context:read / attachment:read / attachment:write / bug:write / note:write / task:read / task:write / skill:write / admin`（`skill:write` 为 R80 新增：上传/删除技能；查看与下载技能属 `context:read`）；新建密钥默认继承本人角色允许的全部 scope（前端不再让用户选权限；显式 scope 仅 API/OAuth 兼容）。
 - **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效（SSE 长连接由 guard 每次调用按 ID 复核密钥状态与 scope，R76）；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。**R90 证据规则**：`update_bug_status` / `update_task` 的 `evidence` 参数与 REST 同构；标记 resolved/review 时 AI 应尽量写入；`get_bug_detail` / `get_task_detail` 返回 evidence。
+- **R90 队列规则**：`/work` 默认 `WorkQueue`（我的队列 + 待验收，复用 /api/today 与证据门），`/work/bugs|tasks|archived` 保留二级看板；移动端默认队列即列表。
 - **R90 记忆规则**：项目记忆=项目 description + 置顶笔记；不自动把全部笔记塞进去；不启用向量。
 - **R90 身份/交接规则**：`get_me` / `list_members` 需 `context:read`；`handoff_work` 工具级 scope 为 `context:read`，但内部按实体强制 `bug:write` / `task:write`；`assignee` 必须是 active 非 viewer；缺陷转交写活动流，任务写用量事件。
 - **R89 自助规则**：密钥归属创建人；本人可管理自己的全部密钥，Admin+ 可管理团队全部；创建时不选权限，服务端按所属用户真实角色自动继承可用 scope（`ROLE_SCOPES`），显式 scope 仍按角色校验；管理员替他人轮换时新密钥仍归原主人，旧主人被移除时才落到操作人。
@@ -111,7 +112,7 @@
 ## 6. 前端契约
 
 - 颜色/圆角/阴影/时长/缓动一律 token（`globals.css` 唯一来源）；组件内禁止裸 HEX。
-- **四区导航与视觉系统（R89）**：一级入口只有今日 `/today`、工作 `/work/bugs|/work/tasks|/work/archived`、上下文 `/context/notes|/context/files|/context/skills`、设置 `/settings`；`C` 是全局快速录单（任何页；无项目时唤起首启），工作看板默认隐藏已完成/已关闭/已取消（自动归入「已归档」Tab，旧 `/board` 保留完整六列）；`AppNav` 是唯一顶栏，项目切换、搜索、AI 活动、主题、账号都在这里，页面内不再放重复切换器。字体恢复原版 Inter / Noto Sans SC / PingFang 栈（登录页保留 Noto Serif 标题）；文字使用 `globals.css` 的命名样式 `t-heading-1..6 / t-title-1..5 / t-body-1..6 / t-button-* / t-caption-1..5`，字号只取 Tailwind 12/14/16/18/20/24/30/36/48/60 阶梯；暗色背景沿用原版 `#0B0E14 / #12161F / #171C27 / #1D2432`，强调色为原版蓝 `#4C7DD9`（Daylight 藏青 `#1F355A`），金色仍只用于 AI 标识；语义色仅用于状态；卡片边框四周齐全，背景无渐变；动效只用 transform/opacity，恢复原版曲线 `cubic-bezier(0.32,0.72,0,1)` / `cubic-bezier(0.16,1,0.3,1)`，时长 140/220/320ms。图标按 R58 继续用 lucide（未改用 Phosphor/Solar，遵守仓库图标宪法）。
+- **四区导航与视觉系统（R89）**：一级入口只有今日 `/today`、工作 `/work`（默认队列，`/work/bugs|/work/tasks|/work/archived` 为二级看板）、上下文 `/context/notes|/context/files|/context/skills`、设置 `/settings`；`C` 是全局快速录单（任何页；无项目时唤起首启），工作看板默认隐藏已完成/已关闭/已取消（自动归入「已归档」Tab，旧 `/board` 保留完整六列）；`AppNav` 是唯一顶栏，工作默认「我的队列 + 待验收」，六列看板降为二级；项目切换、搜索、AI 活动、主题、账号都在这里，页面内不再放重复切换器。字体恢复原版 Inter / Noto Sans SC / PingFang 栈（登录页保留 Noto Serif 标题）；文字使用 `globals.css` 的命名样式 `t-heading-1..6 / t-title-1..5 / t-body-1..6 / t-button-* / t-caption-1..5`，字号只取 Tailwind 12/14/16/18/20/24/30/36/48/60 阶梯；暗色背景沿用原版 `#0B0E14 / #12161F / #171C27 / #1D2432`，强调色为原版蓝 `#4C7DD9`（Daylight 藏青 `#1F355A`），金色仍只用于 AI 标识；语义色仅用于状态；卡片边框四周齐全，背景无渐变；动效只用 transform/opacity，恢复原版曲线 `cubic-bezier(0.32,0.72,0,1)` / `cubic-bezier(0.16,1,0.3,1)`，时长 140/220/320ms。图标按 R58 继续用 lucide（未改用 Phosphor/Solar，遵守仓库图标宪法）。
 - 动效铁律：只动 transform/opacity；退出快于进入；`prefers-reduced-motion` 降级；装饰动画只允许三处（登录聚光/AI 流光/空状态浮动）。
 - 暗色 Midnight 默认 + 纸白 Daylight；登录页恒定 Daylight。
 - 单文件 ≤300 行、单函数 ≤50 行、props ≤7；基础组件 forwardRef + cva + cn()。

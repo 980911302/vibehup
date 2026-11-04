@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3211",
-    "build": "next build",
+    "build": "next build && node scripts/postbuild-static.mjs",
     "start": "next start -p 3211"
   },
   "dependencies": {
