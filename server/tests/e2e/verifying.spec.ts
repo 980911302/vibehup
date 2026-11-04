@@ -84,7 +84,7 @@ test('任务：待验证 → 开始验证 → 验证中（显示谁在验）→ 
   await page.getByTestId('nav-tasks').click();
 
   await expect(page.locator('[data-testid^="task-column-"]')).toHaveCount(4);
-  await page.getByText('接入企业微信扫码').click();
+  await page.getByTestId(`task-card-${taskId}`).click();
   await expect(page.getByTestId('task-to-done')).toHaveCount(0);
   await page.getByTestId('task-to-verifying').click();
   await expect(page.getByTestId('task-status-chip')).toHaveText('验证中');
