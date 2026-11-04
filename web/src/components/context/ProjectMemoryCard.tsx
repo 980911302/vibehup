@@ -33,8 +33,8 @@ export function ProjectMemoryCard() {
   if (!description && memory.decisions.length === 0) return null;
 
   return (
-    <section className="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-inset)] px-4 py-2.5" data-testid="project-memory">
-      <div className="flex flex-wrap items-start gap-x-4 gap-y-1">
+    <section className="my-3 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4" data-testid="project-memory">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-1.5">
         <p className="t-caption-4 flex shrink-0 items-center gap-1.5 text-[var(--text-secondary)]">
           <Brain size={14} className="text-[var(--accent-color)]" /> 项目记忆
           <span className="t-caption-5 text-[var(--text-tertiary)]">{memory.decisions.length} 条决策</span>
