@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Inbox, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { api } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { useAuth, useCanEdit } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { BUG_STATUS_LABELS } from '@/lib/api-types';
@@ -21,6 +21,7 @@ import { TodayRejectDialog } from '@/components/today/TodayRejectDialog';
 export function WorkQueue() {
   const router = useRouter();
   const { user } = useAuth();
+  const canEdit = useCanEdit();
   const store = useVibeHub();
   const toast = useToast();
   const [data, setData] = useState<TodayResponse | null>(null);
@@ -136,7 +137,7 @@ export function WorkQueue() {
           <TodayVerifyActions
             item={item}
             busy={busyId === item.id}
-            canEdit
+            canEdit={canEdit}
             onStart={(x) => void changeStatus(x, { status: 'verifying' }, '已接手验证')}
             onApprove={(x) => {
               if (!hasDeliveryEvidence(x.evidence)) {
