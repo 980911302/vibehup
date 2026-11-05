@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { BarChart3, RefreshCw } from 'lucide-react';
+import { AlertTriangle, BarChart3, RefreshCw } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
-import { sortByActorActivity } from '@/lib/stats-view';
+import { statsDateLabel, todayDone, totalRemaining } from '@/lib/stats-view';
 import { StatsActiveList } from '@/components/stats/StatsActiveList';
+import { StatsByActor } from '@/components/stats/StatsByActor';
+import { StatsEmptyGuide } from '@/components/stats/StatsEmptyGuide';
+import { StatsRemainingCard } from '@/components/stats/StatsRemainingCard';
+import { StatsTodayCard } from '@/components/stats/StatsTodayCard';
 import { StatsTrendChart } from '@/components/stats/StatsTrendChart';
 import type { StatsActiveItem, StatsResponse } from '@/lib/stats-types';
 
@@ -23,16 +27,30 @@ export default function StatsPage() {
   const router = useRouter();
   const [scope, setScope] = useState<Scope>('current');
   const [data, setData] = useState<StatsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const projectId = scope === 'current' ? store.currentProject?.id ?? null : null;
+  const hasProject = !!store.currentProject;
+  const activeScope: Scope = scope === 'current' && !hasProject ? 'all' : scope;
+  const projectId = activeScope === 'current' ? store.currentProject?.id ?? null : null;
+  const noActivity =
+    !!data &&
+    data.active.length === 0 &&
+    data.by_actor.length === 0 &&
+    data.trend.every((p) => p.bugs_fixed === 0 && p.tasks_done === 0) &&
+    totalRemaining(data.remaining) === 0 &&
+    todayDone(data.today) === 0 &&
+    data.today.bugs_closed_unfixed === 0;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setData(await api.stats({ projectId }));
+      setError(null);
     } catch (e) {
-      toastError(e instanceof Error ? e.message : '加载统计失败');
+      const message = e instanceof Error ? e.message : '加载统计失败';
+      setError(message);
+      toastError(message);
     } finally {
       setLoading(false);
     }
@@ -55,122 +73,119 @@ export default function StatsPage() {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      {/* 页头 */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] px-4 py-2.5">
-        <div className="flex gap-1 rounded-lg bg-[var(--bg-elevated)] p-0.5">
-          {(['current', 'all'] as const).map((s) => (
-            <button
-              key={s}
-              className={`rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer ${
-                scope === s ? 'bg-[var(--bg-page)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-tertiary)]'
-              }`}
-              onClick={() => setScope(s)}
-              data-testid={`stats-scope-${s}`}
-            >
-              {s === 'current' ? '当前项目' : '全部项目'}
-            </button>
-          ))}
+    <div className="vh-page">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="t-caption-4 flex items-center gap-2 text-[var(--text-tertiary)]">
+            <BarChart3 size={14} strokeWidth={1.8} /> 今日 · 统计
+          </p>
+          <h1 className="t-heading-4 mt-2">产出与节奏</h1>
+          <p className="t-body-3 mt-2 max-w-[680px] text-[var(--text-secondary)]">
+            今天产出多少、还剩多少、谁在做什么；按北京时间统计，每 30 秒刷新。
+          </p>
         </div>
-        <div className="flex-1" />
-        {data && <span className="text-xs text-[var(--text-tertiary)]">{data.scope.today}</span>}
-        <button className="vh-btn ghost h-8 text-xs" onClick={() => void load()} title="刷新" data-testid="stats-refresh">
-          <RefreshCw size={13} className={loading ? 'animate-spin' : undefined} />
-        </button>
-      </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="vh-segmented" role="group" aria-label="统计范围">
+            <button
+              className={activeScope === 'current' ? 'active' : undefined}
+              onClick={() => setScope('current')}
+              disabled={!hasProject && !store.loading}
+              title={hasProject || store.loading ? undefined : '还没有进行中的项目'}
+              data-testid="stats-scope-current"
+            >
+              当前项目
+            </button>
+            <button
+              className={activeScope === 'all' ? 'active' : undefined}
+              onClick={() => setScope('all')}
+              data-testid="stats-scope-all"
+            >
+              全部项目
+            </button>
+          </div>
+          <button className="vh-btn ghost" onClick={() => void load()} title="刷新" data-testid="stats-refresh">
+            <RefreshCw size={15} className={loading ? 'animate-spin' : undefined} />
+            <span className="hidden sm:inline">刷新</span>
+          </button>
+        </div>
+      </header>
 
-      <div className="flex-1 space-y-5 p-4">
-        {!data ? (
-          <p className="py-10 text-center text-xs text-[var(--text-tertiary)]">加载中…</p>
-        ) : (
-          <>
-            {/* 今天 */}
-            <section>
-              <h2 className="mb-2 text-xs font-medium text-[var(--text-tertiary)]">今天</h2>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <Tile label="修复完成的缺陷" value={data.today.bugs_fixed} accent="var(--ok)" />
-                <Tile label="完成的任务" value={data.today.tasks_done} accent="var(--ok)" />
-                <Tile label="新增缺陷" value={data.today.bugs_created} />
-                <Tile label="新增任务" value={data.today.tasks_created} />
+      {!data && error ? (
+        <div className="vh-card mt-8">
+          <div className="vh-empty">
+            <span className="vh-empty-icon">
+              <AlertTriangle size={22} className="text-[var(--warn)]" />
+            </span>
+            <p className="vh-empty-title">统计暂时取不到</p>
+            <p className="vh-empty-hint">{error}</p>
+            <button className="vh-btn" onClick={() => void load()}>
+              <RefreshCw size={15} /> 重试
+            </button>
+          </div>
+        </div>
+      ) : !data ? (
+        <StatsSkeleton />
+      ) : (
+        <>
+          <div className="mt-8 grid gap-5 lg:grid-cols-12">
+            <div className="min-w-0 lg:col-span-7">
+              <StatsTodayCard today={data.today} dateLabel={statsDateLabel(data.scope.today)} />
+            </div>
+            <div className="min-w-0 lg:col-span-5">
+              <StatsRemainingCard remaining={data.remaining} />
+            </div>
+          </div>
+
+          {noActivity ? (
+            <StatsEmptyGuide onOpenWork={() => router.push('/work')} onOpenToday={() => router.push('/today')} />
+          ) : (
+            <>
+              <div className="mt-5 grid items-start gap-5 lg:grid-cols-12">
+                <div className="min-w-0 lg:col-span-7">
+                  <StatsActiveList items={data.active} onOpen={openActiveItem} />
+                </div>
+                <div className="min-w-0 lg:col-span-5">
+                  <StatsByActor rows={data.by_actor} />
+                </div>
               </div>
-              {data.today.bugs_closed_unfixed > 0 && (
-                <p className="mt-1.5 text-xs text-[var(--text-tertiary)]">另有 {data.today.bugs_closed_unfixed} 个缺陷今天按「不修 / 重复」关闭</p>
-              )}
-            </section>
 
-            {/* 还剩多少 */}
-            <section>
-              <h2 className="mb-2 text-xs font-medium text-[var(--text-tertiary)]">还剩多少</h2>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-                <Tile label="缺陷·未解决" value={data.remaining.bugs.unresolved} />
-                <Tile label="缺陷·未验证" value={data.remaining.bugs.unverified} accent="var(--warn)" />
-                <Tile label="任务·待办" value={data.remaining.tasks.todo} />
-                <Tile label="任务·进行中" value={data.remaining.tasks.doing} />
-                <Tile label="任务·未验收" value={data.remaining.tasks.unverified} accent="var(--warn)" />
-              </div>
-            </section>
+              <section className="vh-card mt-5 p-6">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="t-title-3">最近 14 天</h2>
+                  <span className="t-caption-5 text-[var(--text-tertiary)]">含今天，旧 → 新</span>
+                </div>
+                <div className="mt-4">
+                  <StatsTrendChart points={data.trend} />
+                </div>
+              </section>
 
-            {/* 现在谁在做什么 */}
-            <section>
-              <h2 className="mb-2 text-xs font-medium text-[var(--text-tertiary)]">现在谁在做什么</h2>
-              <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-1.5">
-                <StatsActiveList items={data.active} onOpen={openActiveItem} />
-              </div>
-            </section>
-
-            {/* 按密钥 */}
-            <section>
-              <h2 className="mb-2 text-xs font-medium text-[var(--text-tertiary)]">按密钥</h2>
-              {data.by_actor.length === 0 ? (
-                <p className="py-4 text-center text-xs text-[var(--text-tertiary)]">还没有可归集的经手记录</p>
-              ) : (
-                <table className="w-full text-xs" data-testid="stats-by-actor-table">
-                  <thead>
-                    <tr className="border-b border-[var(--border-subtle)] text-left text-xs text-[var(--text-tertiary)]">
-                      <th className="pb-1.5 pl-1 font-medium">经手人</th>
-                      <th className="pb-1.5 font-medium">手上缺陷</th>
-                      <th className="pb-1.5 font-medium">手上任务</th>
-                      <th className="pb-1.5 font-medium">今天修复</th>
-                      <th className="pb-1.5 font-medium">今天完成</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortByActorActivity(data.by_actor).map((row) => (
-                      <tr key={`${row.type}-${row.name}`} className="border-b border-[var(--border-subtle)]/50">
-                        <td className="py-1.5 pl-1 font-medium text-[var(--text-primary)]">
-                          {row.name}
-                          {row.type === 'ai' && <span className="ml-1.5 rounded bg-[var(--brand-soft)] px-1 py-0.5 text-xs text-[var(--brand)]">AI</span>}
-                        </td>
-                        <td className="py-1.5">{row.in_hand_bugs}</td>
-                        <td className="py-1.5">{row.in_hand_tasks}</td>
-                        <td className="py-1.5">{row.fixed_today}</td>
-                        <td className="py-1.5">{row.done_today}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
-
-            {/* 趋势 */}
-            <section>
-              <h2 className="mb-2 text-xs font-medium text-[var(--text-tertiary)]">最近 14 天</h2>
-              <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
-                <StatsTrendChart points={data.trend} />
-              </div>
-            </section>
-          </>
-        )}
-      </div>
+              <p className="t-caption-5 mt-6 text-center text-[var(--text-tertiary)]">
+                修复完成 = 缺陷「已验证」或旧流程「已验证 → 已关闭」；任务完成 = 「已完成」。
+              </p>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-function Tile({ label, value, accent }: { label: string; value: number; accent?: string }) {
+function StatsSkeleton() {
   return (
-    <div className="rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3.5 py-2.5">
-      <p className="flex items-center gap-1 text-xs text-[var(--text-tertiary)]"><BarChart3 size={11} />{label}</p>
-      <p className="mt-0.5 text-xl font-semibold" style={{ color: accent ?? 'var(--text-primary)' }}>{value}</p>
+    <div className="mt-8" data-testid="stats-skeleton">
+      <div className="grid gap-5 lg:grid-cols-12">
+        {[7, 5, 7, 5].map((span, i) => (
+          <div key={i} className={`vh-card p-6 ${span === 7 ? 'lg:col-span-7' : 'lg:col-span-5'}`}>
+            <div className="vh-skeleton h-4 w-24" />
+            <div className="vh-skeleton mt-4 h-10 w-20" />
+            <div className="vh-skeleton mt-5 h-16 w-full" />
+          </div>
+        ))}
+      </div>
+      <div className="vh-card mt-5 p-6">
+        <div className="vh-skeleton h-4 w-28" />
+        <div className="vh-skeleton mt-4 h-36 w-full" />
+      </div>
     </div>
   );
 }

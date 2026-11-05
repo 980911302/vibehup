@@ -309,6 +309,8 @@
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   padding: 64px 16px; text-align: center; color: var(--text-tertiary);
 }
+/* 卡片内嵌的空态：上下留白收一半，避免仪表盘被空态撑高 */
+.vh-empty.compact { padding: 36px 16px; gap: 8px; }
 .vh-empty-icon {
   width: 48px; height: 48px; border-radius: var(--r-card);
   display: inline-flex; align-items: center; justify-content: center;
