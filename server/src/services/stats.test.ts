@@ -104,7 +104,7 @@ async function makeProject(id: string, name: string) {
 }
 
 async function makeBug(over: Partial<{
-  id: string; projectId: string; title: string; status: string;
+  id: string; projectId: string; title: string; status: string; severity: string;
   statusChangedAt: Date | null; statusActorType: string | null; statusActorName: string | null;
   createdAt: Date; updatedAt: Date;
 }>) {
@@ -112,6 +112,7 @@ async function makeBug(over: Partial<{
     data: {
       id: over.id!, projectId: over.projectId!, title: over.title ?? '测试缺陷',
       status: over.status ?? 'open',
+      severity: over.severity ?? 'normal',
       statusChangedAt: over.statusChangedAt ?? null,
       statusActorType: over.statusActorType ?? null,
       statusActorName: over.statusActorName ?? null,
@@ -122,7 +123,7 @@ async function makeBug(over: Partial<{
 }
 
 async function makeTask(over: Partial<{
-  id: string; projectId: string; title: string; status: string;
+  id: string; projectId: string; title: string; status: string; priority: string;
   statusChangedAt: Date | null; statusActorType: string | null; statusActorName: string | null;
   createdAt: Date; updatedAt: Date;
 }>) {
@@ -130,6 +131,7 @@ async function makeTask(over: Partial<{
     data: {
       id: over.id!, projectId: over.projectId!, title: over.title ?? '测试任务',
       status: over.status ?? 'todo',
+      priority: over.priority ?? 'medium',
       statusChangedAt: over.statusChangedAt ?? null,
       statusActorType: over.statusActorType ?? null,
       statusActorName: over.statusActorName ?? null,
@@ -181,9 +183,28 @@ describe('getStats（集成，真连测试库）', () => {
 
     const r = await getStats({ projectId: p.id }, new Date());
     expect(r.remaining).toEqual({
-      bugs: { unresolved: 2, unverified: 2 },
-      tasks: { todo: 1, doing: 1, unverified: 2 },
+      bugs: { unresolved: 2, unverified: 2, urgent: 0 },
+      tasks: { todo: 1, doing: 1, unverified: 2, urgent: 0 },
     });
+  });
+
+  it('还剩多少·紧急：只数剩余项里的 critical/high 缺陷与 high 任务，已完成/已取消不算', async () => {
+    const p = await makeProject('prj_s2b', '紧急剩余项目');
+    await makeBug({ id: 'bug_u1', projectId: p.id, status: 'open', severity: 'critical' });
+    await makeBug({ id: 'bug_u2', projectId: p.id, status: 'verifying', severity: 'high' });
+    await makeBug({ id: 'bug_u3', projectId: p.id, status: 'open', severity: 'normal' });
+    // 已验证的高严重度缺陷不再是「剩余」，不计 urgent
+    await makeBug({ id: 'bug_u4', projectId: p.id, status: 'verified', severity: 'critical' });
+    await makeTask({ id: 'tsk_u1', projectId: p.id, status: 'todo', priority: 'high' });
+    await makeTask({ id: 'tsk_u2', projectId: p.id, status: 'review', priority: 'high' });
+    await makeTask({ id: 'tsk_u3', projectId: p.id, status: 'doing', priority: 'medium' });
+    // 已完成/已取消的任务不计
+    await makeTask({ id: 'tsk_u4', projectId: p.id, status: 'done', priority: 'high' });
+    await makeTask({ id: 'tsk_u5', projectId: p.id, status: 'cancelled', priority: 'high' });
+
+    const r = await getStats({ projectId: p.id }, new Date());
+    expect(r.remaining.bugs).toEqual({ unresolved: 2, unverified: 1, urgent: 2 });
+    expect(r.remaining.tasks).toEqual({ todo: 1, doing: 1, unverified: 1, urgent: 2 });
   });
 
   it('active：只含处理中/等验证的条目，排序为「卡住的在前，其余按停留时长降序」', async () => {

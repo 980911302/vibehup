@@ -14,8 +14,8 @@ export interface StatsToday {
 }
 
 export interface StatsRemaining {
-  bugs: { unresolved: number; unverified: number };
-  tasks: { todo: number; doing: number; unverified: number };
+  bugs: { unresolved: number; unverified: number; urgent: number };
+  tasks: { todo: number; doing: number; unverified: number; urgent: number };
 }
 
 export interface StatsActiveItem {

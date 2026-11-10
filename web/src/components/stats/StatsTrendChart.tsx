@@ -1,9 +1,9 @@
 'use client';
 
 import type { StatsTrendPoint } from '@/lib/stats-types';
-import { trendTotals } from '@/lib/stats-view';
+import { trendTotals, trendWeekTotals } from '@/lib/stats-view';
 
-const PLOT_HEIGHT = 144;
+const PLOT_HEIGHT = 120;
 
 /**
  * 最近 14 天趋势：每天两根并排柱子（缺陷修复完成 / 任务完成）。
@@ -14,6 +14,8 @@ export function StatsTrendChart({ points }: { points: StatsTrendPoint[] }) {
   const totals = trendTotals(points);
   const hasAny = totals.bugsFixed + totals.tasksDone > 0;
   const total = totals.bugsFixed + totals.tasksDone;
+  const { last7, prev7 } = trendWeekTotals(points);
+  const delta = last7 - prev7;
 
   return (
     <div>
@@ -30,6 +32,17 @@ export function StatsTrendChart({ points }: { points: StatsTrendPoint[] }) {
         </div>
         <span className="t-caption-5 tabular-nums text-[var(--text-tertiary)]">14 天合计 {total} 件</span>
       </div>
+      {hasAny && (
+        <p className="t-caption-5 mt-2 tabular-nums text-[var(--text-tertiary)]">
+          近 7 天 <span className="text-[var(--text-secondary)]">{last7}</span> 件 · 前 7 天{' '}
+          <span className="text-[var(--text-secondary)]">{prev7}</span> 件
+          {prev7 > 0 && (
+            <span className={delta >= 0 ? 'ml-1 text-[var(--ok)]' : 'ml-1 text-[var(--warn)]'}>
+              （{delta >= 0 ? '+' : ''}{delta}）
+            </span>
+          )}
+        </p>
+      )}
 
       <div className="mt-4 flex gap-3">
         <div

@@ -7,6 +7,8 @@ import {
   totalRemaining,
   remainingGroups,
   trendTotals,
+  trendWeekTotals,
+  clockLabel,
   statsDateLabel,
 } from './stats-view';
 import type { StatsByActor, StatsRemaining, StatsToday, StatsTrendPoint } from './stats-types';
@@ -23,8 +25,8 @@ function remaining(
   over: { bugs?: Partial<StatsRemaining['bugs']>; tasks?: Partial<StatsRemaining['tasks']> } = {},
 ): StatsRemaining {
   return {
-    bugs: { unresolved: 0, unverified: 0, ...over.bugs },
-    tasks: { todo: 0, doing: 0, unverified: 0, ...over.tasks },
+    bugs: { unresolved: 0, unverified: 0, urgent: 0, ...over.bugs },
+    tasks: { todo: 0, doing: 0, unverified: 0, urgent: 0, ...over.tasks },
   };
 }
 
@@ -102,6 +104,16 @@ describe('汇总数字', () => {
       tasksDone: 4,
     });
     expect(trendTotals([])).toEqual({ bugsFixed: 0, tasksDone: 0 });
+  });
+
+  it('趋势近 7 天 / 前 7 天：按顺序切窗，14 条时各 7 条', () => {
+    const points = Array.from({ length: 14 }, (_, i) => point({ date: `2026-11-${String(i + 1).padStart(2, '0')}`, bugs_fixed: 1 }));
+    expect(trendWeekTotals(points)).toEqual({ last7: 7, prev7: 7 });
+    expect(trendWeekTotals([])).toEqual({ last7: 0, prev7: 0 });
+  });
+
+  it('刷新时间按北京时间显示时分秒', () => {
+    expect(clockLabel(new Date('2026-11-05T12:31:05Z'))).toBe('20:31:05');
   });
 });
 

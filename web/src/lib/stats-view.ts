@@ -49,6 +49,7 @@ export interface RemainingGroup {
   kind: 'bug' | 'task';
   label: string;
   total: number;
+  urgent: number;
   segments: RemainingSegment[];
 }
 
@@ -67,11 +68,18 @@ export function remainingGroups(remaining: StatsRemaining): RemainingGroup[] {
     { key: 'task_unverified', label: '未验收', count: remaining.tasks.unverified, tone: 'warn' },
   ];
   return [
-    { kind: 'bug', label: '缺陷', total: remaining.bugs.unresolved + remaining.bugs.unverified, segments: bugSegments },
+    {
+      kind: 'bug',
+      label: '缺陷',
+      total: remaining.bugs.unresolved + remaining.bugs.unverified,
+      urgent: remaining.bugs.urgent,
+      segments: bugSegments,
+    },
     {
       kind: 'task',
       label: '任务',
       total: remaining.tasks.todo + remaining.tasks.doing + remaining.tasks.unverified,
+      urgent: remaining.tasks.urgent,
       segments: taskSegments,
     },
   ];
@@ -83,6 +91,23 @@ export function trendTotals(points: StatsTrendPoint[]): { bugsFixed: number; tas
     (acc, p) => ({ bugsFixed: acc.bugsFixed + p.bugs_fixed, tasksDone: acc.tasksDone + p.tasks_done }),
     { bugsFixed: 0, tasksDone: 0 },
   );
+}
+
+/** 近 7 天 / 前 7 天的完成总量（用于趋势卡的环比说明） */
+export function trendWeekTotals(points: StatsTrendPoint[]): { last7: number; prev7: number } {
+  const total = (rows: StatsTrendPoint[]) => rows.reduce((sum, p) => sum + p.bugs_fixed + p.tasks_done, 0);
+  return { last7: total(points.slice(-7)), prev7: total(points.slice(0, -7)) };
+}
+
+/** 页面刷新时间（北京时间 HH:mm:ss） */
+export function clockLabel(at: Date): string {
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(at);
 }
 
 /** 服务端日期（YYYY-MM-DD，北京时间）→「11 月 5 日 · 周四」 */

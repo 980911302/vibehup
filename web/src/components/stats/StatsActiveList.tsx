@@ -22,7 +22,7 @@ function statusTone(item: StatsActiveItem): string {
   return 'bg-[var(--bg-elevated)] text-[var(--text-tertiary)]';
 }
 
-function ActiveRow({ item, now, onOpen }: { item: StatsActiveItem; now: number; onOpen: (item: StatsActiveItem) => void }) {
+function ActiveRow({ item, now, projectName, onOpen }: { item: StatsActiveItem; now: number; projectName?: string; onOpen: (item: StatsActiveItem) => void }) {
   const span = formatSpan(now - new Date(item.since).getTime());
   const ActorIcon = item.actor?.type === 'ai' ? Sparkles : User;
   const who = item.actor ? item.actor.name : '未记录经手人';
@@ -37,6 +37,7 @@ function ActiveRow({ item, now, onOpen }: { item: StatsActiveItem; now: number; 
       <span className="min-w-0 flex-1">
         <span className="t-caption-1 block truncate text-[var(--text-primary)]">{item.title}</span>
         <span className="t-caption-5 mt-0.5 flex items-center gap-1.5 truncate text-[var(--text-tertiary)]">
+          {projectName && <span className="truncate">{projectName} ·</span>}
           {item.kind === 'bug' ? '缺陷' : '任务'} ·{' '}
           <ActorIcon size={11} strokeWidth={1.8} className={item.actor?.type === 'ai' ? 'text-[var(--gold)]' : undefined} />
           <span className={item.actor?.type === 'ai' ? 'text-[var(--gold)]' : undefined}>{who}</span>
@@ -55,7 +56,15 @@ function ActiveRow({ item, now, onOpen }: { item: StatsActiveItem; now: number; 
 }
 
 /** 现在谁在做什么：状态 + 标题 + 经手人 + 停留时长；卡住的用危险色标出 */
-export function StatsActiveList({ items, onOpen }: { items: StatsActiveItem[]; onOpen: (item: StatsActiveItem) => void }) {
+export function StatsActiveList({
+  items,
+  projectNames,
+  onOpen,
+}: {
+  items: StatsActiveItem[];
+  projectNames?: Record<string, string>;
+  onOpen: (item: StatsActiveItem) => void;
+}) {
   const now = useMinuteClock();
   const staleCount = items.filter((i) => i.stale).length;
   return (
@@ -85,7 +94,7 @@ export function StatsActiveList({ items, onOpen }: { items: StatsActiveItem[]; o
       ) : (
         <div className="divide-y divide-[var(--border-subtle)]">
           {items.map((item) => (
-            <ActiveRow key={`${item.kind}-${item.id}`} item={item} now={now} onOpen={onOpen} />
+            <ActiveRow key={`${item.kind}-${item.id}`} item={item} now={now} projectName={projectNames?.[item.project_id]} onOpen={onOpen} />
           ))}
         </div>
       )}

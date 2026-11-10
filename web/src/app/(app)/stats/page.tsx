@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, BarChart3, RefreshCw } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
-import { statsDateLabel, todayDone, totalRemaining } from '@/lib/stats-view';
+import { clockLabel, statsDateLabel, todayDone, totalRemaining } from '@/lib/stats-view';
 import { StatsActiveList } from '@/components/stats/StatsActiveList';
 import { StatsByActor } from '@/components/stats/StatsByActor';
 import { StatsEmptyGuide } from '@/components/stats/StatsEmptyGuide';
@@ -29,10 +29,16 @@ export default function StatsPage() {
   const [data, setData] = useState<StatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
   const hasProject = !!store.currentProject;
   const activeScope: Scope = scope === 'current' && !hasProject ? 'all' : scope;
   const projectId = activeScope === 'current' ? store.currentProject?.id ?? null : null;
+  const projectNameById = useMemo(
+    () => Object.fromEntries(store.projects.map((p) => [p.id, p.name])),
+    [store.projects],
+  );
+  const staleCount = data?.active.filter((item) => item.stale).length ?? 0;
   const noActivity =
     !!data &&
     data.active.length === 0 &&
@@ -46,6 +52,7 @@ export default function StatsPage() {
     setLoading(true);
     try {
       setData(await api.stats({ projectId }));
+      setUpdatedAt(new Date());
       setError(null);
     } catch (e) {
       const message = e instanceof Error ? e.message : '加载统计失败';
@@ -103,6 +110,11 @@ export default function StatsPage() {
               全部项目
             </button>
           </div>
+          {updatedAt && (
+            <span className="t-caption-5 hidden tabular-nums text-[var(--text-tertiary)] sm:inline">
+              {clockLabel(updatedAt)} 更新
+            </span>
+          )}
           <button className="vh-btn ghost" onClick={() => void load()} title="刷新" data-testid="stats-refresh">
             <RefreshCw size={15} className={loading ? 'animate-spin' : undefined} />
             <span className="hidden sm:inline">刷新</span>
@@ -132,7 +144,7 @@ export default function StatsPage() {
               <StatsTodayCard today={data.today} dateLabel={statsDateLabel(data.scope.today)} />
             </div>
             <div className="min-w-0 lg:col-span-5">
-              <StatsRemainingCard remaining={data.remaining} />
+              <StatsRemainingCard remaining={data.remaining} staleCount={staleCount} />
             </div>
           </div>
 
@@ -140,16 +152,7 @@ export default function StatsPage() {
             <StatsEmptyGuide onOpenWork={() => router.push('/work')} onOpenToday={() => router.push('/today')} />
           ) : (
             <>
-              <div className="mt-5 grid items-start gap-5 lg:grid-cols-12">
-                <div className="min-w-0 lg:col-span-7">
-                  <StatsActiveList items={data.active} onOpen={openActiveItem} />
-                </div>
-                <div className="min-w-0 lg:col-span-5">
-                  <StatsByActor rows={data.by_actor} />
-                </div>
-              </div>
-
-              <section className="vh-card mt-5 p-6">
+              <section className="vh-card mt-5 p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="t-title-3">最近 14 天</h2>
                   <span className="t-caption-5 text-[var(--text-tertiary)]">含今天，旧 → 新</span>
@@ -158,6 +161,19 @@ export default function StatsPage() {
                   <StatsTrendChart points={data.trend} />
                 </div>
               </section>
+
+              <div className="mt-5 grid items-start gap-5 lg:grid-cols-12">
+                <div className="min-w-0 lg:col-span-7">
+                  <StatsActiveList
+                    items={data.active}
+                    projectNames={activeScope === 'all' ? projectNameById : undefined}
+                    onOpen={openActiveItem}
+                  />
+                </div>
+                <div className="min-w-0 lg:col-span-5">
+                  <StatsByActor rows={data.by_actor} />
+                </div>
+              </div>
 
               <p className="t-caption-5 mt-6 text-center text-[var(--text-tertiary)]">
                 修复完成 = 缺陷「已验证」或旧流程「已验证 → 已关闭」；任务完成 = 「已完成」。
