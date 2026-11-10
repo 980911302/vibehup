@@ -60,3 +60,11 @@ export function noteSummary(content: string, previewLimit = 180): NoteSummary {
     .trim();
   return { title, preview };
 }
+
+/** 列表搜索：正文或标签包含关键词（忽略大小写与首尾空白） */
+export function noteMatchesQuery(content: string, tags: string[], query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (content.toLowerCase().includes(q)) return true;
+  return tags.some((tag) => tag.toLowerCase().includes(q));
+}

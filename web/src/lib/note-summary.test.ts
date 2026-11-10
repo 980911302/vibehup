@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { noteSummary, stripNoteMarkdown } from './note-summary';
+import { noteMatchesQuery, noteSummary, stripNoteMarkdown } from './note-summary';
 
 describe('随手记列表摘要', () => {
   it('有标题时标题取标题行，预览从正文开始', () => {
@@ -31,5 +31,14 @@ describe('随手记列表摘要', () => {
   it('空内容有兜底标题，预览按上限截断', () => {
     expect(noteSummary('   ').title).toBe('未命名随手记');
     expect(noteSummary('正文'.repeat(200)).preview).toHaveLength(180);
+  });
+});
+
+describe('随手记搜索', () => {
+  it('空关键词全部匹配；正文和标签都可命中，忽略大小写', () => {
+    expect(noteMatchesQuery('任意正文', ['协作'], '  ')).toBe(true);
+    expect(noteMatchesQuery('修复 MCP 回调', ['协作'], 'mcp')).toBe(true);
+    expect(noteMatchesQuery('修复 MCP 回调', ['协作'], '协作')).toBe(true);
+    expect(noteMatchesQuery('修复 MCP 回调', ['协作'], '不存在的词')).toBe(false);
   });
 });
