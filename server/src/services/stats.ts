@@ -101,8 +101,10 @@ export interface StatsResult {
   scope: { project_id: string | null; today: string; timezone: string; days: number };
   today: { bugs_fixed: number; bugs_closed_unfixed: number; tasks_done: number; bugs_created: number; tasks_created: number };
   remaining: {
-    bugs: { unresolved: number; unverified: number };
-    tasks: { todo: number; doing: number; unverified: number };
+    /** urgent = 剩余项里 severity 为 critical/high 的缺陷数（R95 统计页优化） */
+    bugs: { unresolved: number; unverified: number; urgent: number };
+    /** urgent = 剩余项里 priority 为 high 的任务数 */
+    tasks: { todo: number; doing: number; unverified: number; urgent: number };
   };
   active: ActiveItem[];
   by_actor: ByActorRow[];
@@ -115,6 +117,9 @@ const BUG_ACTIVE_STATUSES = ['in_progress', 'resolved', 'verifying'];
 const BUG_IN_HAND_STATUSES = ['in_progress', 'verifying'];
 const TASK_ACTIVE_STATUSES = ['doing', 'review', 'verifying'];
 const TASK_IN_HAND_STATUSES = ['doing', 'verifying'];
+/** 「还剩多少」的桶：urgent 只在仍属剩余项的记录里数，已验证/已完成/已取消不算 */
+const REMAINING_BUG_STATUSES = ['open', 'in_progress', 'resolved', 'verifying'];
+const REMAINING_TASK_STATUSES = ['todo', 'doing', 'review', 'verifying'];
 
 function inRange(at: Date, start: Date, end: Date): boolean {
   return at.getTime() >= start.getTime() && at.getTime() < end.getTime();
@@ -143,11 +148,11 @@ export async function getStats(scope: StatsScope, now: Date = new Date()): Promi
   const [bugs, tasks] = await Promise.all([
     prisma.bug.findMany({
       where,
-      select: { id: true, projectId: true, title: true, status: true, statusChangedAt: true, statusActorType: true, statusActorName: true, createdAt: true, updatedAt: true },
+      select: { id: true, projectId: true, title: true, status: true, severity: true, statusChangedAt: true, statusActorType: true, statusActorName: true, createdAt: true, updatedAt: true },
     }),
     prisma.task.findMany({
       where,
-      select: { id: true, projectId: true, title: true, status: true, statusChangedAt: true, statusActorType: true, statusActorName: true, createdAt: true, updatedAt: true },
+      select: { id: true, projectId: true, title: true, status: true, priority: true, statusChangedAt: true, statusActorType: true, statusActorName: true, createdAt: true, updatedAt: true },
     }),
   ]);
 
@@ -173,15 +178,19 @@ export async function getStats(scope: StatsScope, now: Date = new Date()): Promi
   const tasksCreated = tasks.filter((t) => inRange(t.createdAt, todayBounds.start, todayBounds.end)).length;
 
   // ── 还剩多少 ──
+  const remainingBugs = bugs.filter((b) => REMAINING_BUG_STATUSES.includes(b.status));
+  const remainingTasks = tasks.filter((t) => REMAINING_TASK_STATUSES.includes(t.status));
   const remaining = {
     bugs: {
-      unresolved: bugs.filter((b) => b.status === 'open' || b.status === 'in_progress').length,
-      unverified: bugs.filter((b) => b.status === 'resolved' || b.status === 'verifying').length,
+      unresolved: remainingBugs.filter((b) => b.status === 'open' || b.status === 'in_progress').length,
+      unverified: remainingBugs.filter((b) => b.status === 'resolved' || b.status === 'verifying').length,
+      urgent: remainingBugs.filter((b) => b.severity === 'critical' || b.severity === 'high').length,
     },
     tasks: {
-      todo: tasks.filter((t) => t.status === 'todo').length,
-      doing: tasks.filter((t) => t.status === 'doing').length,
-      unverified: tasks.filter((t) => t.status === 'review' || t.status === 'verifying').length,
+      todo: remainingTasks.filter((t) => t.status === 'todo').length,
+      doing: remainingTasks.filter((t) => t.status === 'doing').length,
+      unverified: remainingTasks.filter((t) => t.status === 'review' || t.status === 'verifying').length,
+      urgent: remainingTasks.filter((t) => t.priority === 'high').length,
     },
   };
 
