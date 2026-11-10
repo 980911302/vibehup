@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, StickyNote } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Search, StickyNote, X } from 'lucide-react';
 import type { Note } from '@/lib/api-types';
 import { NoteComposer } from './NoteComposer';
 import { NoteDetail, NoteDetailEmpty } from './NoteDetail';
 import { NoteListItem } from './NoteListItem';
 import { useCanEdit } from '@/lib/auth';
+import { noteMatchesQuery } from '@/lib/note-summary';
+import { useHotkeys } from '@/lib/shortcuts';
 import { cn } from '@/lib/utils';
 
 interface NoteWallProps {
@@ -43,12 +45,29 @@ export function NoteWall({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
   const [pendingCreate, setPendingCreate] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searching = query.trim().length > 0;
 
   const filtered = useMemo(
-    () => (activeTag ? notes.filter((n) => n.tags.includes(activeTag)) : notes),
-    [notes, activeTag],
+    () =>
+      notes.filter(
+        (n) =>
+          (!activeTag || n.tags.includes(activeTag)) &&
+          noteMatchesQuery(n.content, n.tags, query),
+      ),
+    [notes, activeTag, query],
   );
   const selected = filtered.find((n) => n.id === selectedId) ?? null;
+
+  // 「/」聚焦搜索：列表长起来后不必再滚着找
+  useHotkeys([
+    {
+      combo: '/',
+      description: '搜索随手记',
+      handler: () => searchRef.current?.focus(),
+    },
+  ]);
 
   // 当前选中项被筛掉/删除时自动落到第一条，避免右栏空白
   useEffect(() => {
@@ -86,8 +105,9 @@ export function NoteWall({
   }, [notes, pendingCreate]);
 
   const createNote = async (content: string, tags: string[]) => {
-    // 清掉标签筛选，保证刚写的笔记一定出现在索引里
+    // 清掉筛选，保证刚写的笔记一定出现在索引里
     setActiveTag(null);
+    setQuery('');
     setPendingCreate(content);
     try {
       await onCreateNote(content, tags);
@@ -106,24 +126,62 @@ export function NoteWall({
         )}
         aria-label="随手记索引"
       >
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
-          <span className="t-caption-4 text-[var(--text-secondary)]">{filtered.length} 条随手记</span>
-          {activeTag && (
-            <button
-              className="t-caption-5 rounded-full bg-[var(--gold-bg)] px-1.5 text-[var(--gold)]"
-              onClick={() => setActiveTag(null)}
-              title="清除标签筛选"
-            >
-              #{activeTag} ×
-            </button>
-          )}
-          <div className="flex-1" />
-          {canEdit && (
-            <button className="vh-btn ghost" onClick={onOpenComposer} data-testid="note-new">
-              <Plus size={14} />
-              记一笔
-            </button>
-          )}
+        <div className="shrink-0 border-b border-[var(--border-subtle)] px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span className="t-caption-4 text-[var(--text-secondary)]">{filtered.length} 条随手记</span>
+            {activeTag && (
+              <button
+                className="t-caption-5 rounded-full bg-[var(--gold-bg)] px-1.5 text-[var(--gold)]"
+                onClick={() => setActiveTag(null)}
+                title="清除标签筛选"
+              >
+                #{activeTag} ×
+              </button>
+            )}
+            <div className="flex-1" />
+            {canEdit && (
+              <button className="vh-btn ghost" onClick={onOpenComposer} data-testid="note-new">
+                <Plus size={14} />
+                记一笔
+              </button>
+            )}
+          </div>
+          <div className="relative mt-2">
+            <Search
+              size={13}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
+            />
+            <input
+              ref={searchRef}
+              className="h-8 w-full rounded-md border border-[var(--border-strong)] bg-[var(--bg-page)] pl-7 pr-7 text-xs text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--brand)]"
+              placeholder="搜索随手记（/）"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setQuery('');
+                  e.currentTarget.blur();
+                }
+              }}
+              aria-label="搜索随手记"
+              data-testid="note-search"
+            />
+            {query && (
+              <button
+                type="button"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+                onClick={() => {
+                  setQuery('');
+                  searchRef.current?.focus();
+                }}
+                title="清空搜索"
+                aria-label="清空搜索"
+                data-testid="note-search-clear"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
         </div>
 
         {composerOpen && canEdit && (
@@ -138,12 +196,27 @@ export function NoteWall({
               <span className="vh-empty-icon">
                 <StickyNote size={28} strokeWidth={1.6} />
               </span>
-              <p className="vh-empty-title">{activeTag ? '这个标签下还没有随手记' : '还没有随手记'}</p>
-              <p className="vh-empty-hint">
-                {activeTag
-                  ? '换个标签，或点「记一笔」记录一条'
-                  : '按 N 或点「记一笔」记录灵感；IDE 里的 AI 也会通过 MCP 往这里写'}
+              <p className="vh-empty-title">
+                {searching ? '没有匹配的随手记' : activeTag ? '这个标签下还没有随手记' : '还没有随手记'}
               </p>
+              <p className="vh-empty-hint">
+                {searching
+                  ? '换个关键词，或点输入框右侧的 × 清空搜索'
+                  : activeTag
+                    ? '换个标签，或点「记一笔」记录一条'
+                    : '按 N 或点「记一笔」记录灵感；IDE 里的 AI 也会通过 MCP 往这里写'}
+              </p>
+              {searching && (
+                <button
+                  className="vh-btn ghost mt-2"
+                  onClick={() => {
+                    setQuery('');
+                    searchRef.current?.focus();
+                  }}
+                >
+                  清空搜索
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-0.5">
