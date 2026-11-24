@@ -1,16 +1,8 @@
 'use client';
 
-import { WorkTabs } from '@/components/layout/SectionTabs';
-import { WorkQueue } from '@/components/work/WorkQueue';
+import BoardPage from '../board/page';
 
-/** 工作默认落到「我的队列」；缺陷/任务看板降为二级 Tab */
+/** /work 直接展示当前项目的缺陷工作区，彻底去掉重复套娃的「我的队列」二级层 */
 export default function WorkPage() {
-  return (
-    <div className="flex h-full flex-col">
-      <WorkTabs active="queue" />
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <WorkQueue />
-      </div>
-    </div>
-  );
+  return <BoardPage />;
 }

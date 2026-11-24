@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_TRANSITIONS, canDropTo, needsReopenReason, type TaskStatus } from '@/lib/task-flow';
 import { TaskCard } from './TaskCard';
 
-const ACCENT: Record<TaskStatus, string> = {
+const DOT_COLOR: Record<TaskStatus, string> = {
   todo: 'var(--sev-normal)',
   doing: 'var(--sev-high)',
   review: 'var(--gold)',
@@ -21,18 +21,16 @@ interface TaskBoardProps {
   canEdit: boolean;
   onOpen: (taskId: string) => void;
   onMove: (task: Task, to: TaskStatus) => void;
-  /** Work 页默认隐藏已完成/已取消，进「已归档」Tab 看 */
   hideTerminal?: boolean;
 }
 
-/** 为什么不能落到这一列：人话提示下一步能去哪 */
 function rejectReason(from: TaskStatus, to: TaskStatus): string {
   if (needsReopenReason(from, to)) return '打回需要写明原因：请点开任务，用「打回进行中」操作';
   const allowed = TASK_TRANSITIONS[from].map((s) => TASK_STATUS_LABELS[s]).join(' / ');
   return `「${TASK_STATUS_LABELS[from]}」不能直接到「${TASK_STATUS_LABELS[to]}」，只能改为：${allowed}`;
 }
 
-/** 任务看板（每个状态一列）：拖拽只接受合法的下一步，拖动时高亮可放的列 */
+/** 任务看板：克制的灰底状态列 + 状态圆点，拖拽遵循状态机流转协议 */
 export function TaskBoard({ tasks, canEdit, onOpen, onMove, hideTerminal = false }: TaskBoardProps) {
   const toast = useToast();
   const draggingRef = useRef<Task | null>(null);
@@ -60,7 +58,7 @@ export function TaskBoard({ tasks, canEdit, onOpen, onMove, hideTerminal = false
   const statuses = hideTerminal ? TASK_STATUSES.filter((s) => s !== 'done' && s !== 'cancelled') : TASK_STATUSES;
 
   return (
-    <div className="flex h-full gap-3 overflow-x-auto pb-2" data-testid="task-board">
+    <div className="flex h-full gap-3 overflow-x-auto pb-1" data-testid="task-board">
       {statuses.map((status) => {
         const list = tasks.filter((t) => t.status === status);
         const droppable = dragging ? canDropTo(dragging.status as TaskStatus, status) : false;
@@ -69,11 +67,10 @@ export function TaskBoard({ tasks, canEdit, onOpen, onMove, hideTerminal = false
             key={status}
             data-testid={`task-column-${status}`}
             className={cn(
-              'flex min-h-32 min-w-[150px] flex-1 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-[opacity,border-color]',
-              dragging && !droppable && dragging.status !== status && 'opacity-50',
-              overCol === status && droppable && 'border-[var(--gold)] bg-[var(--gold-bg)]',
+              'vh-col min-w-[140px]',
+              dragging && !droppable && dragging.status !== status && 'opacity-45',
+              overCol === status && droppable && 'border-[var(--brand)] bg-[var(--brand-soft)]/35',
             )}
-            style={{ borderTop: `2px solid ${ACCENT[status]}` }}
             onDragOver={(e) => {
               e.preventDefault();
               setOverCol(status);
@@ -81,9 +78,14 @@ export function TaskBoard({ tasks, canEdit, onOpen, onMove, hideTerminal = false
             onDragLeave={() => setOverCol((prev) => (prev === status ? null : prev))}
             onDrop={() => drop(status)}
           >
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-semibold text-[var(--text-secondary)]">{TASK_STATUS_LABELS[status]}</span>
-              <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-xs text-[var(--text-tertiary)]">{list.length}</span>
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)]/70 px-3 py-2.5">
+              <span className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
+                <i className="inline-block h-2 w-2 rounded-full" style={{ background: DOT_COLOR[status] }} />
+                {TASK_STATUS_LABELS[status]}
+              </span>
+              <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-tertiary)]">
+                {list.length}
+              </span>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
               {list.map((t) => (
@@ -100,7 +102,9 @@ export function TaskBoard({ tasks, canEdit, onOpen, onMove, hideTerminal = false
                   onDragEnd={endDrag}
                 />
               ))}
-              {list.length === 0 && <p className="py-6 text-center text-xs text-[var(--text-tertiary)]">暂无任务</p>}
+              {list.length === 0 && (
+                <p className="py-8 text-center text-[11px] text-[var(--text-tertiary)]/70">暂无任务</p>
+              )}
             </div>
           </div>
         );

@@ -40,6 +40,9 @@ else
 fi
 
 step "4/6 HTTP 冒烟（:${PORT}）"
+# vitest 仅在 beforeEach 清库，最后一个测试文件（如 sse-log.test.ts）残留用户会让冒烟首用户降级为 member（与 5/6 同因）
+docker exec vibehub-test-db psql -U postgres -q -c \
+  'TRUNCATE "bug_comments","bugs","attachments","saved_views","bug_templates","notes","tasks","usage_events","refresh_tokens","api_keys","projects","users","embeddings","skill_files","skills","notifications" RESTART IDENTITY CASCADE' > /dev/null 2>&1
 SERVER_PID=""
 # npx → tsx → node 三层进程：只 kill npx 会留下真正监听端口的 node，下一次门禁连上旧服务测到旧代码却照样 PASS
 kill_tree() { local c; for c in $(pgrep -P "$1" 2>/dev/null); do kill_tree "$c"; done; kill "$1" 2>/dev/null; }

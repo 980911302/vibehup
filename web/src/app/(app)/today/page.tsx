@@ -1,27 +1,30 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
-  CalendarDays,
+  BarChart3,
+  Bug,
   CheckCircle2,
-  CircleDot,
+  FolderPlus,
   Inbox,
+  ListChecks,
   RefreshCw,
+  ShieldCheck,
   Sparkles,
-  Sunrise,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { useAuth, useCanEdit } from '@/lib/auth';
+import { useCanEdit } from '@/lib/auth';
 import { useVibeHub } from '@/hooks/use-vibehub';
+import { useWorkOverlay } from '@/components/work/WorkItemOverlay';
 import { useMinuteClock } from '@/hooks/use-minute-clock';
 import { useToast } from '@/lib/toast';
 import type { TodayItem, TodayResponse } from '@/lib/today-types';
-import { CreateBugDialog } from '@/components/bugs/CreateBugDialog';
+import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
 import { StatsTrendChart } from '@/components/stats/StatsTrendChart';
-import { ActionCard, ActiveRow, Metric, TodaySkeleton, dateLabel, greeting } from '@/components/today/TodayWidgets';
+import { ActionSection, ActiveRow, KpiTile, TodaySkeleton, dateLabel } from '@/components/today/TodayWidgets';
 import { TodayVerifyActions } from '@/components/today/TodayVerifyActions';
 import { TodayRejectDialog } from '@/components/today/TodayRejectDialog';
 import { hasDeliveryEvidence } from '@/lib/evidence';
@@ -30,41 +33,50 @@ const POLL_MS = 30_000;
 
 export default function TodayPage() {
   const router = useRouter();
-  const { user } = useAuth();
   const canEdit = useCanEdit();
   const store = useVibeHub();
+  const overlay = useWorkOverlay();
   const toast = useToast();
   const now = useMinuteClock();
 
+  const projectId = store.currentProject?.id ?? null;
   const [data, setData] = useState<TodayResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<TodayItem | null>(null);
 
   const load = useCallback(async () => {
+    if (!projectId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     try {
-      setData(await api.getToday());
+      const next = await api.getToday(projectId);
+      setData(next);
       setError(null);
     } catch (e) {
-      const message = e instanceof Error ? e.message : '今日数据加载失败';
-      setError(message);
+      setError(e instanceof Error ? e.message : '概览数据加载失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
+  // 切换项目立即清空上一个项目数据并重新拉取
   useEffect(() => {
+    setData(null);
     void load();
   }, [load, store.statsRevision]);
 
   useEffect(() => {
+    if (!projectId) return;
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void load();
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, projectId]);
 
   useEffect(() => {
     const onCreated = () => void load();
@@ -74,10 +86,9 @@ export default function TodayPage() {
 
   const openItem = useCallback(
     (item: TodayItem) => {
-      if (item.project.id !== store.currentProject?.id) store.selectProject(item.project.id);
-      router.push(item.kind === 'bug' ? `/work/bugs?bug=${item.id}` : `/work/tasks?task=${item.id}`);
+      overlay.openItem(item.kind, item.id);
     },
-    [router, store],
+    [overlay],
   );
 
   const changeStatus = async (item: TodayItem, patch: Record<string, unknown>, success: string) => {
@@ -85,6 +96,7 @@ export default function TodayPage() {
     try {
       if (item.kind === 'bug') await api.updateBug(item.id, patch);
       else await api.updateTask(item.id, patch);
+      store.notifyWorkChanged();
       await load();
       toast.success(success);
       return true;
@@ -96,228 +108,180 @@ export default function TodayPage() {
     }
   };
 
-  const startVerify = (item: TodayItem) => {
-    void changeStatus(item, { status: 'verifying' }, '已接手验证');
-  };
   const approve = (item: TodayItem) => {
     if (!hasDeliveryEvidence(item.evidence)) {
-      toast.error('先补交付证据，再验收');
+      toast.error('请先补充交付证据，再执行验收');
       openItem(item);
       return;
     }
-    void changeStatus(item, { status: item.kind === 'bug' ? 'verified' : 'done' }, '验收通过');
+    void changeStatus(item, { status: item.kind === 'bug' ? 'verified' : 'done' }, '已验收通过');
   };
+
   const confirmReject = async (reason: string) => {
     if (!rejectTarget) return;
-    const item = rejectTarget;
     const ok = await changeStatus(
-      item,
-      { status: item.kind === 'bug' ? 'in_progress' : 'doing', reopen_reason: reason },
-      '已打回',
+      rejectTarget,
+      { status: rejectTarget.kind === 'bug' ? 'in_progress' : 'doing', reopen_reason: reason },
+      '已打回处理',
     );
     if (ok) setRejectTarget(null);
   };
 
-  const counts = useMemo(() => {
-    if (!data) return { mine: 0, verify: 0, ai: 0 };
-    return { mine: data.needs_me.length, verify: data.to_verify.length, ai: data.ai_active.length };
-  }, [data]);
-
-  if (loading && !data) return <TodaySkeleton />;
-
-  if (error && !data) {
+  if (!store.loading && !store.currentProject) {
     return (
-      <div className="vh-page">
-        <div className="vh-card flex flex-col items-center gap-3 p-10 text-center">
-          <AlertTriangle size={24} className="text-[var(--warn)]" />
-          <p className="t-title-3">今日数据暂时取不到</p>
-          <p className="t-caption-2 max-w-md text-[var(--text-tertiary)]">{error}</p>
-          <button className="vh-btn mt-2" onClick={() => void load()}>
-            <RefreshCw size={15} /> 重试
+      <div className="flex h-full flex-col">
+        <WorkspaceHeader title="项目概览" />
+        <div className="vh-empty flex-1">
+          <span className="vh-empty-icon"><Inbox size={24} /></span>
+          <p className="vh-empty-title">先创建第一个项目工作区</p>
+          <p className="vh-empty-hint">每个项目拥有完全隔离的缺陷、任务、上下文与统计空间；AI 通过项目 slug 对齐代码仓库。</p>
+          <button type="button" className="vh-btn h-8 text-xs" onClick={() => window.dispatchEvent(new CustomEvent('vibehub:open-onboarding'))} data-testid="today-empty-create">
+            <FolderPlus size={14} /> 创建第一个项目
           </button>
         </div>
       </div>
     );
   }
 
-  if (!data) return null;
-
-  const noProject = data.projects.length === 0;
-  const nothingToday =
-    data.needs_me.length === 0 && data.to_verify.length === 0 && data.ai_active.length === 0 && data.active.length === 0;
+  const remainingTotal = data
+    ? data.remaining.bugs.unresolved + data.remaining.bugs.unverified + data.remaining.tasks.todo + data.remaining.tasks.doing + data.remaining.tasks.unverified
+    : 0;
 
   return (
-    <div className="vh-page">
-      {/* 页头 */}
-      <header className="flex flex-wrap items-end justify-between gap-6">
-        <div>
-          <p className="t-caption-4 flex items-center gap-2 text-[var(--text-tertiary)]">
-            <CalendarDays size={14} />
-            {dateLabel(data.date)}
-          </p>
-          <h1 className="t-heading-3 mt-2 max-w-[680px] text-[var(--text-primary)]">
-            {greeting(new Date().getHours())}，{user?.name ?? '你好'}
-          </h1>
-          <p className="t-body-3 mt-2 max-w-[680px] text-[var(--text-secondary)]">
-            先处理等你的事，再看 AI 在干什么。今天需要你动手的，都在这里。
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="vh-btn ghost" onClick={() => void load()} aria-label="刷新今日">
-            <RefreshCw size={15} className={loading ? 'animate-spin' : undefined} />
-            <span className="hidden sm:inline">刷新</span>
-          </button>
-          <button className="vh-btn" onClick={() => router.push('/stats')}>
-            完整统计 <ArrowRight size={15} />
-          </button>
-        </div>
-      </header>
-
-      {noProject ? (
-        <div className="vh-card mt-10">
-          <div className="vh-empty">
-            <span className="vh-empty-icon">
-              <Inbox size={22} />
-            </span>
-            <p className="vh-empty-title">先建一个项目</p>
-            <p className="vh-empty-hint">项目是缺陷、任务与上下文的容器；AI 靠项目标识匹配你的仓库。</p>
-            <button
-              className="vh-btn"
-              onClick={() => window.dispatchEvent(new CustomEvent('vibehub:open-onboarding'))}
-              data-testid="today-empty-create"
-            >
-              创建第一个项目
+    <div className="flex h-full flex-col">
+      <WorkspaceHeader
+        title="项目概览"
+        subtitle={data ? dateLabel(data.date) : undefined}
+        actions={
+          <>
+            <button type="button" className="vh-btn ghost h-8 px-2.5 text-xs" onClick={() => void load()} aria-label="刷新概览">
+              <RefreshCw size={13} className={loading ? 'animate-spin' : undefined} />
+              <span className="hidden sm:inline">刷新</span>
             </button>
+            {canEdit && (
+              <>
+                <button type="button" className="vh-btn ghost h-8 px-2.5 text-xs" onClick={overlay.openCreateTask}>
+                  <ListChecks size={13} /><span className="hidden sm:inline">建任务</span>
+                </button>
+                <button type="button" className="vh-btn h-8 px-2.5 text-xs" onClick={overlay.openCreateBug}>
+                  <Bug size={13} /> 录缺陷
+                </button>
+              </>
+            )}
+          </>
+        }
+      />
+
+      {loading && !data ? (
+        <TodaySkeleton />
+      ) : error && !data ? (
+        <div className="vh-ws-scroll">
+          <div className="vh-card mx-auto flex max-w-md flex-col items-center gap-2 p-8 text-center">
+            <AlertTriangle size={20} className="text-[var(--warn)]" />
+            <p className="text-sm font-medium">概览数据暂时无法读取</p>
+            <p className="text-xs text-[var(--text-tertiary)]">{error}</p>
+            <button type="button" className="vh-btn mt-2 h-8 text-xs" onClick={() => void load()}><RefreshCw size={13} /> 重试</button>
           </div>
         </div>
-      ) : (
-        <>
-          {/* 行动三块 */}
-          <div className="mt-10 grid gap-5 lg:grid-cols-3">
-            <ActionCard
-              label="待我处理"
-              hint="指派给你、还没收尾的活"
-              count={counts.mine}
-              icon={Inbox}
-              items={data.needs_me}
-              now={now}
-              onOpen={openItem}
-              empty="没有等你处理的活"
-              testId="today-needs-me"
-            />
-            <ActionCard
-              label="待验收"
-              hint="AI 或同事交了结果"
-              count={counts.verify}
-              icon={CheckCircle2}
-              items={data.to_verify}
-              now={now}
-              onOpen={openItem}
-              empty="没有等你验收的结果"
-              testId="today-to-verify"
-              actionsFor={(item) => (
-                <TodayVerifyActions
-                  item={item}
-                  busy={busyId === item.id}
-                  canEdit={canEdit}
-                  onStart={startVerify}
-                  onApprove={approve}
-                  onReject={setRejectTarget}
-                  onNeedsEvidence={openItem}
-                />
-              )}
-            />
-            <ActionCard
-              label="AI 进行中"
-              hint="Agent 正在接手，卡住会标黄"
-              count={counts.ai}
-              icon={Sparkles}
-              items={data.ai_active}
-              now={now}
-              onOpen={openItem}
-              empty="AI 现在没有在跑"
-              testId="today-ai-active"
-            />
-          </div>
+      ) : data ? (
+        <div className="vh-ws-scroll">
+          <div className="vh-ws-container space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <KpiTile label="待验收" value={data.to_verify.length} sub="AI 或成员已交结果，等你拍板" icon={ShieldCheck} accent={data.to_verify.length > 0 ? 'warn' : undefined} />
+              <KpiTile label="待我处理" value={data.needs_me.length} sub="当前项目指派给你的未结项" icon={Inbox} />
+              <KpiTile label="AI 推进中" value={data.ai_active.length} sub="Agent 正在经手的缺陷与任务" icon={Sparkles} accent={data.ai_active.length > 0 ? 'gold' : undefined} />
+              <KpiTile label="今日完成 / 剩余" value={`${data.today.bugs_fixed + data.today.tasks_done} / ${remainingTotal}`} sub={`修复 ${data.today.bugs_fixed} 缺陷 · 完成 ${data.today.tasks_done} 任务`} icon={CheckCircle2} accent="ok" />
+            </div>
 
-          {nothingToday && (
-            <div className="vh-card mt-4 p-8 text-center">
-              <CircleDot size={22} className="mx-auto text-[var(--ok)]" />
-              <p className="t-title-3 mt-3">今天很干净</p>
-              <p className="t-caption-2 mt-1 text-[var(--text-tertiary)]">
-                没有待办、待验收或进行中的活。可以从录一个缺陷或记一条上下文开始。
-              </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                {canEdit && (
-                  <button className="vh-btn" onClick={() => setCreateOpen(true)}>
-                    <Sunrise size={15} /> 录一个缺陷
-                  </button>
-                )}
-                <button className="vh-btn ghost" onClick={() => router.push('/context/notes')}>
-                  记一条上下文
-                </button>
+            {/* 主双栏行动工作台 */}
+            <div className="grid items-start gap-4 lg:grid-cols-[1.35fr_1fr]">
+              <div className="space-y-4">
+                <ActionSection
+                  title="待验收"
+                  hint="核对交付证据后直接通过或打回"
+                  count={data.to_verify.length}
+                  icon={ShieldCheck}
+                  items={data.to_verify}
+                  now={now}
+                  onOpen={openItem}
+                  empty="当前项目没有待验收的缺陷或任务"
+                  testId="today-to-verify"
+                  actionsFor={(item) => (
+                    <TodayVerifyActions
+                      item={item}
+                      busy={busyId === item.id}
+                      canEdit={canEdit}
+                      onStart={(x) => void changeStatus(x, { status: 'verifying' }, '已接手验证')}
+                      onApprove={approve}
+                      onReject={setRejectTarget}
+                      onNeedsEvidence={openItem}
+                    />
+                  )}
+                />
+
+                <ActionSection
+                  title="待我处理"
+                  hint="点击任意条目原地查看与流转"
+                  count={data.needs_me.length}
+                  icon={Inbox}
+                  items={data.needs_me}
+                  now={now}
+                  onOpen={openItem}
+                  empty="当前项目没有指派给你的待办"
+                  testId="today-needs-me"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <section className="vh-list-surface" data-testid="today-ai-active">
+                  <div className="flex items-center justify-between gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-panel)]/50 px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={14} className="text-[var(--gold)]" />
+                      <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">正在推进</h2>
+                      <span className="text-xs text-[var(--text-tertiary)]">超时自动标红提醒</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="flex cursor-pointer items-center gap-1 text-xs text-[var(--brand)] hover:underline"
+                      onClick={() => router.push('/work/bugs')}
+                    >
+                      去缺陷看板 <ArrowRight size={12} />
+                    </button>
+                  </div>
+                  {data.active.length === 0 ? (
+                    <p className="px-4 py-6 text-center text-xs text-[var(--text-tertiary)]">
+                      当前项目暂无处理中的缺陷或任务
+                    </p>
+                  ) : (
+                    <div>
+                      {data.active.slice(0, 10).map((item) => (
+                        <ActiveRow key={`${item.kind}-${item.id}`} item={item} now={now} onOpen={openItem} />
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="vh-card p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <BarChart3 size={14} className="text-[var(--text-secondary)]" />
+                      <h2 className="text-[13px] font-semibold text-[var(--text-primary)]">本项目 14 天节奏</h2>
+                    </div>
+                    <button
+                      type="button"
+                      className="flex cursor-pointer items-center gap-1 text-xs text-[var(--brand)] hover:underline"
+                      onClick={() => router.push('/stats')}
+                    >
+                      详细统计 <ArrowRight size={12} />
+                    </button>
+                  </div>
+                  <StatsTrendChart points={data.trend} />
+                </section>
               </div>
             </div>
-          )}
-
-          <div className="mt-6 grid gap-5 lg:grid-cols-[1.5fr_1fr]">
-            {/* 正在干 */}
-            <section className="vh-card overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-5 py-4">
-                <div>
-                  <h2 className="t-title-3">正在干</h2>
-                  <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">按停留时间排序；卡住的会标出来</p>
-                </div>
-                <button className="vh-btn ghost h-8" onClick={() => router.push('/work')}>
-                  全部工作 <ArrowRight size={14} />
-                </button>
-              </div>
-              {data.active.length === 0 ? (
-                <div className="p-6 text-center">
-                  <p className="t-caption-2 text-[var(--text-tertiary)]">现在没有人或 AI 在处理中的活。</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-[var(--border-subtle)]">
-                  {data.active.slice(0, 8).map((item) => (
-                    <ActiveRow key={`${item.kind}-${item.id}`} item={item} now={now} onOpen={openItem} />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* 今天 + 趋势 */}
-            <section className="vh-card p-6">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="t-title-3">今天</h2>
-                  <p className="t-caption-5 mt-1 text-[var(--text-tertiary)]">按北京时间自然日</p>
-                </div>
-                <span className="t-caption-4 text-[var(--text-tertiary)]">还剩 {data.remaining.bugs.unresolved + data.remaining.bugs.unverified + data.remaining.tasks.todo + data.remaining.tasks.doing + data.remaining.tasks.unverified} 件</span>
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-3">
-                <Metric label="修复" value={data.today.bugs_fixed} suffix="缺陷" />
-                <Metric label="完成" value={data.today.tasks_done} suffix="任务" />
-                <Metric label="新增" value={data.today.bugs_created + data.today.tasks_created} suffix="条目" />
-              </div>
-              <div className="mt-5 border-t border-[var(--border-subtle)] pt-4">
-                <p className="t-caption-4 mb-2 text-[var(--text-tertiary)]">最近 14 天</p>
-                <StatsTrendChart points={data.trend} />
-              </div>
-            </section>
           </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="t-caption-5 text-[var(--text-tertiary)]">
-              {data.projects.length} 个进行中的项目 · 每 30 秒自动刷新
-            </p>
-            {canEdit && (
-              <button className="vh-btn" onClick={() => setCreateOpen(true)}>
-                <Sunrise size={15} /> 录一个缺陷
-              </button>
-            )}
-          </div>
-        </>
-      )}
+        </div>
+      ) : null}
 
       <TodayRejectDialog
         item={rejectTarget}
@@ -325,24 +289,6 @@ export default function TodayPage() {
         onClose={() => setRejectTarget(null)}
         onConfirm={(reason) => void confirmReject(reason)}
       />
-
-      {store.currentProject && (
-        <CreateBugDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          projectName={store.currentProject.name}
-          templates={store.templates}
-          pendingFiles={[]}
-          onConsumePendingFiles={() => undefined}
-          onSubmit={async (input) => {
-            const bug = await store.createBug(input);
-            await load();
-            toast.success('已记录，去工作里看进度');
-            return bug;
-          }}
-          projectId={store.currentProject.id}
-        />
-      )}
     </div>
   );
 }

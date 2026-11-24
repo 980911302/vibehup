@@ -25,6 +25,8 @@
 >
 > **R90（用户决定，验收闭环第一切片）**：给缺陷/任务加交付证据包 `evidence`（JSONB：commit / pr_url / tests / changed_files / screenshots / notes / no_code_reason）；AI 在 `update_bug_status` / `update_task` 标记 resolved/review 时写入，人也可在详情页补。今日待验收卡展示证据摘要；验证中但无证据时只能「补证据」，不能直接「验收通过」；非代码交付可写 `no_code_reason`。MCP `get_bug_detail` / `get_task_detail` / update 返回值带 evidence。MCP 身份与交接已落：`get_me`（人类/密钥/能力/项目）、`list_members`（active 成员，非 admin 不带邮箱）、`handoff_work`（缺陷写活动流、任务记用量；viewer 拒绝）；站内通知已落（顶栏铃铛+抽屉、未读、全部已读；交接/待验收/打回触发；不做每日摘要/飞书）；项目记忆已落：上下文页顶部「项目记忆」= 项目一句话 + 置顶笔记（最多 5 条），`GET /api/projects/:id/memory` 与 `get_project_context.memory` 同源；不开启向量。>
 > **R91（阶段 A，用户批准「按目前的去调整」）**：Work Item 统一读模型落地 `GET /api/work-items?project_id=&scope=my|verify|active`——复用 `/api/today` 聚合后按项目切片，返回 `{items, scope, project_id}`；工作队列改用该接口，旧 `/api/bugs`、`/api/tasks` 与表结构保持不动。表合并按 `docs/设计/R91-WorkItem合并方案.md` 等阶段 B，不在本刀。
+>
+> **R95（用户决定，单项目物理隔离与紧凑左侧边栏工作台重做）**：用户明确反馈「UI 排版与操作逻辑差、最上面的项目根本没有彻底隔离」并拍板三项重构：① **严格单项目工作空间隔离**——左上角项目切换器选定后，概览（`/today`）、缺陷（`/work/bugs`）、任务（`/work/tasks`）、随手记（`/context/notes`）、文件（`/context/files`）、技能（`/context/skills`，`include_global=false`）、统计（`/stats`）、`⌘K` 搜索（`/api/search?project_id=`）、站内通知（`/api/notifications?project_id=`）与 SSE 实时事件流全部严格限定在当前项目内，个人资料、团队通用技能、MCP 密钥、全部项目管理与成员权限收归独立的**全局管理**模式；② **紧凑左侧边栏工作台**——取消悬浮胶囊顶栏、多层嵌套 `WorkTabs`/`ContextTabs`、不同页宽跳变与 30–36px 大标题，统一左侧 240px 侧栏 + 48px 单行工作区顶栏（`WorkspaceHeader`），保留原版 Midnight / Daylight 藏青+金色主题；③ **操作闭环**——去掉与概览重复的 `WorkQueue`（`/work` 直达缺陷视图），缺陷与任务模块各自内置**看板 / 列表**双视图与已结项开关，任意处点击工作项统一经 `WorkItemOverlayProvider` **原地打开详情弹窗**，并补齐完整新建任务弹窗（`CreateTaskDialog`）。
 
 ## 0.1 默认任务通道契约（R89，强制）
 
@@ -53,7 +55,7 @@
 - 后端分层严格单向：`routes → services → core`；routes 禁止直连 Prisma；services 禁止 import Fastify 对象。
 - MCP 与 routes **平级**共用 services；MCP stdout 只走 JSON-RPC，日志一律 stderr。
 - 前端数据唯一入口 `lib/api.ts`（HTTP 底座 `lib/http.ts`、任务/技能接口 `lib/api-more.ts` 平铺进 `api`）；页面只消费 `hooks/use-vibehub.ts`；跨页状态用 Provider，URL 状态用 searchParams。
-- **当前项目共享契约（R80）**：数据中枢只在 `(app)/layout` 的 `VibeHubProvider` 实例化一次——当前项目、看板数据与**唯一一条** SSE 连接全站共享；当前项目记在 localStorage `vibehub_current_project`，恢复时校验仍存在且未归档（`lib/current-project.ts`）；**R89 起**全站浮动顶栏统一用 `ProjectSwitcher`（`components/layout/AppNav.tsx`），页面内不再重复放置；`CurrentProjectSwitcher` 仅保留给旧路由兼容。**禁止**页面各自再实例化一份 store（曾致一换页项目被重置、每页各开一条 SSE、非最新项目的任务/随手记在界面上无法访问）。
+- **当前项目共享与物理隔离契约（R80 / R95 更新）**：数据中枢只在 `(app)/layout` 的 `VibeHubProvider` 实例化一次——当前项目、看板数据与**唯一一条** SSE 连接全站共享；当前项目记在 localStorage `vibehub_current_project`，恢复时校验仍存在且未归档（`lib/current-project.ts`）；**R95 起**左侧边栏顶部唯一放置 `ProjectSwitcher`（`components/layout/AppNav.tsx`），切换项目时立即清空旧项目缓存、忽略其他项目的 SSE 业务事件（`eventProjectId !== currentProjectId`），且无项目时绝不以 `undefined` 发起无边界跨项目请求。**禁止**页面各自再实例化一份 store。
 - 事件：业务写成功后 `eventBus.publish`，负载扁平 `{type, projectId, entityId}`；**实时推送契约（R52 更新）**：publish 同时发 PG `pg_notify`（通道 `vibehub_events`，异步且失败隔离）——SSE 端点用独立 pg Client `LISTEN` 单通道推送，MCP stdio 等跨进程写入 <1s 可达（不再依赖轮询兜底）；失败隔离（NOTIFY/LISTEN 断只丢加速不炸进程，pg Client 必须挂 error 监听器）；前端 5s 轮询保留为**条件兜底**（R78：SSE 已连通且最近有活动则跳过本轮，避免每 5s 白拉一次整板；判定按「最近活动时间」而非布尔标记——EventSource 半开时 onerror 不一定触发，只看标记会永久停掉兜底）。
 - **AI 活动流契约（R60）**：`GET /api/activity/recent` 全员可读（刻意不挂 requireRole——让非管理员感知「AI 读了什么」是特性目的）；数据经 service 层 select 脱敏（仅 key_name/key_prefix/工具名/耗时，禁 keyHash/salt/明文）；管理员完整用量仍在密钥页 keyUsage。
 - **计量契约**：所有 UsageEvent / 审计写入必须 `await`（logEvent 内部已 try-catch 不抛）；禁 `void logEvent(...)` 即发即弃——会导致紧随的用量查询漏账（R11 竞态教训）。
@@ -78,9 +80,9 @@
 - **登录防暴力契约（R78）**：`/auth/login` 按「邮箱 + 客户端 IP」滑动窗口计数**失败**尝试（成功即清零），达阈值返回 429 `RATE_LIMITED` + 人话提示 + `Retry-After` 头；阈值/窗口由 `LOGIN_MAX_ATTEMPTS`（默认 5）/`LOGIN_THROTTLE_WINDOW_MS`（默认 15 分钟）控制；实现为进程内 Map（单容器部署成立，多副本须换共享存储）；客户端 IP 取 `X-Forwarded-For` 首段、缺省直连地址。**不得**因限流把正确密码也永久拒绝（窗口过期自动放行，已有用例锁定）。
 - **Work Item 读模型契约（R91）**：`GET /api/work-items?project_id=&scope=my|verify|active` 登录可读；复用 `services/today.ts` 聚合，按项目过滤后返回 `{items, scope, project_id}`；`scope` 默认 `my`，缺 `project_id` 400；不新增表、不改 bugs/tasks 写路径。
 - **项目记忆契约（R90）**：`GET /api/projects/:id/memory` 全员可读，返回项目 `description` + 最近 5 条置顶笔记；MCP `get_project_context.memory` 同源压缩（最多 3 条、每条 300 字）；不做向量、不新增表。
-- **站内通知契约（R90）**：`GET /api/notifications?unread=&limit=` 返回 `{items,total,unread,has_more}`；`PATCH /api/notifications/:id/read`、`PATCH /api/notifications/read-all` 只影响本人；通知写入失败隔离，不阻断业务；触发点：交接（接手人）、缺陷 resolved / 任务 review（可写成员）、打回（负责人）。
+- **站内通知契约（R90 / R95 更新）**：`GET /api/notifications?unread=&limit=&project_id=` 返回 `{items,total,unread,has_more}`；`PATCH /api/notifications/:id/read`、`PATCH /api/notifications/read-all?project_id=` 只影响本人（传 `project_id` 时仅统计/已读该项目通知，Web 工作台必传 `currentProject.id`）；通知写入失败隔离，不阻断业务；触发点：交接（接手人）、缺陷 resolved / 任务 review（可写成员）、打回（负责人）。
 - **交付证据契约（R90）**：`bugs.evidence` / `tasks.evidence` 为 JSONB；`PATCH /api/bugs|tasks/:id` 接受 `evidence` 对象或 null，服务端归一化并拒绝非法结构；`evidence` 至少含 commit / pr_url / tests / screenshots（≥1 项）或 `no_code_reason` 才算「可验收」，仅 notes 不算；今日页据此拦截「验收通过」。
-- **今日聚合契约（R89）**：`GET /api/today` 只读、任何登录角色可读；跨项目返回 `needs_me`（指派给当前用户且 open/in_progress 或 todo/doing）、`to_verify`（已解决/验证中/待验证/验证中）、`ai_active`（`status_actor_type=ai` 的在办项）、`active`（全部在办项，卡住优先）、`today`/`remaining`/`trend`（复用 R85 `services/stats.ts`，不另立口径）与 `projects`；归档项目及其工作项不出现在列表；不新增表、不改写路径；R90 起 today 项带 `evidence`。
+- **今日聚合与全局搜索项目隔离契约（R89 / R95 更新）**：`GET /api/today?project_id=` 与 `GET /api/search?q=&project_id=` 只读、任何登录角色可读；传 `project_id` 时严格将该项目的 `needs_me`/`to_verify`/`ai_active`/`active`/`today`/`remaining`/`trend`（`services/stats.ts` 同步限定同一项目 ID 集）以及关键词与语义相似命中（`similarEntities`）物理限定在该项目内；Web 工作台一律传 `currentProject.id`，不传时保持跨活跃项目聚合兼容；归档项目及其工作项不出现在列表；不新增表、不改写路径。
 - **密钥自助契约（R89）**：每个登录成员都能创建/轮换/撤销/删除/查看自己的 MCP 密钥；`GET /api/api-keys` 默认只返回自己的，Admin+ 传 `all=1` 才返回团队全部（含 `created_by_name`）。**创建时前端不再展示/要求选择 scope**——不传 `scopes` 时服务端默认继承密钥所属用户的本人真实角色全部允许能力（`server/src/mcp/scopes.ts` 的 `ROLE_SCOPES`：viewer 仅读、member 读写、admin/owner 含 `admin`）；显式 `scopes` 仅为 API/OAuth 兼容保留，超限一律 403 人话。OAuth token revocation 走内部 `revokeKeyById`（凭令牌本身授权），不经过用户归属校验。
 
 ## 4. 数据契约（PostgreSQL + pgvector）
@@ -108,7 +110,7 @@
 - 双传输：stdio（`VIBEHUB_API_KEY` 可选，无密钥=本地全权）+ SSE（`GET /mcp/sse` 握手 + `POST /mcp/messages?sessionId=xxx`，Bearer 必需，session 即凭据；容器部署形态）。
 - scope 枚举：`context:read / attachment:read / attachment:write / bug:write / note:write / task:read / task:write / skill:write / admin`（`skill:write` 为 R80 新增：上传/删除技能；查看与下载技能属 `context:read`）；新建密钥默认继承本人角色允许的全部 scope（前端不再让用户选权限；显式 scope 仅 API/OAuth 兼容）。
 - **密钥生命周期契约**：明文仅创建/轮换响应返回一次；库存 SHA-256 哈希；默认 90 天过期；轮换 = 签新密钥 + 旧密钥 expiresAt 压至 now+24h（宽限期语义，复用 expiresAt 字段，不新增列）；撤销即时生效（SSE 长连接由 guard 每次调用按 ID 复核密钥状态与 scope，R76）；`$queryRaw` 必须用物理列名（snake_case），非 Prisma 字段名。**R90 证据规则**：`update_bug_status` / `update_task` 的 `evidence` 参数与 REST 同构；标记 resolved/review 时 AI 应尽量写入；`get_bug_detail` / `get_task_detail` 返回 evidence。
-- **R90 队列规则**：`/work` 默认 `WorkQueue`（我的队列 + 待验收，复用 /api/today 与证据门），`/work/bugs|tasks|archived` 保留二级看板；移动端默认队列即列表。
+- **R90/R95 工作视图规则**：`/today` 承载当前项目「待我处理 + 待验收（含证据门）+ AI 推进中 + 14 天节奏」；R95 起去掉重复的 `WorkQueue`，`/work` 与 `/work/bugs` 直达缺陷（看板/列表双视图），`/work/tasks` 直达任务（看板/列表双视图），`/work/archived` 与 REST `GET /api/work-items` 保留兼容。
 - **R90 记忆规则**：项目记忆=项目 description + 置顶笔记；不自动把全部笔记塞进去；不启用向量。
 - **R90 身份/交接规则**：`get_me` / `list_members` 需 `context:read`；`handoff_work` 工具级 scope 为 `context:read`，但内部按实体强制 `bug:write` / `task:write`；`assignee` 必须是 active 非 viewer；缺陷转交写活动流，任务写用量事件。
 - **R89 自助规则**：密钥归属创建人；本人可管理自己的全部密钥，Admin+ 可管理团队全部；创建时不选权限，服务端按所属用户真实角色自动继承可用 scope（`ROLE_SCOPES`），显式 scope 仍按角色校验；管理员替他人轮换时新密钥仍归原主人，旧主人被移除时才落到操作人。
@@ -124,13 +126,13 @@
 ## 6. 前端契约
 
 - 颜色/圆角/阴影/时长/缓动一律 token（`globals.css` 唯一来源）；组件内禁止裸 HEX。
-- **四区导航与视觉系统（R89）**：一级入口只有今日 `/today`、工作 `/work`（默认队列，`/work/bugs|/work/tasks|/work/archived` 为二级看板）、上下文 `/context/notes|/context/files|/context/skills`、设置 `/settings`；`C` 是全局快速录单（任何页；无项目时唤起首启），工作看板默认隐藏已完成/已关闭/已取消（自动归入「已归档」Tab，旧 `/board` 保留完整六列）；`AppNav` 是唯一顶栏，工作默认「我的队列 + 待验收」，六列看板降为二级；项目切换、搜索、AI 活动、主题、账号都在这里，页面内不再放重复切换器。字体恢复原版 Inter / Noto Sans SC / PingFang 栈（登录页保留 Noto Serif 标题）；文字使用 `globals.css` 的命名样式 `t-heading-1..6 / t-title-1..5 / t-body-1..6 / t-button-* / t-caption-1..5`，字号只取 Tailwind 12/14/16/18/20/24/30/36/48/60 阶梯；暗色背景沿用原版 `#0B0E14 / #12161F / #171C27 / #1D2432`，强调色为原版蓝 `#4C7DD9`（Daylight 藏青 `#1F355A`），金色仍只用于 AI 标识；语义色仅用于状态；卡片边框四周齐全，背景无渐变；动效只用 transform/opacity，恢复原版曲线 `cubic-bezier(0.32,0.72,0,1)` / `cubic-bezier(0.16,1,0.3,1)`，时长 140/220/320ms。图标按 R58 继续用 lucide（未改用 Phosphor/Solar，遵守仓库图标宪法）。
+- **左侧边栏工作台与视觉系统（R89 → R95 更新）**：采用 Linear / Cursor 式左侧 240px 紧凑侧栏（`AppNav` + `SidebarSections`，可折叠为 60px）+ 右侧全高工作区（统一 48px `WorkspaceHeader` 单行顶栏，消除多层嵌套 `WorkTabs`/`ContextTabs` 与页宽跳变）；侧栏严格区分**项目工作区模式**（左上角 `ProjectSwitcher` + 平铺模块：概览 `/today`、缺陷 `/work/bugs`、任务 `/work/tasks`、随手记 `/context/notes`、文件 `/context/files`、技能 `/context/skills`、统计 `/stats`）与**全局管理模式**（`← 返回项目` + 个人与通用技能 `/settings`、MCP 密钥 `/keys`、全部项目管理 `/projects`、团队成员 `/members`）；旧路由 `/board`、`/tasks`、`/notes`、`/files`、`/skills` 与 `/work`（直达缺陷视图）全部保留兼容。缺陷与任务页各自内置**看板 / 列表**双视图与「已结项」开关（`/board` 直访保留完整六列以兼容 E2E）；全站点击任意缺陷/任务统一经 `WorkItemOverlayProvider` 原地弹窗查看与流转，`C` 全局快速录缺陷。配色保留原版 Midnight（`#0B0E14 / #12161F / #171C27`）与纸白 Daylight（`#F7F3EC / #FFFFFF / #1F355A`）+ AI 金色，看板列宽 `min-width: 140px` 保证 1280px 视口六列不横向溢出。
 - 动效铁律：只动 transform/opacity；退出快于进入；`prefers-reduced-motion` 降级；装饰动画只允许三处（登录聚光/AI 流光/空状态浮动）。
 - 暗色 Midnight 默认 + 纸白 Daylight；登录页恒定 Daylight。
 - 单文件 ≤300 行、单函数 ≤50 行、props ≤7；基础组件 forwardRef + cva + cn()。
 - 快捷键宪法：C 新建 / ⌘K 命令面板 / ? 帮助 / G+字母导航 / J K X 列表操作 / Esc 逐层退出。
-- **移动端入口契约（R62）**：<900px（触屏主场景）看板顶栏常驻「＋录缺陷」按钮（快捷键触屏不可达）；对话框基座 `w-[calc(100vw-2rem)] max-h-[85vh] overflow-y-auto` 保证小屏不溢出；粘贴区文案与主按钮按 `pointer: coarse` 分支（触屏无剪贴板，走常驻「选择截图/文件」大按钮）。
-- **危险按钮（R81）**：`.vh-btn` 是未分层的全局类，Tailwind 工具类（`bg-[var(--danger)]`/`text-[var(--danger)]`/`h-8` 等）压不过它——删除/撤销类按钮一律用 `vh-btn danger` / `vh-btn ghost danger` 变体，不要再叠工具类改颜色（此前全站删除按钮都显示成普通蓝/灰按钮）。
+- **移动端入口契约（R62 / R95）**：<900px 侧栏自动收为抽屉、`WorkspaceHeader` 左侧显露汉堡菜单按钮（必须用 `globals.css` 未分层的 `.vh-mobile-only`，勿在 `.vh-icon-btn` 上叠 Tailwind `min-[900px]:hidden`）；对话框基座 `w-[calc(100vw-2rem)] max-h-[85vh] overflow-y-auto` 保证小屏不溢出；粘贴区文案与主按钮按 `pointer: coarse` 分支。
+- **未分层按钮类优先级（R81 / R95）**：`.vh-btn` 与 `.vh-icon-btn` 是未分层的全局类，Tailwind `@layer utilities`（`bg-*`/`h-*`/`hidden` 等）压不过其 `display`/`height`/`background`——按钮高度统一在 `.vh-btn` 定义（32px），删除/撤销用 `vh-btn danger` / `vh-btn ghost danger`，侧栏次要中性操作用 `vh-btn tonal`，响应式隐藏用 `.vh-mobile-only`。
 - **图标宪法（R58）**：全站图标一律使用 `lucide-react` 组件，禁 emoji（空态/营销位/计数徽章）与 CSS `content` 字符图标（AI 徽章、星尘标识）——后者已全部上移为 JSX 组件（`Sparkles` 等），`globals.css` 不再出现 `content: '字符'` 图标规则。新增图标从 lucide 选型（PascalCase），尺寸/描边用 props，颜色走 token。
 - **OAuth 授权页（R88，用户要求美化）**：服务端 HTML 由 `core/oauth-page.ts` / `oauth-page-styles.ts` 渲染，读取部署前端 `index.html` 中的 CSS 链接复用 Daylight 主题 token，不另建颜色表；纯 HTML 页面使用 Lucide 内联 SVG，避免引入 React 运行依赖。只展示实际请求的权限，中文说明明确写出删除能力；账号允许登录名或邮箱。错误页不回显密码，登录失败保留未过期授权请求供重试；同意并验证成功后原子消费 nonce，单次请求最多签发一个授权码；取消时按已验证 callback 返回 `access_denied` 并保留 state。
 - **认证后导航用硬导航（R59）**：登录/注册成功后必须 `window.location.replace(target)`——`router.replace` 与 setUser 同刻提交会被 React 批处理吞掉（R50/R59 二次复现，表现为 token 已写但停在中转页）；静态导出生效下硬导航即普通跳转。

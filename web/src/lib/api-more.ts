@@ -28,7 +28,14 @@ export const taskApi = {
 };
 
 export const skillApi = {
-  listSkills: (projectId?: string) => request<Skill[]>(`/skills${projectId ? `?project_id=${projectId}` : ''}`),
+  listSkills: (projectId?: string, includeGlobal = false) => {
+    if (!projectId) return request<Skill[]>('/skills');
+    const qs = new URLSearchParams({
+      project_id: projectId,
+      include_global: includeGlobal ? 'true' : 'false',
+    });
+    return request<Skill[]>(`/skills?${qs.toString()}`);
+  },
   getSkill: (skillId: string) => request<SkillDetail>(`/skills/${skillId}`),
   getSkillFile: (skillId: string, path: string) =>
     request<SkillFileContent>(`/skills/${skillId}/file?path=${encodeURIComponent(path)}`),

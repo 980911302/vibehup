@@ -7,6 +7,7 @@ import { getToday } from '../services/today.js';
  */
 export const todayRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', async (request) => {
-    return getToday(request.user!.id);
+    const { project_id } = request.query as { project_id?: string };
+    return getToday(request.user!.id, new Date(), project_id?.trim() || null);
   });
 };

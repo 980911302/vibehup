@@ -12,7 +12,7 @@ const POLL_INTERVAL = 5000;
  */
 export function useLiveUpdates(
   accessToken: string | null,
-  handlers: { onEvent: (type: string) => void; onPoll: () => void },
+  handlers: { onEvent: (type: string, projectId?: string | null) => void; onPoll: () => void },
 ): boolean {
   const [sseConnected, setSseConnected] = useState(false);
   const handlersRef = useRef(handlers);
@@ -35,8 +35,8 @@ export function useLiveUpdates(
     source.onmessage = (event) => {
       lastEventAtRef.current = Date.now();
       try {
-        const data = JSON.parse(event.data) as { type?: string };
-        if (data.type) handlersRef.current.onEvent(data.type);
+        const data = JSON.parse(event.data) as { type?: string; projectId?: string | null };
+        if (data.type) handlersRef.current.onEvent(data.type, data.projectId);
       } catch {
         // 心跳
       }

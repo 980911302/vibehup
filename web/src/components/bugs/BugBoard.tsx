@@ -7,13 +7,13 @@ import { cn } from '@/lib/utils';
 import { BUG_STATUS_LABELS, type Bug, type BugBoard as Board } from '@/lib/api-types';
 import { bugDropRejectReason, canDropBug } from '@/lib/bug-flow';
 
-const COLUMNS: { key: keyof Board; label: string; accent: string }[] = [
-  { key: 'open', label: BUG_STATUS_LABELS.open, accent: 'var(--sev-critical)' },
-  { key: 'in_progress', label: BUG_STATUS_LABELS.in_progress, accent: 'var(--sev-high)' },
-  { key: 'resolved', label: BUG_STATUS_LABELS.resolved, accent: 'var(--ok)' },
-  { key: 'verifying', label: BUG_STATUS_LABELS.verifying, accent: 'var(--gold)' },
-  { key: 'verified', label: BUG_STATUS_LABELS.verified, accent: 'var(--brand)' },
-  { key: 'closed', label: BUG_STATUS_LABELS.closed, accent: 'var(--text-tertiary)' },
+const COLUMNS: { key: keyof Board; label: string; dot: string }[] = [
+  { key: 'open', label: BUG_STATUS_LABELS.open, dot: 'var(--sev-critical)' },
+  { key: 'in_progress', label: BUG_STATUS_LABELS.in_progress, dot: 'var(--sev-high)' },
+  { key: 'resolved', label: BUG_STATUS_LABELS.resolved, dot: 'var(--ok)' },
+  { key: 'verifying', label: BUG_STATUS_LABELS.verifying, dot: 'var(--gold)' },
+  { key: 'verified', label: BUG_STATUS_LABELS.verified, dot: 'var(--brand)' },
+  { key: 'closed', label: BUG_STATUS_LABELS.closed, dot: 'var(--text-tertiary)' },
 ];
 
 interface BugBoardProps {
@@ -26,17 +26,21 @@ interface BugBoardProps {
   onContextMenu: (bugId: string, e: React.MouseEvent) => void;
   onSelectionChange: (ids: string[]) => void;
   selectedIds: string[];
-  /** Work 页默认隐藏已完成/已关闭，进「已归档」Tab 看 */
   hideTerminal?: boolean;
 }
 
-/**
- * 缺陷看板（UI 规范 §2.6）：每个状态一列（R83 起六列，含验证中）+ 拖拽 + 多选。
- * 拖拽 ID 走 ref（R1 教训：React 状态批处理下 drop 时闭包会读到过期值）。
- */
+/** 缺陷看板：克制的灰底状态列 + 状态圆点（去掉廉价彩虹顶边），支持拖拽校验与多选 */
 export function BugBoard({
-  board, thumbnails, flashIds, canEdit,
-  onMoveBug, onOpenBug, onContextMenu, onSelectionChange, selectedIds, hideTerminal = false,
+  board,
+  thumbnails,
+  flashIds,
+  canEdit,
+  onMoveBug,
+  onOpenBug,
+  onContextMenu,
+  onSelectionChange,
+  selectedIds,
+  hideTerminal = false,
 }: BugBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const draggingRef = useRef<string | null>(null);
@@ -57,7 +61,6 @@ export function BugBoard({
   };
 
   const findBug = (bugId: string | null) => (bugId ? Object.values(board).flat().find((b) => b.id === bugId) : undefined);
-  /** 拖动中的缺陷可以落到哪些列：只有合法的下一步（重开要写原因，不能直接拖） */
   const draggingBug = findBug(draggingId);
 
   const handleDrop = (target: keyof Board) => {
@@ -91,7 +94,6 @@ export function BugBoard({
       return;
     }
     if (e.shiftKey && selectedRef.current.size > 0) {
-      // 范围选择：同列内从锚点到当前
       e.preventDefault();
       e.stopPropagation();
       const flat = Object.values(board).flat().map((b) => b.id);
@@ -102,17 +104,14 @@ export function BugBoard({
       onSelectionChange([...next]);
       return;
     }
-    if (selectedRef.current.size > 0) {
-      // 已有多选时点击非修饰键 = 清空选择并打开
-      onSelectionChange([]);
-    }
+    if (selectedRef.current.size > 0) onSelectionChange([]);
     onOpenBug(bugId, e);
   };
 
   const columns = hideTerminal ? COLUMNS.filter((c) => c.key !== 'verified' && c.key !== 'closed') : COLUMNS;
 
   return (
-    <div className="flex h-full gap-3 overflow-x-auto pb-2" data-testid="bug-board">
+    <div className="flex h-full gap-3 overflow-x-auto pb-1" data-testid="bug-board">
       {columns.map((col) => {
         const bugs = board[col.key] ?? [];
         const droppable = draggingBug ? canDropBug(draggingBug.status, col.key) : false;
@@ -122,12 +121,11 @@ export function BugBoard({
             key={col.key}
             data-testid={`board-column-${col.key}`}
             className={cn(
-              'flex min-h-32 min-w-[150px] flex-1 flex-col rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-panel)] transition-[opacity,border-color]',
-              draggingBug && !droppable && draggingBug.status !== col.key && 'opacity-50',
-              isOver && 'border-[var(--gold)] bg-[var(--gold-bg)]',
+              'vh-col min-w-[140px]',
+              draggingBug && !droppable && draggingBug.status !== col.key && 'opacity-45',
+              isOver && 'border-[var(--brand)] bg-[var(--brand-soft)]/35',
               rejectCol === col.key && 'animate-[vh-shake_160ms_var(--ease)]',
             )}
-            style={{ borderTop: `2px solid ${col.accent}` }}
             onDragOver={(e) => {
               e.preventDefault();
               setDragOverCol(col.key);
@@ -135,9 +133,14 @@ export function BugBoard({
             onDragLeave={() => setDragOverCol((prev) => (prev === col.key ? null : prev))}
             onDrop={() => handleDrop(col.key)}
           >
-            <div className="flex items-center justify-between px-3 py-2">
-              <span className="text-xs font-semibold text-[var(--text-secondary)]">{col.label}</span>
-              <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-xs text-[var(--text-tertiary)]">{bugs.length}</span>
+            <div className="flex items-center justify-between border-b border-[var(--border-subtle)]/70 px-3 py-2.5">
+              <span className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)]">
+                <i className="inline-block h-2 w-2 rounded-full" style={{ background: col.dot }} />
+                {col.label}
+              </span>
+              <span className="rounded-full bg-[var(--bg-elevated)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-tertiary)]">
+                {bugs.length}
+              </span>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
               {bugs.map((bug) => (
@@ -155,7 +158,7 @@ export function BugBoard({
                 />
               ))}
               {bugs.length === 0 && (
-                <p className="py-6 text-center text-xs text-[var(--text-tertiary)]">拖拽卡片到此</p>
+                <p className="py-8 text-center text-[11px] text-[var(--text-tertiary)]/70">暂无条目</p>
               )}
             </div>
           </div>

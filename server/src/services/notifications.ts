@@ -73,9 +73,13 @@ export async function notifyUser(input: NotificationInput): Promise<void> {
   await createNotification(input);
 }
 
-export async function listNotifications(userId: string, options: { unread?: boolean; limit?: number } = {}) {
+export async function listNotifications(
+  userId: string,
+  options: { unread?: boolean; limit?: number; projectId?: string | null } = {},
+) {
   const limit = Math.min(Math.max(options.limit ?? 30, 1), 100);
-  const where = { userId, ...(options.unread ? { readAt: null } : {}) };
+  const projectFilter = options.projectId ? { projectId: options.projectId } : {};
+  const where = { userId, ...projectFilter, ...(options.unread ? { readAt: null } : {}) };
   const [items, total, unread] = await Promise.all([
     prisma.notification.findMany({
       where,
@@ -83,7 +87,7 @@ export async function listNotifications(userId: string, options: { unread?: bool
       take: limit,
     }),
     prisma.notification.count({ where }),
-    prisma.notification.count({ where: { userId, readAt: null } }),
+    prisma.notification.count({ where: { userId, ...projectFilter, readAt: null } }),
   ]);
   return { items: items.map(serializeNotification), total, unread, has_more: total > items.length };
 }
@@ -96,9 +100,9 @@ export async function markRead(userId: string, id: string): Promise<boolean> {
   return result.count > 0;
 }
 
-export async function markAllRead(userId: string): Promise<number> {
+export async function markAllRead(userId: string, projectId?: string | null): Promise<number> {
   const result = await prisma.notification.updateMany({
-    where: { userId, readAt: null },
+    where: { userId, ...(projectId ? { projectId } : {}), readAt: null },
     data: { readAt: new Date() },
   });
   return result.count;

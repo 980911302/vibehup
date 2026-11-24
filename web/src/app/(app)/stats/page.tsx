@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, BarChart3, RefreshCw } from 'lucide-react';
+import { AlertTriangle, BarChart3, FolderPlus, RefreshCw } from 'lucide-react';
 import { useVibeHub } from '@/hooks/use-vibehub';
+import { useWorkOverlay } from '@/components/work/WorkItemOverlay';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { statsDateLabel, todayDone, totalRemaining } from '@/lib/stats-view';
+import { WorkspaceHeader } from '@/components/layout/WorkspaceHeader';
 import { StatsActiveList } from '@/components/stats/StatsActiveList';
 import { StatsByActor } from '@/components/stats/StatsByActor';
 import { StatsEmptyGuide } from '@/components/stats/StatsEmptyGuide';
@@ -15,24 +17,21 @@ import { StatsTodayCard } from '@/components/stats/StatsTodayCard';
 import { StatsTrendChart } from '@/components/stats/StatsTrendChart';
 import type { StatsActiveItem, StatsResponse } from '@/lib/stats-types';
 
-type Scope = 'current' | 'all';
 const POLL_INTERVAL_MS = 30_000;
 
-/** 统计页（R85，docs/计划/07 §7.16）：今天产出、还剩多少、现在谁在做什么、按密钥、14 天趋势 */
+/** 统计工作区：严格隔离统计当前选定项目的产出、剩余、经手人与 14 天节奏 */
 export default function StatsPage() {
   const store = useVibeHub();
-  // 只取稳定的 error 回调：useToast 返回的整个对象每次 Provider 重渲染都是新引用，
-  // 若进 load 依赖会「请求失败→弹 toast→Provider 重渲染→load 变新→再请求」自我循环。
+  const overlay = useWorkOverlay();
   const { error: toastError } = useToast();
   const router = useRouter();
-  const [scope, setScope] = useState<Scope>('current');
+
   const [data, setData] = useState<StatsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const hasProject = !!store.currentProject;
-  const activeScope: Scope = scope === 'current' && !hasProject ? 'all' : scope;
-  const projectId = activeScope === 'current' ? store.currentProject?.id ?? null : null;
+  const projectId = store.currentProject?.id ?? null;
+
   const noActivity =
     !!data &&
     data.active.length === 0 &&
@@ -43,6 +42,10 @@ export default function StatsPage() {
     data.today.bugs_closed_unfixed === 0;
 
   const load = useCallback(async () => {
+    if (!projectId) {
+      setData(null);
+      return;
+    }
     setLoading(true);
     try {
       setData(await api.stats({ projectId }));
@@ -57,134 +60,132 @@ export default function StatsPage() {
   }, [projectId, toastError]);
 
   useEffect(() => {
+    setData(null);
     void load();
   }, [load, store.statsRevision]);
 
   useEffect(() => {
+    if (!projectId) return;
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') void load();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, projectId]);
 
   const openActiveItem = (item: StatsActiveItem) => {
-    if (item.project_id !== store.currentProject?.id) store.selectProject(item.project_id);
-    router.push(item.kind === 'bug' ? `/work/bugs?bug=${item.id}` : `/work/tasks?task=${item.id}`);
+    overlay.openItem(item.kind, item.id);
   };
 
-  return (
-    <div className="vh-page">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="t-caption-4 flex items-center gap-2 text-[var(--text-tertiary)]">
-            <BarChart3 size={14} strokeWidth={1.8} /> 今日 · 统计
-          </p>
-          <h1 className="t-heading-4 mt-2">产出与节奏</h1>
-          <p className="t-body-3 mt-2 max-w-[680px] text-[var(--text-secondary)]">
-            今天产出多少、还剩多少、谁在做什么；按北京时间统计，每 30 秒刷新。
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="vh-segmented" role="group" aria-label="统计范围">
-            <button
-              className={activeScope === 'current' ? 'active' : undefined}
-              onClick={() => setScope('current')}
-              disabled={!hasProject && !store.loading}
-              title={hasProject || store.loading ? undefined : '还没有进行中的项目'}
-              data-testid="stats-scope-current"
-            >
-              当前项目
-            </button>
-            <button
-              className={activeScope === 'all' ? 'active' : undefined}
-              onClick={() => setScope('all')}
-              data-testid="stats-scope-all"
-            >
-              全部项目
-            </button>
-          </div>
-          <button className="vh-btn ghost" onClick={() => void load()} title="刷新" data-testid="stats-refresh">
-            <RefreshCw size={15} className={loading ? 'animate-spin' : undefined} />
-            <span className="hidden sm:inline">刷新</span>
+  if (!store.loading && !store.currentProject) {
+    return (
+      <div className="flex h-full flex-col">
+        <WorkspaceHeader title="统计" />
+        <div className="vh-empty flex-1">
+          <span className="vh-empty-icon"><BarChart3 size={24} /></span>
+          <p className="vh-empty-title">还没有项目</p>
+          <p className="vh-empty-hint">统计严格按当前项目工作区隔离计算；请先创建项目</p>
+          <button
+            type="button"
+            className="vh-btn h-8 text-xs"
+            onClick={() => window.dispatchEvent(new CustomEvent('vibehub:open-onboarding'))}
+          >
+            <FolderPlus size={14} /> 创建第一个项目
           </button>
         </div>
-      </header>
+      </div>
+    );
+  }
 
-      {!data && error ? (
-        <div className="vh-card mt-8">
-          <div className="vh-empty">
-            <span className="vh-empty-icon">
-              <AlertTriangle size={22} className="text-[var(--warn)]" />
-            </span>
-            <p className="vh-empty-title">统计暂时取不到</p>
-            <p className="vh-empty-hint">{error}</p>
-            <button className="vh-btn" onClick={() => void load()}>
-              <RefreshCw size={15} /> 重试
-            </button>
-          </div>
-        </div>
-      ) : !data ? (
-        <StatsSkeleton />
-      ) : (
-        <>
-          <div className="mt-8 grid gap-5 lg:grid-cols-12">
-            <div className="min-w-0 lg:col-span-7">
-              <StatsTodayCard today={data.today} dateLabel={statsDateLabel(data.scope.today)} />
-            </div>
-            <div className="min-w-0 lg:col-span-5">
-              <StatsRemainingCard remaining={data.remaining} />
-            </div>
-          </div>
+  return (
+    <div className="flex h-full flex-col">
+      <WorkspaceHeader
+        title="统计"
+        subtitle="仅统计当前项目 · 北京时间自然日"
+        actions={
+          <button
+            type="button"
+            className="vh-btn ghost h-8 px-2.5 text-xs"
+            onClick={() => void load()}
+            title="刷新"
+            data-testid="stats-refresh"
+          >
+            <RefreshCw size={13} className={loading ? 'animate-spin' : undefined} />
+            <span>刷新</span>
+          </button>
+        }
+      />
 
-          {noActivity ? (
-            <StatsEmptyGuide onOpenWork={() => router.push('/work')} onOpenToday={() => router.push('/today')} />
+      <div className="vh-ws-scroll">
+        <div className="vh-ws-container">
+          {!data && error ? (
+            <div className="vh-card">
+              <div className="vh-empty">
+                <span className="vh-empty-icon">
+                  <AlertTriangle size={22} className="text-[var(--warn)]" />
+                </span>
+                <p className="vh-empty-title">统计暂时取不到</p>
+                <p className="vh-empty-hint">{error}</p>
+                <button type="button" className="vh-btn h-8 text-xs" onClick={() => void load()}>
+                  <RefreshCw size={14} /> 重试
+                </button>
+              </div>
+            </div>
+          ) : !data ? (
+            <StatsSkeleton />
           ) : (
-            <>
-              <div className="mt-5 grid items-start gap-5 lg:grid-cols-12">
+            <div className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-12">
                 <div className="min-w-0 lg:col-span-7">
-                  <StatsActiveList items={data.active} onOpen={openActiveItem} />
+                  <StatsTodayCard today={data.today} dateLabel={statsDateLabel(data.scope.today)} />
                 </div>
                 <div className="min-w-0 lg:col-span-5">
-                  <StatsByActor rows={data.by_actor} />
+                  <StatsRemainingCard remaining={data.remaining} />
                 </div>
               </div>
 
-              <section className="vh-card mt-5 p-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="t-title-3">最近 14 天</h2>
-                  <span className="t-caption-5 text-[var(--text-tertiary)]">含今天，旧 → 新</span>
-                </div>
-                <div className="mt-4">
-                  <StatsTrendChart points={data.trend} />
-                </div>
-              </section>
+              {noActivity ? (
+                <StatsEmptyGuide onOpenWork={() => router.push('/work/bugs')} onOpenToday={() => router.push('/today')} />
+              ) : (
+                <>
+                  <div className="grid items-start gap-4 lg:grid-cols-12">
+                    <div className="min-w-0 lg:col-span-7">
+                      <StatsActiveList items={data.active} onOpen={openActiveItem} />
+                    </div>
+                    <div className="min-w-0 lg:col-span-5">
+                      <StatsByActor rows={data.by_actor} />
+                    </div>
+                  </div>
 
-              <p className="t-caption-5 mt-6 text-center text-[var(--text-tertiary)]">
-                修复完成 = 缺陷「已验证」或旧流程「已验证 → 已关闭」；任务完成 = 「已完成」。
-              </p>
-            </>
+                  <section className="vh-card p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-sm font-semibold text-[var(--text-primary)]">最近 14 天趋势</h2>
+                      <span className="text-xs text-[var(--text-tertiary)]">含今天，旧 → 新</span>
+                    </div>
+                    <div className="mt-4">
+                      <StatsTrendChart points={data.trend} />
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
           )}
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
 
 function StatsSkeleton() {
   return (
-    <div className="mt-8" data-testid="stats-skeleton">
-      <div className="grid gap-5 lg:grid-cols-12">
+    <div className="space-y-4" data-testid="stats-skeleton">
+      <div className="grid gap-4 lg:grid-cols-12">
         {[7, 5, 7, 5].map((span, i) => (
-          <div key={i} className={`vh-card p-6 ${span === 7 ? 'lg:col-span-7' : 'lg:col-span-5'}`}>
+          <div key={i} className={`vh-card p-5 ${span === 7 ? 'lg:col-span-7' : 'lg:col-span-5'}`}>
             <div className="vh-skeleton h-4 w-24" />
-            <div className="vh-skeleton mt-4 h-10 w-20" />
-            <div className="vh-skeleton mt-5 h-16 w-full" />
+            <div className="vh-skeleton mt-3 h-8 w-20" />
+            <div className="vh-skeleton mt-4 h-14 w-full" />
           </div>
         ))}
-      </div>
-      <div className="vh-card mt-5 p-6">
-        <div className="vh-skeleton h-4 w-28" />
-        <div className="vh-skeleton mt-4 h-36 w-full" />
       </div>
     </div>
   );

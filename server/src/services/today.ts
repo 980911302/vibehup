@@ -40,6 +40,7 @@ export interface TodayItem {
 export interface TodayResult {
   generated_at: string;
   date: string;
+  project_id: string | null;
   projects: { id: string; name: string }[];
   needs_me: TodayItem[];
   to_verify: TodayItem[];
@@ -63,21 +64,30 @@ function actorOf(row: { statusActorType: string | null; statusActorName: string 
     : null;
 }
 
-export async function getToday(userId: string, now: Date = new Date()): Promise<TodayResult> {
+export async function getToday(
+  userId: string,
+  now: Date = new Date(),
+  projectId: string | null = null,
+): Promise<TodayResult> {
   const projects = await prisma.project.findMany({
     where: { archivedAt: null },
     orderBy: { updatedAt: 'desc' },
     select: { id: true, name: true },
   });
-  const projectIds = projects.map((p) => p.id);
+  const scopedProjects = projectId ? projects.filter((p) => p.id === projectId) : projects;
+  const scopedIds = scopedProjects.map((p) => p.id);
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
-  const stats = await getStats({ projectId: null, projectIds }, now);
+  const stats = await getStats(
+    { projectId: projectId ?? null, projectIds: scopedIds },
+    now,
+  );
 
-  if (projectIds.length === 0) {
+  if (scopedIds.length === 0) {
     return {
       generated_at: now.toISOString(),
       date: stats.scope.today,
-      projects: [],
+      project_id: projectId,
+      projects,
       needs_me: [],
       to_verify: [],
       ai_active: [],
@@ -87,6 +97,7 @@ export async function getToday(userId: string, now: Date = new Date()): Promise<
       trend: stats.trend,
     };
   }
+  const projectIds = scopedIds;
 
   const [bugs, tasks] = await Promise.all([
     prisma.bug.findMany({
@@ -202,6 +213,7 @@ export async function getToday(userId: string, now: Date = new Date()): Promise<
   return {
     generated_at: now.toISOString(),
     date: stats.scope.today,
+    project_id: projectId,
     projects,
     needs_me: needsMe,
     to_verify: toVerify,

@@ -1,34 +1,41 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, FolderPlus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Check, ChevronsUpDown, FolderPlus, Settings2 } from 'lucide-react';
 import { buildSearchIndex, matchIndex } from '@/lib/search';
+import { useCanEdit } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import type { Project } from '@/lib/api-types';
 
-/** 项目切换器（支持拼音/模糊检索；顶栏右对齐与紧凑两种形态） */
+interface ProjectSwitcherProps {
+  projects: Project[];
+  current: Project | null;
+  onSelect: (projectId: string) => void;
+  onCreate: (name: string) => void;
+  align?: 'left' | 'right';
+  collapsed?: boolean;
+}
+
+/** 左上角工作区根容器切换器：选定项目后全站数据严格物理隔离 */
 export function ProjectSwitcher({
   projects,
   current,
   onSelect,
   onCreate,
   align = 'left',
-  compact = false,
-}: {
-  projects: Project[];
-  current: Project | null;
-  onSelect: (projectId: string) => void;
-  onCreate: (name: string) => void;
-  align?: 'left' | 'right';
-  compact?: boolean;
-}) {
+  collapsed = false,
+}: ProjectSwitcherProps) {
+  const router = useRouter();
+  const canEdit = useCanEdit();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [newName, setNewName] = useState('');
 
+  const activeProjects = projects.filter((p) => !p.archived_at);
   const filtered = query.trim()
-    ? projects.filter((p) => matchIndex(query, buildSearchIndex(p.name, `${p.slug} ${p.description ?? ''}`)))
-    : projects;
+    ? activeProjects.filter((p) => matchIndex(query, buildSearchIndex(p.name, `${p.slug} ${p.description ?? ''}`)))
+    : activeProjects;
 
   const create = () => {
     const name = newName.trim();
@@ -38,75 +45,125 @@ export function ProjectSwitcher({
     setOpen(false);
   };
 
+  const monogram = (current?.name ?? 'P').trim().slice(0, 1).toUpperCase();
+
   return (
-    <div className="relative">
+    <div className="relative min-w-0 flex-1">
       <button
+        type="button"
         className={cn(
-          'vh-btn ghost h-9 gap-1.5 border-[var(--border-subtle)] px-3 text-[var(--text-secondary)]',
-          compact && 'max-w-[190px]',
+          'flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-elevated)]',
+          collapsed && 'justify-center px-0',
         )}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label="切换当前项目"
+        title={collapsed ? `当前项目：${current?.name ?? '未选择'}` : undefined}
         data-testid="project-switcher"
       >
-        <span className="truncate">{current?.name ?? '选择项目'}</span>
-        <ChevronDown size={13} className="shrink-0 opacity-60" />
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--brand)] text-xs font-semibold text-white shadow-xs">
+          {monogram}
+        </span>
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-semibold leading-tight text-[var(--text-primary)]">
+                {current?.name ?? '选择工作区项目'}
+              </span>
+              <span className="t-mono block truncate text-[10px] leading-tight text-[var(--text-tertiary)]">
+                {current ? current.slug : '独立项目隔离空间'}
+              </span>
+            </span>
+            <ChevronsUpDown size={13} className="shrink-0 text-[var(--text-tertiary)]" />
+          </>
+        )}
       </button>
 
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div
             className={cn(
-              'absolute top-11 z-40 w-80 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-2 shadow-[var(--shadow-2)]',
+              'absolute top-11 z-50 w-72 rounded-xl border border-[var(--border-strong)] bg-[var(--bg-card)] p-2 shadow-[var(--shadow-2)]',
               align === 'right' ? 'right-0' : 'left-0',
             )}
           >
+            <div className="mb-1.5 flex items-center justify-between px-1.5 pt-0.5">
+              <span className="text-[11px] font-medium text-[var(--text-tertiary)]">切换项目工作区（严格物理隔离）</span>
+            </div>
             <input
               autoFocus
-              className="mb-2 h-9 w-full rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-color)]"
-              placeholder="搜索项目，支持拼音"
+              className="vh-input-compact mb-1.5 w-full"
+              placeholder="搜索项目名称或拼音…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               data-testid="project-search-input"
             />
-            <div className="max-h-64 space-y-0.5 overflow-y-auto">
-              {filtered.map((p) => (
-                <button
-                  key={p.id}
-                  className={cn(
-                    'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors cursor-pointer',
-                    p.id === current?.id
-                      ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)]'
-                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]',
-                  )}
-                  onClick={() => {
-                    onSelect(p.id);
-                    setOpen(false);
-                    setQuery('');
-                  }}
-                >
-                  <span className="truncate">{p.name}</span>
-                  <span className="t-caption-5 ml-2 shrink-0 text-[var(--text-tertiary)]">{p.slug}</span>
-                </button>
-              ))}
+            <div className="max-h-56 space-y-0.5 overflow-y-auto">
+              {filtered.map((p) => {
+                const selected = p.id === current?.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={cn(
+                      'flex w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors',
+                      selected
+                        ? 'bg-[var(--brand-soft)] font-medium text-[var(--text-primary)]'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]',
+                    )}
+                    onClick={() => {
+                      onSelect(p.id);
+                      setOpen(false);
+                      setQuery('');
+                    }}
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--bg-elevated)] text-[10px] font-semibold text-[var(--text-secondary)]">
+                      {p.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                    <span className="t-mono shrink-0 text-[10px] text-[var(--text-tertiary)]">{p.slug}</span>
+                    {selected && <Check size={13} className="shrink-0 text-[var(--brand)]" />}
+                  </button>
+                );
+              })}
               {filtered.length === 0 && (
-                <p className="t-caption-2 px-3 py-4 text-center text-[var(--text-tertiary)]">未找到匹配项目</p>
+                <p className="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]">没有匹配的项目</p>
               )}
             </div>
-            <div className="mt-2 flex gap-2 border-t border-[var(--border-subtle)] pt-2">
-              <input
-                className="h-9 min-w-0 flex-1 rounded-lg border border-[var(--border-strong)] bg-[var(--bg-page)] px-3 text-sm outline-none placeholder:text-[var(--text-tertiary)] focus:border-[var(--accent-color)]"
-                placeholder="新建项目名称"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && create()}
-              />
-              <button className="vh-btn px-3" disabled={!newName.trim()} onClick={create} aria-label="创建项目">
-                <FolderPlus size={14} />
-              </button>
-            </div>
+
+            {canEdit && (
+              <div className="mt-2 flex gap-1.5 border-t border-[var(--border-subtle)] pt-2">
+                <input
+                  className="vh-input-compact min-w-0 flex-1"
+                  placeholder="新建项目名称…"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && create()}
+                />
+                <button
+                  type="button"
+                  className="vh-btn h-8 px-2.5 text-xs"
+                  disabled={!newName.trim()}
+                  onClick={create}
+                  aria-label="创建项目"
+                >
+                  <FolderPlus size={13} />
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
+              onClick={() => {
+                setOpen(false);
+                router.push('/projects');
+              }}
+            >
+              <Settings2 size={12} />
+              管理全部项目与归档…
+            </button>
           </div>
         </>
       )}

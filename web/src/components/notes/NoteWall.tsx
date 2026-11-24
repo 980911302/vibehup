@@ -106,24 +106,19 @@ export function NoteWall({
         )}
         aria-label="随手记索引"
       >
-        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3 py-2">
-          <span className="t-caption-4 text-[var(--text-secondary)]">{filtered.length} 条随手记</span>
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--border-subtle)] px-3">
+          <span className="text-xs font-medium text-[var(--text-tertiary)]">{filtered.length} 条索引</span>
           {activeTag && (
             <button
-              className="t-caption-5 rounded-full bg-[var(--gold-bg)] px-1.5 text-[var(--gold)]"
+              type="button"
+              className="rounded-full bg-[var(--gold-bg)] px-2 py-0.5 text-[11px] text-[var(--gold)]"
               onClick={() => setActiveTag(null)}
               title="清除标签筛选"
             >
               #{activeTag} ×
             </button>
           )}
-          <div className="flex-1" />
-          {canEdit && (
-            <button className="vh-btn ghost" onClick={onOpenComposer} data-testid="note-new">
-              <Plus size={14} />
-              记一笔
-            </button>
-          )}
+          <span className="ml-auto text-[11px] text-[var(--text-tertiary)]">按 N 快速新建</span>
         </div>
 
         {composerOpen && canEdit && (

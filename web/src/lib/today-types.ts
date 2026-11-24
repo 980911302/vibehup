@@ -33,6 +33,7 @@ export interface TodayItem {
 export interface TodayResponse {
   generated_at: string;
   date: string;
+  project_id?: string | null;
   projects: { id: string; name: string }[];
   needs_me: TodayItem[];
   to_verify: TodayItem[];

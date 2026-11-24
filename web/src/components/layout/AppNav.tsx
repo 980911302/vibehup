@@ -1,43 +1,24 @@
 'use client';
 
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import {
-  Activity,
-  Bell,
-  BookOpen,
-  Check,
-  Keyboard,
-  Menu,
-  Moon,
-  Plus,
-  Search,
-  Settings2,
-  Sparkles,
-  Sun,
-  Sunrise,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { Bell, Keyboard, Moon, Settings2, Sparkles, Sun } from 'lucide-react';
 import { useAuth, useCanEdit } from '@/lib/auth';
 import { api } from '@/lib/api';
 import { useToast } from '@/lib/toast';
 import { useTheme } from '@/lib/theme';
 import { useVibeHub } from '@/hooks/use-vibehub';
+import { useWorkOverlay } from '@/components/work/WorkItemOverlay';
 import { cn } from '@/lib/utils';
 import { ProjectSwitcher } from './ProjectSwitcher';
-import { UserMenu } from './UserMenu';
+import { GlobalSidebarBody, WorkspaceSidebarBody } from './SidebarSections';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 
-export const NAV_ITEMS: { href: string; label: string; icon: LucideIcon; match: string[] }[] = [
-  { href: '/today', label: '今日', icon: Sunrise, match: ['/today', '/stats'] },
-  { href: '/work', label: '工作', icon: Activity, match: ['/work', '/board', '/tasks'] },
-  { href: '/context', label: '上下文', icon: BookOpen, match: ['/context', '/notes', '/files', '/skills'] },
-  { href: '/settings', label: '设置', icon: Settings2, match: ['/settings', '/keys', '/members', '/projects'] },
-];
+const COLLAPSED_KEY = 'vibehub_sidebar_collapsed';
+const ROLE_LABEL: Record<string, string> = { owner: '拥有者', admin: '管理员', member: '成员', viewer: '只读' };
 
-function isActive(pathname: string, item: (typeof NAV_ITEMS)[number]): boolean {
-  return item.match.some((m) => pathname === m || pathname.startsWith(`${m}/`));
+export function isGlobalRoute(pathname: string): boolean {
+  return ['/settings', '/keys', '/members', '/projects'].some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
 interface AppNavProps {
@@ -46,7 +27,7 @@ interface AppNavProps {
   onOpenActivity: () => void;
 }
 
-/** 浮动顶栏（R89）：四区导航 + 项目切换 + 搜索/主题/活动/账号；移动端全屏菜单。 */
+/** 紧凑左侧边栏工作台：项目空间与全局管理彻底分离，通知未读严格跟随当前项目 */
 export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -54,15 +35,45 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
   const canEdit = useCanEdit();
   const { theme, toggle } = useTheme();
   const store = useVibeHub();
+  const overlay = useWorkOverlay();
   const toast = useToast();
+
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [unread, setUnread] = useState(0);
 
+  const projectId = store.currentProject?.id ?? null;
+
   useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1');
+    } catch {
+      // 隐私模式
+    }
+  }, []);
+
+  useEffect(() => {
+    const onToggle = () => setMobileOpen((v) => !v);
+    window.addEventListener('vibehub:toggle-sidebar', onToggle);
+    return () => window.removeEventListener('vibehub:toggle-sidebar', onToggle);
+  }, []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+    setCreateMenuOpen(false);
+  }, [pathname, projectId]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setUnread(0);
+      return;
+    }
     let alive = true;
     const load = () =>
-      api.listNotifications(false, 1)
+      api
+        .listNotifications(false, 1, projectId)
         .then((r) => alive && setUnread(r.unread))
         .catch(() => undefined);
     void load();
@@ -71,250 +82,156 @@ export function AppNav({ onOpenPalette, onOpenHelp, onOpenActivity }: AppNavProp
       alive = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [projectId, store.statsRevision]);
 
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMobileOpen(false);
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [mobileOpen]);
-
-  const go = (href: string) => {
-    setMobileOpen(false);
-    router.push(href);
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      // 忽略
+    }
   };
+
+  const activeBugsCount = useMemo(
+    () =>
+      store.board.open.length +
+      store.board.in_progress.length +
+      store.board.resolved.length +
+      store.board.verifying.length,
+    [store.board],
+  );
+
+  const globalMode = isGlobalRoute(pathname);
+  const isCompact = collapsed && !mobileOpen;
+
+  const sidebarContent = (
+    <aside
+      className={cn('vh-sidebar', isCompact && 'collapsed')}
+      data-testid="sidebar"
+      aria-label={globalMode ? '全局管理导航' : '项目工作区导航'}
+    >
+      {globalMode ? (
+        <GlobalSidebarBody pathname={pathname} projectName={store.currentProject?.name ?? null} onGo={(h) => router.push(h)} />
+      ) : (
+        <WorkspaceSidebarBody
+          pathname={pathname}
+          compact={isCompact}
+          canEdit={canEdit}
+          activeBugsCount={activeBugsCount}
+          notesCount={store.notes.length}
+          filesCount={store.attachments.length}
+          createMenuOpen={createMenuOpen}
+          onSetCreateMenu={setCreateMenuOpen}
+          onCreateBug={() => {
+            setCreateMenuOpen(false);
+            overlay.openCreateBug();
+          }}
+          onCreateTask={() => {
+            setCreateMenuOpen(false);
+            overlay.openCreateTask();
+          }}
+          onOpenPalette={onOpenPalette}
+          onToggleCollapsed={toggleCollapsed}
+          onGo={(h) => router.push(h)}
+          switcher={
+            <ProjectSwitcher
+              projects={store.projects}
+              current={store.currentProject}
+              onSelect={store.selectProject}
+              onCreate={(name) => {
+                void store.createProject(name).catch((e) => toast.error(e instanceof Error ? e.message : '创建项目失败'));
+              }}
+              collapsed={isCompact}
+            />
+          }
+        />
+      )}
+
+      <div className="mt-auto border-t border-[var(--border-subtle)] p-2">
+        {!isCompact && (
+          <div className="mb-1.5 flex items-center justify-between px-1">
+            <button
+              type="button"
+              className="vh-icon-btn relative"
+              onClick={() => setNotifOpen(true)}
+              title="当前项目通知"
+              aria-label={`通知${unread ? `（${unread} 条未读）` : ''}`}
+              data-testid="open-notifications"
+            >
+              <Bell size={15} />
+              {unread > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </button>
+            <button type="button" className="vh-icon-btn" onClick={onOpenActivity} title="AI 活动流" aria-label="AI 活动流" data-testid="open-activity">
+              <Sparkles size={15} />
+            </button>
+            <button
+              type="button"
+              className="vh-icon-btn"
+              onClick={toggle}
+              title={theme === 'midnight' ? '切换到纸白主题' : '切换到暗色主题'}
+              aria-label="切换主题"
+              data-testid="theme-toggle"
+            >
+              {theme === 'midnight' ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
+            <button type="button" className="vh-icon-btn" onClick={onOpenHelp} title="快捷键（?）" aria-label="快捷键帮助">
+              <Keyboard size={15} />
+            </button>
+          </div>
+        )}
+
+        {user && (
+          <button
+            type="button"
+            className={cn(
+              'flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-elevated)]',
+              globalMode && 'bg-[var(--bg-elevated)]',
+              isCompact && 'justify-center px-0',
+            )}
+            onClick={() => router.push('/settings')}
+            title={isCompact ? `${user.name} · 全局设置` : '个人资料、密钥与团队全局管理'}
+            data-testid="nav-settings"
+          >
+            <span className="vh-avatar h-7 w-7 text-xs">{user.name.slice(0, 1)}</span>
+            {!isCompact && (
+              <>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium text-[var(--text-primary)]">{user.name}</span>
+                  <span className="block truncate text-[10px] text-[var(--text-tertiary)]">
+                    {ROLE_LABEL[user.role] ?? user.role} · 全局设置
+                  </span>
+                </span>
+                <Settings2 size={14} className="shrink-0 text-[var(--text-tertiary)]" />
+              </>
+            )}
+          </button>
+        )}
+      </div>
+    </aside>
+  );
 
   return (
     <>
-      <header className="vh-topbar">
-        <div className="vh-nav-float">
-          <button
-            className="vh-brand cursor-pointer border-0 bg-transparent p-0 text-left"
-            onClick={() => go('/today')}
-            aria-label="回到今日"
-          >
-            <span className="vh-brand-mark" aria-hidden>
-              V
-            </span>
-            <span className="hidden flex-col sm:flex">
-              <span className="vh-brand-name">VibeHub</span>
-              <span className="vh-brand-sub">AI 同事的工作台</span>
-            </span>
-          </button>
-
-          <nav className="vh-top-nav ml-2 hidden md:flex" aria-label="主导航">
-            {NAV_ITEMS.map((item) => {
-              const active = isActive(pathname, item);
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.href}
-                  className={cn('vh-top-link', active && 'active')}
-                  onClick={() => go(item.href)}
-                  aria-current={active ? 'page' : undefined}
-                  data-testid={`nav-${item.href.slice(1)}`}
-                >
-                  <Icon size={15} strokeWidth={1.8} />
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="vh-top-actions">
-            <div className="hidden md:block">
-              <ProjectSwitcher
-                projects={store.projects}
-                current={store.currentProject}
-                onSelect={store.selectProject}
-                onCreate={(name) => {
-                  void store.createProject(name).catch((e) =>
-                    toast.error(e instanceof Error ? e.message : '创建项目失败'),
-                  );
-                }}
-                align="right"
-                compact
-              />
-            </div>
-
-            {canEdit && (
-              <button
-                className="vh-btn h-9 gap-1.5 px-2.5"
-                onClick={() => window.dispatchEvent(new CustomEvent('vibehub:quick-capture'))}
-                title="快速录入（C）"
-                data-testid="quick-capture"
-              >
-                <Plus size={15} />
-                <span className="hidden lg:inline">录缺陷</span>
-              </button>
-            )}
-
-            <div className="hidden sm:block">
-              <button
-                className="vh-btn ghost h-9 gap-2 px-3"
-                onClick={onOpenPalette}
-                data-testid="open-palette"
-                aria-label="打开命令面板"
-              >
-                <Search size={15} />
-                <span className="hidden lg:inline">搜索</span>
-                <span className="vh-kbd hidden lg:inline-flex">⌘K</span>
-              </button>
-            </div>
-            <div className="sm:hidden">
-              <button
-                className="vh-icon-btn"
-                onClick={onOpenPalette}
-                aria-label="打开命令面板"
-                data-testid="open-palette-mobile"
-              >
-                <Search size={17} />
-              </button>
-            </div>
-
-            <div className="relative">
-              <button
-                className="vh-icon-btn"
-                onClick={() => setNotifOpen(true)}
-                title="通知"
-                aria-label={`通知${unread ? `（${unread} 条未读）` : ''}`}
-                data-testid="open-notifications"
-              >
-                <Bell size={17} />
-                {unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--danger)] px-1 text-[10px] font-semibold leading-none text-white">{unread > 99 ? '99+' : unread}</span>}
-              </button>
-            </div>
-            <div className="hidden sm:block">
-              <button
-                className="vh-icon-btn"
-                onClick={onOpenActivity}
-                title="AI 活动"
-                aria-label="查看 AI 活动"
-                data-testid="open-activity"
-              >
-                <Sparkles size={17} />
-              </button>
-            </div>
-            <div className="hidden sm:block">
-              <button
-                className="vh-icon-btn"
-                onClick={toggle}
-                title={theme === 'midnight' ? '切换到纸白主题' : '切换到暗色主题'}
-                aria-label="切换主题"
-                data-testid="theme-toggle"
-              >
-                {theme === 'midnight' ? <Sun size={17} /> : <Moon size={17} />}
-              </button>
-            </div>
-            <div className="hidden lg:block">
-              <button
-                className="vh-icon-btn"
-                onClick={onOpenHelp}
-                title="快捷键帮助（?）"
-                aria-label="快捷键帮助"
-              >
-                <Keyboard size={17} />
-              </button>
-            </div>
-
-            {user && <UserMenu />}
-
-            <div className="md:hidden">
-              <button
-                className="vh-icon-btn"
-                onClick={() => setMobileOpen(true)}
-                aria-label="打开导航"
-                aria-expanded={mobileOpen}
-                data-testid="mobile-menu"
-              >
-                <Menu size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+      <div className="hidden h-full min-[900px]:block">{sidebarContent}</div>
       {mobileOpen && (
-        <div
-          className="fixed inset-0 z-[60] flex flex-col bg-[var(--bg-page)] px-4 pb-8 pt-4"
-          data-testid="mobile-nav"
-        >
-          <div className="flex h-14 items-center justify-between">
-            <div className="vh-brand">
-              <span className="vh-brand-mark" aria-hidden>
-                V
-              </span>
-              <span className="vh-brand-name">VibeHub</span>
-            </div>
-            <button className="vh-icon-btn" onClick={() => setMobileOpen(false)} aria-label="关闭导航">
-              <X size={20} />
-            </button>
-          </div>
-
-          <nav className="mt-8 flex flex-col" aria-label="移动端主导航">
-            {NAV_ITEMS.map((item, i) => {
-              const active = isActive(pathname, item);
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.href}
-                  className={cn('vh-mobile-link', active && 'text-[var(--accent-color)]')}
-                  style={{ '--i': i } as CSSProperties}
-                  onClick={() => go(item.href)}
-                  aria-current={active ? 'page' : undefined}
-                  data-testid={`mobile-nav-${item.href.slice(1)}`}
-                >
-                  <Icon size={22} strokeWidth={1.6} />
-                  {item.label}
-                  {active && <Check size={18} className="ml-auto text-[var(--accent-color)]" />}
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="mt-auto space-y-3 border-t border-[var(--border-subtle)] pt-4">
-            {store.currentProject && (
-              <div className="flex items-center justify-between gap-2">
-                <span className="t-caption-2 text-[var(--text-tertiary)]">当前项目</span>
-                <ProjectSwitcher
-                  projects={store.projects}
-                  current={store.currentProject}
-                  onSelect={store.selectProject}
-                  onCreate={(name) => {
-                    void store.createProject(name).catch((e) =>
-                      toast.error(e instanceof Error ? e.message : '创建项目失败'),
-                    );
-                  }}
-                  align="right"
-                />
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <button className="vh-btn ghost flex-1" onClick={onOpenPalette}>
-                <Search size={15} /> 搜索
-              </button>
-              <button className="vh-btn ghost" onClick={onOpenActivity} aria-label="AI 活动">
-                <Sparkles size={15} />
-              </button>
-              <button className="vh-btn ghost" onClick={toggle} aria-label="切换主题">
-                {theme === 'midnight' ? <Sun size={15} /> : <Moon size={15} />}
-              </button>
-              <button className="vh-btn ghost" onClick={onOpenHelp} aria-label="快捷键帮助">
-                ?
-              </button>
-            </div>
-            <button className="vh-btn ghost w-full" onClick={() => go('/settings')}>
-              <Settings2 size={15} /> 我的设置
-            </button>
-          </div>
+        <div className="min-[900px]:hidden" data-testid="mobile-nav">
+          <div className="vh-drawer-mask" onClick={() => setMobileOpen(false)} />
+          <div className="vh-drawer open">{sidebarContent}</div>
         </div>
       )}
-      <NotificationPanel open={notifOpen} onClose={() => setNotifOpen(false)} onUnreadChange={setUnread} />
+      <NotificationPanel
+        open={notifOpen}
+        projectId={projectId}
+        projectName={store.currentProject?.name ?? null}
+        onClose={() => setNotifOpen(false)}
+        onUnreadChange={setUnread}
+      />
     </>
   );
 }

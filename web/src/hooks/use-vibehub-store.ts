@@ -11,7 +11,7 @@ const EMPTY_BOARD: BugBoard = { open: [], in_progress: [], resolved: [], verifyi
 
 /**
  * 数据中枢（AGENTS.md 前端契约：页面只消费 hooks/use-vibehub.ts）。
- * 由 (app)/layout 的 VibeHubProvider 只实例化一次：当前项目、SSE 连接全站共享。
+ * 由 (app)/layout 的 VibeHubProvider 只实例化一次：当前项目、SSE 连接全站共享，且严格隔离项目数据。
  */
 export interface VibeHubStore {
   projects: Project[];
@@ -27,8 +27,9 @@ export interface VibeHubStore {
   /** 任务 / 技能有变化（SSE 或轮询）时递增，对应页面据此重新拉取 */
   taskRevision: number;
   skillRevision: number;
-  /** 缺陷/任务有变化（SSE 或轮询）时递增，统计页据此重新拉取 */
+  /** 缺陷/任务有变化（SSE 或轮询）时递增，概览与统计页据此重新拉取 */
   statsRevision: number;
+  notifyWorkChanged: () => void;
   selectProject: (projectId: string) => void;
   createProject: (name: string, slug?: string, description?: string) => Promise<Project>;
   refreshProjects: () => Promise<void>;
@@ -52,7 +53,7 @@ export interface VibeHubStore {
 
 type Setter<T> = (v: T) => void;
 
-/** 项目列表 + 当前项目（跨页共享、刷新后保留） */
+/** 项目列表 + 当前项目（跨页共享、刷新后保留、归档后自动切换活跃项目） */
 function useProjects(accessToken: string | null, setError: Setter<string | null>) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -80,7 +81,15 @@ function useProjects(accessToken: string | null, setError: Setter<string | null>
 
   const refreshProjects = useCallback(async () => {
     try {
-      setProjects(await api.listProjects());
+      const list = await api.listProjects();
+      setProjects(list);
+      setCurrentProjectId((cur) => {
+        const valid = list.find((p) => p.id === cur && !p.archived_at);
+        if (valid) return valid.id;
+        const fallback = pickInitialProject(list, readStoredProject());
+        if (fallback) writeStoredProject(fallback);
+        return fallback;
+      });
     } catch {
       // 忽略：列表刷新失败保留旧数据
     }
@@ -96,7 +105,7 @@ function useProjects(accessToken: string | null, setError: Setter<string | null>
   return { projects, currentProjectId, loading, selectProject, refreshProjects, createProject };
 }
 
-/** 当前项目下的数据：看板 / 便签 / 附件 / 模板 */
+/** 当前项目下的数据：严格物理隔离，无项目或切换项目时立即清空旧项目缓存 */
 function useProjectData(projectIdRef: React.MutableRefObject<string | null>, setError: Setter<string | null>) {
   const [board, setBoard] = useState<BugBoard>(EMPTY_BOARD);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -105,56 +114,58 @@ function useProjectData(projectIdRef: React.MutableRefObject<string | null>, set
   const [templates, setTemplates] = useState<BugTemplate[]>([]);
   const fail = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), [setError]);
 
+  const clearProjectScope = useCallback(() => {
+    setBoard(EMPTY_BOARD);
+    setNotes([]);
+    setNoteTags([]);
+    setAttachments([]);
+  }, []);
+
   const refreshBoard = useCallback(async () => {
     const pid = projectIdRef.current;
-    if (!pid) return;
+    if (!pid) { setBoard(EMPTY_BOARD); return; }
     try {
-      setBoard(await api.getBoard(pid));
-      setError(null);
-    } catch (e) {
-      fail(e);
-    }
+      const next = await api.getBoard(pid);
+      if (projectIdRef.current === pid) { setBoard(next); setError(null); }
+    } catch (e) { fail(e); }
   }, [projectIdRef, setError, fail]);
 
   const refreshNotes = useCallback(async () => {
-    const pid = projectIdRef.current ?? undefined;
+    const pid = projectIdRef.current;
+    if (!pid) { setNotes([]); setNoteTags([]); return; }
     try {
       const [list, tags] = await Promise.all([api.listNotes({ projectId: pid }), api.listNoteTags(pid)]);
-      setNotes(list);
-      setNoteTags(tags);
-    } catch (e) {
-      fail(e);
-    }
+      if (projectIdRef.current === pid) { setNotes(list); setNoteTags(tags); }
+    } catch (e) { fail(e); }
   }, [projectIdRef, fail]);
 
   const refreshAttachments = useCallback(async () => {
+    const pid = projectIdRef.current;
+    if (!pid) { setAttachments([]); return; }
     try {
-      setAttachments(await api.listAttachments({ projectId: projectIdRef.current ?? undefined }));
-    } catch (e) {
-      fail(e);
-    }
+      const list = await api.listAttachments({ projectId: pid });
+      if (projectIdRef.current === pid) setAttachments(list);
+    } catch (e) { fail(e); }
   }, [projectIdRef, fail]);
 
   const refreshTemplates = useCallback(async () => {
-    try {
-      setTemplates(await api.listTemplates());
-    } catch {
-      // 模板加载失败不阻塞看板
-    }
+    try { setTemplates(await api.listTemplates()); } catch { /* 模板加载失败不阻塞看板 */ }
   }, []);
 
-  return { board, notes, noteTags, attachments, templates, refreshBoard, refreshNotes, refreshAttachments, refreshTemplates };
+  return {
+    board, notes, noteTags, attachments, templates,
+    clearProjectScope, refreshBoard, refreshNotes, refreshAttachments, refreshTemplates,
+  };
 }
 
 type Data = ReturnType<typeof useProjectData>;
 
-/** 写操作：成功后刷新对应数据 */
-function useActions(projectIdRef: React.MutableRefObject<string | null>, d: Data) {
+function useActions(projectIdRef: React.MutableRefObject<string | null>, d: Data, bumpStats: () => void) {
   const { refreshBoard, refreshNotes, refreshAttachments } = d;
-  // 刷新函数引用稳定，动作随之稳定（与旧版 useCallback 行为一致）
-  return useMemo(() => buildActions(projectIdRef, refreshBoard, refreshNotes, refreshAttachments), [
-    projectIdRef, refreshBoard, refreshNotes, refreshAttachments,
-  ]);
+  return useMemo(
+    () => buildActions(projectIdRef, refreshBoard, refreshNotes, refreshAttachments, bumpStats),
+    [projectIdRef, refreshBoard, refreshNotes, refreshAttachments, bumpStats],
+  );
 }
 
 function buildActions(
@@ -162,12 +173,19 @@ function buildActions(
   refreshBoard: () => Promise<void>,
   refreshNotes: () => Promise<void>,
   refreshAttachments: () => Promise<void>,
+  bumpStats: () => void,
 ) {
   const requireProject = () => {
     const pid = projectIdRef.current;
-    if (!pid) throw new Error('请先创建项目');
+    if (!pid) throw new Error('请先创建或选择项目');
     return pid;
   };
+  const afterBug = <A extends unknown[]>(fn: (...a: A) => Promise<unknown>) =>
+    async (...a: A) => {
+      await fn(...a);
+      await refreshBoard();
+      bumpStats();
+    };
   const after = <A extends unknown[]>(fn: (...a: A) => Promise<unknown>, refresh: () => Promise<void>) =>
     async (...a: A) => {
       await fn(...a);
@@ -179,21 +197,23 @@ function buildActions(
       const bug = await api.createBug({ ...input, project_id: requireProject() });
       await refreshBoard();
       await refreshAttachments();
+      bumpStats();
       return bug;
     },
-    moveBug: after((bugId: string, status: Bug['status']) => api.updateBug(bugId, { status }), refreshBoard),
-    updateBug: after((bugId: string, patch: Record<string, unknown>) => api.updateBug(bugId, patch), refreshBoard),
-    deleteBug: after((bugId: string) => api.deleteBug(bugId), refreshBoard),
+    moveBug: afterBug((bugId: string, status: Bug['status']) => api.updateBug(bugId, { status })),
+    updateBug: afterBug((bugId: string, patch: Record<string, unknown>) => api.updateBug(bugId, patch)),
+    deleteBug: afterBug((bugId: string) => api.deleteBug(bugId)),
     batchBugs: async (ids: string[], action: string, payload?: Record<string, unknown>) => {
       const result = await api.batchBugs({ ids, action, payload });
       await refreshBoard();
+      bumpStats();
       return result;
     },
     getBug: (bugId: string) => api.getBug(bugId),
     addComment: async (bugId: string, content: string) => {
       await api.addComment(bugId, content);
     },
-    createNote: after((content: string, tags?: string[]) => api.createNote({ project_id: projectIdRef.current ?? null, content, tags }), refreshNotes),
+    createNote: after((content: string, tags?: string[]) => api.createNote({ project_id: requireProject(), content, tags }), refreshNotes),
     updateNote: after((noteId: string, patch: Record<string, unknown>) => api.updateNote(noteId, patch), refreshNotes),
     deleteNote: after((noteId: string) => api.deleteNote(noteId), refreshNotes),
     uploadAttachments: async (files: File[]) => {
@@ -215,20 +235,33 @@ export function useVibeHubStore(): VibeHubStore {
   const projectIdRef = useRef<string | null>(null);
   projectIdRef.current = p.currentProjectId;
   const d = useProjectData(projectIdRef, setError);
-  const actions = useActions(projectIdRef, d);
+
+  const bumpStats = useCallback(() => setStatsRevision((n) => n + 1), []);
+  const notifyWorkChanged = useCallback(() => {
+    void d.refreshBoard();
+    setTaskRevision((n) => n + 1);
+    setStatsRevision((n) => n + 1);
+  }, [d]);
+
+  const actions = useActions(projectIdRef, d, bumpStats);
 
   useEffect(() => {
+    d.clearProjectScope();
     if (!p.currentProjectId) return;
     void d.refreshBoard();
     void d.refreshNotes();
     void d.refreshAttachments();
     void d.refreshTemplates();
-    // 仅在切换项目时全量加载（刷新函数引用稳定）
+    setTaskRevision((n) => n + 1);
+    setSkillRevision((n) => n + 1);
+    setStatsRevision((n) => n + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [p.currentProjectId]);
 
   const sseConnected = useLiveUpdates(accessToken, {
-    onEvent: (type) => {
+    onEvent: (type, eventProjectId) => {
+      // 跨项目事件严格隔离：非当前项目的业务写入不污染当前视图
+      if (eventProjectId && projectIdRef.current && eventProjectId !== projectIdRef.current) return;
       if (type.startsWith('bug.')) { void d.refreshBoard(); setStatsRevision((n) => n + 1); }
       if (type.startsWith('task.')) { setTaskRevision((n) => n + 1); setStatsRevision((n) => n + 1); }
       if (type.startsWith('skill.')) setSkillRevision((n) => n + 1);
@@ -236,6 +269,7 @@ export function useVibeHubStore(): VibeHubStore {
       if (type.startsWith('attachment.')) void d.refreshAttachments();
     },
     onPoll: () => {
+      if (!projectIdRef.current) return;
       void d.refreshBoard();
       void d.refreshNotes();
       setTaskRevision((n) => n + 1);
@@ -243,9 +277,11 @@ export function useVibeHubStore(): VibeHubStore {
     },
   });
 
-  const currentProject = p.projects.find((x) => x.id === p.currentProjectId) ?? null;
+  const activeProjects = useMemo(() => p.projects.filter((x) => !x.archived_at), [p.projects]);
+  const currentProject = activeProjects.find((x) => x.id === p.currentProjectId) ?? null;
   return {
-    projects: p.projects, currentProject, loading: p.loading, sseConnected, error, taskRevision, skillRevision, statsRevision,
+    projects: p.projects, currentProject, loading: p.loading, sseConnected, error,
+    taskRevision, skillRevision, statsRevision, notifyWorkChanged,
     selectProject: p.selectProject, createProject: p.createProject, refreshProjects: p.refreshProjects,
     board: d.board, notes: d.notes, noteTags: d.noteTags, attachments: d.attachments, templates: d.templates,
     refreshBoard: d.refreshBoard, refreshNotes: d.refreshNotes, refreshAttachments: d.refreshAttachments, refreshTemplates: d.refreshTemplates,

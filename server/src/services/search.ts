@@ -28,39 +28,53 @@ export interface GlobalSearchResults {
   };
 }
 
-export async function globalSearch(q: string, limitPerType = 5): Promise<GlobalSearchResults> {
+export async function globalSearch(
+  q: string,
+  limitPerType = 5,
+  projectId?: string | null,
+): Promise<GlobalSearchResults> {
   if (!q.trim()) {
     return { projects: [], bugs: [], tasks: [], notes: [], attachments: [], similar: { bugs: [], notes: [] } };
   }
 
+  const scoped = projectId?.trim() || null;
+  const projectWhere = scoped ? { id: scoped } : undefined;
+  const entityWhere = scoped ? { projectId: scoped } : undefined;
+
   const [projects, bugs, tasks, notes, attachments] = await Promise.all([
-    prisma.project.findMany({ take: 200 }),
-    prisma.bug.findMany({ take: 300, orderBy: { updatedAt: 'desc' } }),
-    prisma.task.findMany({ take: 300, orderBy: { updatedAt: 'desc' } }),
-    prisma.note.findMany({ take: 300, orderBy: { createdAt: 'desc' } }),
-    prisma.attachment.findMany({ take: 300, orderBy: { createdAt: 'desc' } }),
+    prisma.project.findMany({ where: projectWhere, take: 200 }),
+    prisma.bug.findMany({ where: entityWhere, take: 300, orderBy: { updatedAt: 'desc' } }),
+    prisma.task.findMany({ where: entityWhere, take: 300, orderBy: { updatedAt: 'desc' } }),
+    prisma.note.findMany({ where: entityWhere, take: 300, orderBy: { createdAt: 'desc' } }),
+    prisma.attachment.findMany({ where: entityWhere, take: 300, orderBy: { createdAt: 'desc' } }),
   ]);
 
   const similar = { bugs: [] as ReturnType<typeof serializeBug>[], notes: [] as ReturnType<typeof serializeNote>[] };
   if (isEmbeddingEnabled()) {
     try {
-      const hits = await similarEntities(q, ['bug', 'note'], limitPerType);
+      const hits = await similarEntities(q, ['bug', 'note'], scoped ? limitPerType * 3 : limitPerType);
       const bugIds = hits.filter((h) => h.entityType === 'bug').map((h) => h.entityId);
       const noteIds = hits.filter((h) => h.entityType === 'note').map((h) => h.entityId);
       if (bugIds.length > 0) {
-        const bugRows = await prisma.bug.findMany({ where: { id: { in: bugIds } } });
+        const bugRows = await prisma.bug.findMany({
+          where: scoped ? { id: { in: bugIds }, projectId: scoped } : { id: { in: bugIds } },
+        });
         const byId = new Map(bugRows.map((b) => [b.id, b]));
         similar.bugs = bugIds
           .map((id) => byId.get(id))
           .filter((b): b is NonNullable<typeof b> => b !== undefined)
+          .slice(0, limitPerType)
           .map(serializeBug);
       }
       if (noteIds.length > 0) {
-        const noteRows = await prisma.note.findMany({ where: { id: { in: noteIds } } });
+        const noteRows = await prisma.note.findMany({
+          where: scoped ? { id: { in: noteIds }, projectId: scoped } : { id: { in: noteIds } },
+        });
         const byId = new Map(noteRows.map((n) => [n.id, n]));
         similar.notes = noteIds
           .map((id) => byId.get(id))
           .filter((n): n is NonNullable<typeof n> => n !== undefined)
+          .slice(0, limitPerType)
           .map((n) => serializeNote({ ...n, tagList: parseTags(n.tags) }));
       }
     } catch {

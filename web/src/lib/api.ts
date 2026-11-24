@@ -231,24 +231,36 @@ export const api = {
   // ============ 统计（R85，全员可读） ============
   stats: (params: { projectId: string | null }) => request<StatsResponse>(`/stats?project_id=${scopeParam(params.projectId)}`),
 
-  // ============ 今日（R89，跨项目只读聚合） ============
-  getToday: () => request<TodayResponse>('/today'),
+  // ============ 今日（按当前项目工作区隔离） ============
+  getToday: (projectId?: string | null) =>
+    request<TodayResponse>(`/today${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`),
   getWorkItems: (projectId: string, scope: 'my' | 'verify' | 'active' = 'my') =>
     request<WorkItemsResponse>(`/work-items?project_id=${encodeURIComponent(projectId)}&scope=${scope}`),
 
   getProjectMemory: (projectId: string) => request<ProjectMemory>(`/projects/${projectId}/memory`),
 
-  // ============ 站内通知（R90） ============
-  listNotifications: (unread = false, limit = 30) =>
-    request<NotificationsResponse>(`/notifications?unread=${unread ? 1 : 0}&limit=${limit}`),
+  // ============ 站内通知（R90，支持当前项目隔离） ============
+  listNotifications: (unread = false, limit = 30, projectId?: string | null) => {
+    const qs = new URLSearchParams({ unread: unread ? '1' : '0', limit: String(limit) });
+    if (projectId) qs.set('project_id', projectId);
+    return request<NotificationsResponse>(`/notifications?${qs.toString()}`);
+  },
   markNotificationRead: (id: string) => request<{ ok: boolean }>(`/notifications/${id}/read`, { method: 'PATCH' }),
-  markAllNotificationsRead: () => request<{ updated: number }>('/notifications/read-all', { method: 'PATCH' }),
+  markAllNotificationsRead: (projectId?: string | null) =>
+    request<{ updated: number }>(
+      `/notifications/read-all${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ''}`,
+      { method: 'PATCH' },
+    ),
 
   // ============ AI 活动（卡片 36，全员可读） ============
   recentActivity: () => request<ActivityItem[]>('/activity/recent'),
 
-  // ============ 搜索 ============
-  search: (q: string) => request<SearchResults>(`/search?q=${encodeURIComponent(q)}`),
+  // ============ 搜索（支持当前项目隔离） ============
+  search: (q: string, projectId?: string | null) => {
+    const qs = new URLSearchParams({ q });
+    if (projectId) qs.set('project_id', projectId);
+    return request<SearchResults>(`/search?${qs.toString()}`);
+  },
 
   // ============ CSV ============
   exportBugsUrl: (projectId: string) => `${BASE}/bugs/export?project_id=${projectId}`,
