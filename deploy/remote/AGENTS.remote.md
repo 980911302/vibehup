@@ -359,3 +359,9 @@ VIBEHUB_MCP_EVENT_RELAY_TOKEN=<与中转主机相同的独立令牌>
 - 修复：`cd /app/server && npx prisma generate` + `systemctl restart vibehub`。
 - 以后每次改 Prisma schema：同步 `server/prisma` 后**先** `cd /app/server && npx prisma generate`，再重启；`prisma migrate deploy` 只改库，不会更新客户端。
 
+### R95 + R96 单项目隔离工作台与 9 工具精简部署（2026-11-25）
+
+- 备份：`/root/vibehub-backups/{pg,data,app}-before-r96-2026-11-25-172758.*`（权限 600，`pg_restore -l` 校验可读）。
+- 部署：云端构建 `web/out`（含 `out/skills`）投递覆盖 `/app/web/out` 与 `/app/out`；同步 `server/src`、`skills`、`deploy` 后清空旧 `dist` 执行 `npm run build -w server`（`prisma generate && tsc`），保留 `/app/prisma` 符号链接并重启 `vibehub.service`。
+- 验证：本机 `:3210` 与 HTTPS 443 `/api/health` 均 200；`/today`、`/work/*`、`/context/*`、`/settings`、`/keys`、`/projects`、`/members`、`/stats`、`/skills/vibehub-mcp/SKILL.md` 全 200；未认证 `/api/today` 与 `/mcp/sse` 均 401，注册开关保持 403；线上 `tools/list` 实测精确返回 **9 个核心工具**；库数据保持 `users=1 / projects=2 / bugs=0 / tasks=36 / notes=10 / attachments=2 / skills=1 / api_keys=1 / notifications=36` 零损耗；常驻内存约 192 MB。
+
