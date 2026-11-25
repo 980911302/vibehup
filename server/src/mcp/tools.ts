@@ -1,30 +1,33 @@
-import path from 'node:path';
-import fsp from 'node:fs/promises';
-import sharp from 'sharp';
-import { AppError } from '../core/errors.js';
+import { ForbiddenError, ValidationError } from '../core/errors.js';
 import * as projectsService from '../services/projects.js';
 import * as bugsService from '../services/bugs.js';
 import * as tasksService from '../services/tasks.js';
 import * as skillsService from '../services/skills.js';
 import * as memoryService from '../services/memory.js';
 import * as notesService from '../services/notes.js';
-import * as attachmentsService from '../services/attachments.js';
-import { readTextSlice, isTextFile, inspectImageAsset } from '../services/assets.js';
-import { resolveLocalAttachment } from '../services/attachments.js';
-import { paginate, truncateText, DEFAULT_BUDGET } from './token-budget.js';
-import { ToolContent } from './guard.js';
-import { bugNextStep, contextReminders } from './workflow.js';
+import * as usersService from '../services/users.js';
+import { globalSearch } from '../services/search.js';
 import { isStale } from '../services/stale.js';
+import { ctxHas, type McpContext } from './context.js';
+import { DEFAULT_BUDGET, paginate, truncateText } from './token-budget.js';
+import { contextReminders } from './workflow.js';
 
 /**
- * MCP Tools 业务实现（设计文档第 4 节）。
- * 原则：减少 Token 消耗、结构扁平、防脏写。
- * 与 HTTP 服务共享同一数据库实例。
+ * MCP 核心上下文、检索与便签工具（R96 9 工具精简版）：
+ * 1. get_project_context（吸收 get_me + list_members + list_skills）
+ * 2. search（吸收 list_bugs + list_tasks + list_notes + 关键词/语义全局检索）
+ * 8. append_note（原 append_scratchpad，单活跃项目时自动归属当前项目）
  */
 
-const MAX_BASE64_BYTES = 4 * 1024 * 1024; // base64 返回上限 4MB，防止撑爆上下文
+export function handledBy(x: { statusActorName: string | null; statusChangedAt: Date | null; status: string }) {
+  return {
+    status_actor: x.statusActorName,
+    status_changed_at: x.statusChangedAt?.toISOString() ?? null,
+    ...(isStale(x.status, x.statusChangedAt) ? { stale: true } : {}),
+  };
+}
 
-function briefBug(bug: bugsService.BugWithMeta) {
+export function briefBug(bug: bugsService.BugWithMeta) {
   return {
     id: bug.id,
     title: bug.title,
@@ -39,19 +42,23 @@ function briefBug(bug: bugsService.BugWithMeta) {
   };
 }
 
-/** 谁在处理、从什么时候开始（R83）：验证中/进行中的单子据此判断处理方是不是还在干活 */
-function handledBy(x: { statusActorName: string | null; statusChangedAt: Date | null; status: string }) {
+function briefTask(t: tasksService.TaskWithMeta) {
   return {
-    status_actor: x.statusActorName,
-    status_changed_at: x.statusChangedAt?.toISOString() ?? null,
-    ...(isStale(x.status, x.statusChangedAt) ? { stale: true } : {}),
+    id: t.id,
+    title: t.title,
+    description: truncateText(t.description, DEFAULT_BUDGET.noteMax).value,
+    priority: t.priority,
+    status: t.status,
+    labels: t.labels,
+    assignee_id: t.assigneeId,
+    ...handledBy(t),
   };
 }
 
-/** 1. get_project_context —— 冷启动：项目活跃状态简报 */
-export async function getProjectContext(input: { project_slug?: string }) {
+/** 1. get_project_context —— 一次冷启动拿到身份、团队成员、项目记忆、在办/待验收与技能清单 */
+export async function getProjectContext(ctx: McpContext, input: { project_slug?: string } = {}) {
   const project = await projectsService.resolveProject(input.project_slug);
-  const [board, tasks, doingTasks, reviewTasks, verifyingTasks, notes, skills, memory] = await Promise.all([
+  const [board, tasks, doingTasks, reviewTasks, verifyingTasks, notes, skills, memory, activeUsers] = await Promise.all([
     bugsService.getBugBoard(project.id, 20),
     tasksService.listTasks({ projectId: project.id, status: 'todo' }),
     tasksService.listTasks({ projectId: project.id, status: 'doing' }),
@@ -60,23 +67,34 @@ export async function getProjectContext(input: { project_slug?: string }) {
     notesService.listNotes({ projectId: project.id, limit: 5 }),
     skillsService.listSkills({ projectId: project.id }),
     memoryService.getProjectMemoryForMcp(project.id),
+    usersService.listUsers({ status: 'active' }),
   ]);
 
+  const isAdmin = ctxHas(ctx, 'admin');
+  const members = activeUsers.slice(0, 50).map((u) => ({
+    id: u.id,
+    name: u.name,
+    role: u.role,
+    writable: u.role !== 'viewer',
+    ...(isAdmin ? { email: u.email } : {}),
+    is_me: ctx.human?.id === u.id,
+  }));
+
   const openBugs = [...board.open, ...board.in_progress].map(briefBug);
-  // 已修待验证：不摆出来，验证方就看不到该接手的单子（R83 起「已验证」是终点，不再列入）
   const awaitingVerification = board.resolved.map(briefBug);
   const verifyingBugs = board.verifying.map(briefBug);
-  const briefTask = (t: tasksService.TaskWithMeta) => ({
-    id: t.id,
-    title: t.title,
-    priority: t.priority,
-    status: t.status,
-    ...handledBy(t),
-  });
   const staleBugs = [...board.in_progress, ...board.verifying].filter((b) => isStale(b.status, b.statusChangedAt));
   const staleTasks = [...doingTasks, ...verifyingTasks].filter((t) => isStale(t.status, t.statusChangedAt));
 
   return {
+    me: {
+      mode: ctx.mode,
+      actor: ctx.actorName ?? ctx.actorLabel,
+      human: ctx.human ?? null,
+      key: ctx.key ?? null,
+      capabilities: [...ctx.scopes].sort(),
+    },
+    members,
     project: { id: project.id, name: project.name, slug: project.slug },
     summary: {
       open_bugs: openBugs.length,
@@ -88,6 +106,7 @@ export async function getProjectContext(input: { project_slug?: string }) {
       stale: staleBugs.length + staleTasks.length,
       recent_notes: notes.length,
       skills: skills.length,
+      members: activeUsers.length,
     },
     reminders: contextReminders({
       inProgressBugs: board.in_progress.length,
@@ -97,17 +116,15 @@ export async function getProjectContext(input: { project_slug?: string }) {
       staleBugs: staleBugs.length,
       staleTasks: staleTasks.length,
     }),
+    memory,
     open_bugs: openBugs.slice(0, DEFAULT_BUDGET.listLimit),
     awaiting_verification: awaitingVerification.slice(0, DEFAULT_BUDGET.listLimit),
     doing_tasks: doingTasks.slice(0, 20).map(briefTask),
     review_tasks: reviewTasks.slice(0, 20).map(briefTask),
-    // 验证中：谁在验、从什么时候开始；stale_items：处理中停留过久、可能已中断的
     verifying_bugs: verifyingBugs.slice(0, DEFAULT_BUDGET.listLimit),
     verifying_tasks: verifyingTasks.slice(0, 20).map(briefTask),
     stale_items: [...staleBugs.map(briefBug), ...staleTasks.map(briefTask)].slice(0, DEFAULT_BUDGET.listLimit),
     todo_tasks: tasks.slice(0, 20).map(briefTask),
-    // 团队技能：只给名称与描述，要用时 download_skill 取全文
-    memory,
     skills: skills.slice(0, DEFAULT_BUDGET.listLimit).map((s) => ({
       name: s.name,
       description: truncateText(s.description, DEFAULT_BUDGET.noteMax).value,
@@ -122,205 +139,111 @@ export async function getProjectContext(input: { project_slug?: string }) {
   };
 }
 
-/** 2. list_bugs —— 缺陷列表（扁平元数据，含附件数量） */
-export async function listBugs(input: {
+export interface SearchInput {
+  q?: string;
   project_slug?: string;
+  type?: 'bug' | 'task' | 'note' | 'all';
   status?: string;
+  label?: string;
   page?: number;
-  page_size?: number;
-}) {
+  limit?: number;
+}
+
+/** 2. search —— 关键词/语义检索（传 q）+ 项目内结构化列表过滤（不传 q）二合一 */
+export async function search(ctx: McpContext, input: SearchInput) {
+  const entityType = input.type ?? 'all';
+  if (entityType !== 'task' && !ctxHas(ctx, 'context:read')) {
+    throw new ForbiddenError('缺少 scope: context:read');
+  }
+  if (entityType === 'task' && !ctxHas(ctx, 'task:read') && !ctxHas(ctx, 'context:read')) {
+    throw new ForbiddenError('缺少 scope: task:read 或 context:read');
+  }
+
+  const limit = Math.min(Math.max(input.limit ?? DEFAULT_BUDGET.listLimit, 1), 100);
+  const q = input.q?.trim();
+
+  if (q) {
+    const project = input.project_slug ? await projectsService.getProjectBySlug(input.project_slug) : null;
+    const raw = await globalSearch(q, Math.min(limit, 50), project?.id);
+    const filterStatus = <T extends { status: string }>(arr: T[]) => (input.status ? arr.filter((x) => x.status === input.status) : arr);
+    const filterLabel = <T extends { labels?: string[]; tags?: string[] }>(arr: T[]) =>
+      input.label ? arr.filter((x) => (x.labels ?? x.tags ?? []).includes(input.label!)) : arr;
+
+    return {
+      mode: 'query' as const,
+      project: project ? { id: project.id, name: project.name, slug: project.slug } : null,
+      bugs: entityType === 'all' || entityType === 'bug' ? filterLabel(filterStatus(raw.bugs)) : [],
+      tasks: entityType === 'all' || entityType === 'task' ? filterLabel(filterStatus(raw.tasks)) : [],
+      notes: entityType === 'all' || entityType === 'note' ? filterLabel(raw.notes) : [],
+      projects: entityType === 'all' ? raw.projects : [],
+      attachments: entityType === 'all' ? raw.attachments : [],
+      similar: {
+        bugs: entityType === 'all' || entityType === 'bug' ? raw.similar.bugs : [],
+        notes: entityType === 'all' || entityType === 'note' ? raw.similar.notes : [],
+      },
+    };
+  }
+
+  const page = Math.max(input.page ?? 1, 1);
+  const offset = (page - 1) * limit;
   const project = await projectsService.resolveProject(input.project_slug);
-  const result = await bugsService.listBugs({
-    projectId: project.id,
-    status: input.status,
-    page: input.page,
-    pageSize: input.page_size,
-  });
-  // paginate 提供 total/returned/has_more/next_cursor（Token 经济学整形）
-  return {
-    project: { id: project.id, name: project.name, slug: project.slug },
-    page: result.page,
-    page_size: result.pageSize,
-    ...paginate(result.items.map(briefBug), input.page_size ?? DEFAULT_BUDGET.listLimit),
-  };
-}
 
-/** 3. get_bug_detail —— 完整复现描述与附件清单 */
-export async function getBugDetail(input: { bug_id: string }) {
-  const bug = await bugsService.getBugDetail(input.bug_id);
-  const attachments = bug.attachments.map((a) => ({
-    id: a.id,
-    file_name: a.fileName,
-    file_type: a.fileType,
-    file_size: a.fileSize,
-    width: a.width,
-    height: a.height,
-    is_text: isTextFile(a.fileName, a.fileType),
-    is_image: a.fileType.startsWith('image/'),
-    url: a.publicUrl,
-  }));
-  return {
-    id: bug.id,
-    project_id: bug.projectId,
-    title: bug.title,
-    priority: bug.priority,
-    labels: bug.labels,
-    assignee_id: bug.assigneeId,
-    steps_to_reproduce: truncateText(bug.stepsToReproduce, DEFAULT_BUDGET.textFieldMax).value,
-    steps_to_reproduce_truncated: truncateText(bug.stepsToReproduce, DEFAULT_BUDGET.textFieldMax).truncated,
-    expected_result: truncateText(bug.expectedResult, DEFAULT_BUDGET.textFieldMax).value,
-    expected_result_truncated: truncateText(bug.expectedResult, DEFAULT_BUDGET.textFieldMax).truncated,
-    actual_result: truncateText(bug.actualResult, DEFAULT_BUDGET.textFieldMax).value,
-    actual_result_truncated: truncateText(bug.actualResult, DEFAULT_BUDGET.textFieldMax).truncated,
-    severity: bug.severity,
-    status: bug.status,
-    ...bugNextStep(bug.status),
-    resolution_notes: bug.resolutionNotes,
-    evidence: bug.evidence ?? null,
-    git_commit_hash: bug.gitCommitHash,
-    created_by: bug.createdBy,
-    created_at: bug.createdAt.toISOString(),
-    updated_at: bug.updatedAt.toISOString(),
-    attachments,
-    tip: '长字段已按 500 字符截断；完整内容请用 read_attachment_text 或让提交者补充',
-  };
-}
-
-/** 4. read_attachment_text —— 分片/范围读取文本与日志附件 */
-export async function readAttachmentText(input: {
-  attachment_id: string;
-  offset_line?: number;
-  limit_lines?: number;
-  grep_keyword?: string;
-}) {
-  const { attachment, filePath } = await resolveLocalAttachment(input.attachment_id);
-  if (!isTextFile(attachment.fileName, attachment.fileType)) {
-    throw new AppError(
-      `附件不是文本类型: ${attachment.fileName}（${attachment.fileType}）。图片请使用 inspect_image_asset`,
-      400,
-      'NOT_TEXT',
-    );
-  }
-  const slice = await readTextSlice(filePath, {
-    offsetLine: input.offset_line,
-    limitLines: input.limit_lines,
-    grepKeyword: input.grep_keyword,
-  });
-  return {
-    attachment_id: attachment.id,
-    file_name: attachment.fileName,
-    file_type: attachment.fileType,
-    content: slice.content,
-    total_lines: slice.totalLines,
-    returned_lines: slice.returnedLines,
-    has_more: slice.hasMore,
-    next_offset_line: slice.nextOffsetLine,
-    grep_keyword: slice.grepKeyword,
-  };
-}
-
-/** MCP 图片内容块普遍支持的格式；其余（avif/tiff/bmp…）转 PNG 再返回 */
-const IMAGE_BLOCK_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
-
-/**
- * 5. inspect_image_asset —— 让模型直接「看」截图（R84）。
- * 默认 image：以 MCP 图片内容块返回（多模态客户端直接呈现给模型），附带尺寸等元信息；
- * path：服务端本地路径，只在与服务同机的 stdio 场景有用（容器部署时 IDE 打不开）；
- * base64：兼容旧用法（编码塞在 JSON 文本里，模型看不到图）。
- */
-export async function inspectImageAssetTool(input: {
-  attachment_id: string;
-  target_max_dimension?: number;
-  return_mode?: 'image' | 'path' | 'base64';
-}): Promise<Record<string, unknown> | ToolContent> {
-  const { attachment, filePath } = await resolveLocalAttachment(input.attachment_id);
-  if (!attachment.fileType.startsWith('image/')) {
-    throw new AppError(`附件不是图片: ${attachment.fileName}`, 400, 'NOT_IMAGE');
-  }
-
-  const info = await inspectImageAsset(filePath, attachment.id, {
-    targetMaxDimension: input.target_max_dimension ?? 1080,
-  });
-
-  const meta: Record<string, unknown> = {
-    attachment_id: attachment.id,
-    file_name: attachment.fileName,
-    mime_type: info.mimeType,
-    width: info.width,
-    height: info.height,
-    original_width: info.originalWidth,
-    original_height: info.originalHeight,
-    downscaled: info.downscaled,
-    byte_size: info.byteSize,
-  };
-  const returnMode = input.return_mode ?? 'image';
-  if (returnMode === 'path') return { ...meta, file_path: info.filePath };
-
-  const buffer = await fsp.readFile(info.filePath);
-  if (buffer.byteLength > MAX_BASE64_BYTES) {
-    throw new AppError(
-      `图片过大（${buffer.byteLength} 字节 > ${MAX_BASE64_BYTES}），请降低 target_max_dimension`,
-      413,
-      'TOO_LARGE',
-    );
-  }
-  if (returnMode === 'base64') return { ...meta, file_path: info.filePath, base64: buffer.toString('base64') };
-
-  const image = IMAGE_BLOCK_TYPES.has(info.mimeType)
-    ? { data: buffer, mimeType: info.mimeType }
-    : { data: await sharp(buffer).png().toBuffer(), mimeType: 'image/png' };
-  return new ToolContent([
-    { type: 'text', text: JSON.stringify({ ...meta, mime_type: image.mimeType }, null, 2) },
-    { type: 'image', data: image.data.toString('base64'), mimeType: image.mimeType },
+  const [bugsRes, tasksRes, notesRes] = await Promise.all([
+    entityType === 'all' || entityType === 'bug'
+      ? bugsService.listBugs({ projectId: project.id, status: input.status, page: 1, pageSize: 200 })
+      : null,
+    entityType === 'all' || entityType === 'task'
+      ? tasksService.listTasks({ projectId: project.id, status: input.status, label: input.label })
+      : null,
+    entityType === 'all' || entityType === 'note'
+      ? notesService.listNotes({ projectId: project.id, tag: input.label, limit })
+      : null,
   ]);
-}
 
-/** 6. update_bug_status —— AI 修复完成后标记状态与回填提交 */
-export async function updateBugStatus(
-  input: {
-    bug_id: string;
-    status: string;
-    resolution_notes?: string;
-    commit_hash?: string;
-    reopen_reason?: string;
-    evidence?: Record<string, unknown>;
-  },
-  actor?: { type: 'ai'; id?: string | null; name?: string | null },
-) {
-  const bug = await bugsService.updateBug(input.bug_id, {
-    status: input.status,
-    resolutionNotes: input.resolution_notes,
-    gitCommitHash: input.commit_hash,
-    reopenReason: input.reopen_reason,
-    evidence: input.evidence,
-    actor,
-  });
+  const bugItems = (bugsRes?.items ?? [])
+    .filter((b) => !input.label || b.labels.includes(input.label))
+    .map(briefBug);
+  const taskItems = (tasksRes ?? []).map(briefTask);
+
   return {
-    ok: true,
-    bug: {
-      id: bug.id,
-      title: bug.title,
-      status: bug.status,
-      severity: bug.severity,
-      resolution_notes: bug.resolutionNotes,
-      git_commit_hash: bug.gitCommitHash,
-      evidence: bug.evidence ?? null,
-      updated_at: bug.updatedAt.toISOString(),
-    },
-    ...bugNextStep(bug.status),
+    mode: 'list' as const,
+    project: { id: project.id, name: project.name, slug: project.slug },
+    page,
+    limit,
+    ...(bugsRes ? { bugs: paginate(bugItems.slice(offset), limit) } : {}),
+    ...(tasksRes ? { tasks: paginate(taskItems.slice(offset), limit) } : {}),
+    ...(notesRes
+      ? {
+          notes: notesRes.map((n) => ({
+            id: n.id,
+            content: truncateText(n.content, DEFAULT_BUDGET.noteMax).value,
+            tags: n.tagList,
+            project_id: n.projectId,
+            created_at: n.createdAt.toISOString(),
+          })),
+        }
+      : {}),
   };
 }
 
-/** 7. append_scratchpad —— AI 暂存临时想法或设计草案 */
-export async function appendScratchpad(input: {
-  content: string;
-  project_slug?: string;
-  tags?: string[];
-}) {
+/** 8. append_note —— AI 暂存排查记录或设计草案（单活跃项目自动挂该项目，多项目要求传 project_slug） */
+export async function appendNote(
+  _ctx: McpContext,
+  input: { content: string; project_slug?: string; tags?: string[] },
+) {
+  if (!input.content?.trim()) {
+    throw new ValidationError('content 不能为空');
+  }
   let projectId: string | null = null;
-  if (input.project_slug) {
-    const project = await projectsService.resolveProject(input.project_slug);
-    projectId = project.id;
+  if (input.project_slug?.trim()) {
+    projectId = (await projectsService.resolveProject(input.project_slug)).id;
+  } else {
+    const active = (await projectsService.listProjects()).filter((p) => !p.archivedAt);
+    if (active.length === 1) {
+      projectId = active[0].id;
+    } else if (active.length > 1) {
+      projectId = (await projectsService.resolveProject(undefined)).id;
+    }
   }
   const note = await notesService.createNote({
     projectId,

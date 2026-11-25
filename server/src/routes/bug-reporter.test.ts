@@ -5,7 +5,7 @@ import { prisma } from '../core/prisma.js';
 import { resetDb, createApiKey } from '../test-helpers.js';
 import * as projectsService from '../services/projects.js';
 import * as usersService from '../services/users.js';
-import * as ext from '../mcp/tools-extended.js';
+import * as workTools from '../mcp/tools-work.js';
 
 /**
  * 缺陷「提出人」（功能巡检 G8/B7）：此前只记来源是人还是 AI，不记是谁提的——
@@ -51,11 +51,11 @@ describe('缺陷提出人', () => {
 
   it('AI 经 MCP 建单：提出人记为该密钥的创建人；本地无密钥模式为空', async () => {
     const key = await createApiKey({ scopes: ['bug:write'], createdBy: ownerId });
-    const viaKey = await ext.createBug({ mode: 'keyed', apiKeyId: key.id, scopes: new Set(['bug:write']), actorLabel: 'cursor' }, { project_slug: 'p', title: 'AI 发现的问题' });
-    expect(await prisma.bug.findUnique({ where: { id: viaKey.bug.id } })).toMatchObject({ reporterId: ownerId, createdBy: 'ai' });
+    const viaKey = await workTools.createWorkItem({ mode: 'keyed', apiKeyId: key.id, scopes: new Set(['bug:write']), actorLabel: 'cursor' }, { type: 'bug', project_slug: 'p', title: 'AI 发现的问题' });
+    expect(await prisma.bug.findUnique({ where: { id: viaKey.bug!.id } })).toMatchObject({ reporterId: ownerId, createdBy: 'ai' });
 
-    const local = await ext.createBug({ mode: 'local', apiKeyId: null, scopes: new Set(['admin']), actorLabel: 'local' }, { project_slug: 'p', title: '本地 AI' });
-    expect((await prisma.bug.findUnique({ where: { id: local.bug.id } }))?.reporterId).toBeNull();
+    const local = await workTools.createWorkItem({ mode: 'local', apiKeyId: null, scopes: new Set(['admin']), actorLabel: 'local' }, { type: 'bug', project_slug: 'p', title: '本地 AI' });
+    expect((await prisma.bug.findUnique({ where: { id: local.bug!.id } }))?.reporterId).toBeNull();
   });
 
   it('CSV 导入：提出人是导入者，且缺陷 ID 以 bug_ 开头（此前误用附件 ID 生成器）', async () => {

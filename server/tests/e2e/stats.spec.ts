@@ -35,11 +35,11 @@ test('MCP 把缺陷验证完成、任务完成后，统计页今天数字与按�
   const mcp = await connectMcp(key);
   try {
     for (const status of ['in_progress', 'resolved', 'verifying', 'verified']) {
-      const r = await mcp.call('update_bug_status', { bug_id: bugId, status, resolution_notes: status === 'resolved' ? '已定位并修复' : undefined });
+      const r = await mcp.call('update_work_item', { id: bugId, status, resolution_notes: status === 'resolved' ? '已定位并修复' : undefined });
       expect(r.result?.isError ?? r.isError ?? false, JSON.stringify(r).slice(0, 200)).toBe(false);
     }
     for (const status of ['doing', 'review', 'verifying', 'done']) {
-      const r = await mcp.call('update_task', { task_id: taskId, status });
+      const r = await mcp.call('update_work_item', { id: taskId, status });
       expect(r.result?.isError ?? r.isError ?? false, JSON.stringify(r).slice(0, 200)).toBe(false);
     }
   } finally {

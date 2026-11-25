@@ -62,22 +62,24 @@ test('截图录入 → 缩略图加载 → MCP 读取 → 回填 → 看板刷�
   const { key } = await keyRes.json();
   const mcp = await connectMcp(key);
   try {
-    const list = await mcp.call('list_bugs', { project_slug: project.slug });
+    const list = await mcp.call('search', { project_slug: project.slug, type: 'bug' });
     expect(JSON.stringify(list)).toContain(TITLE);
     const bugId = await api
       .get(`/api/bugs?project_id=${project.id}`, { headers: { authorization: `Bearer ${token}` } })
       .then(async (r) => (await r.json()).items.find((b: any) => b.title === TITLE).id);
-    const detail = await mcp.call('get_bug_detail', { bug_id: bugId });
+    const detail = await mcp.call('get_work_item', { id: bugId });
     expect(JSON.stringify(detail)).toContain(TITLE);
     expect(JSON.stringify(detail)).toContain('clip.png');
 
-    // ── 4/5 回填：AI 写评论 + 按状态机推进（open→in_progress→resolved；不允许跨级跳）──
-    const commented = await mcp.call('add_bug_comment', { bug_id: bugId, content: 'E2E：AI 已复现并修复' });
-    expect(commented.result?.isError ?? commented.isError ?? false, JSON.stringify(commented).slice(0, 300)).toBe(false);
-    const started = await mcp.call('update_bug_status', { bug_id: bugId, status: 'in_progress' });
+    // ── 4/5 回填：AI 经 update_work_item 写评论并按状态机推进（open→in_progress→resolved；不允许跨级跳）──
+    const started = await mcp.call('update_work_item', {
+      id: bugId,
+      status: 'in_progress',
+      comment: 'E2E：AI 已复现并修复',
+    });
     expect(started.result?.isError ?? started.isError ?? false, JSON.stringify(started).slice(0, 300)).toBe(false);
-    const resolved = await mcp.call('update_bug_status', {
-      bug_id: bugId,
+    const resolved = await mcp.call('update_work_item', {
+      id: bugId,
       status: 'resolved',
       resolution_notes: 'E2E 回填：修复登录按钮事件绑定',
       commit_hash: 'e2e0000',

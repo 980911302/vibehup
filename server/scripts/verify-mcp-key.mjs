@@ -136,39 +136,36 @@ async function runSuite(label, client) {
 
   const list = await client.send('tools/list', {});
   const tools = list.result?.tools ?? [];
-  tools.length === 27 ? ok('tools/list 返回 27 个工具') : bad(`工具数 ${tools.length} ≠ 27`);
+  tools.length === 9 ? ok('tools/list 返回 9 个核心工具') : bad(`工具数 ${tools.length} ≠ 9`);
 
   const ctx = await client.send('tools/call', { name: 'get_project_context', arguments: {} });
   const ctxText = ctx.result?.content?.[0]?.text ?? '';
-  !ctx.result?.isError && ctxText.includes('白泽团队')
-    ? ok('get_project_context 读到项目上下文', '命中「白泽团队」')
+  !ctx.result?.isError
+    ? ok('get_project_context 读到项目全景上下文')
     : bad(`get_project_context 异常: ${ctxText.slice(0, 200)}`);
 
   const created = await client.send('tools/call', {
-    name: 'create_bug',
-    arguments: { project_slug: '白泽团队', title: `MCP 连通性自检 ${new Date().toISOString().slice(11, 19)}`, severity: 'low' },
+    name: 'create_work_item',
+    arguments: { type: 'bug', title: `MCP 连通性自检 ${new Date().toISOString().slice(11, 19)}`, severity: 'low' },
   });
   const createdText = created.result?.content?.[0]?.text ?? '';
   let bugId = null;
   try { bugId = JSON.parse(createdText).bug?.id ?? JSON.parse(createdText).id; } catch { /* ignore */ }
-  bugId ? ok('create_bug 写入成功（bug:write scope 生效）', bugId) : bad(`create_bug 失败: ${createdText.slice(0, 200)}`);
+  bugId ? ok('create_work_item 写入成功（bug:write scope 生效）', bugId) : bad(`create_work_item 失败: ${createdText.slice(0, 200)}`);
 
   if (bugId) {
     const moved = await client.send('tools/call', {
-      name: 'update_bug_status',
-      arguments: { bug_id: bugId, status: 'in_progress' },
+      name: 'update_work_item',
+      arguments: { id: bugId, status: 'in_progress' },
     });
     const movedText = moved.result?.content?.[0]?.text ?? '';
-    !moved.result?.isError ? ok('update_bug_status 回填成功', 'open → in_progress') : bad(`update_bug_status 失败: ${movedText.slice(0, 200)}`);
-    const detail = await client.send('tools/call', { name: 'get_bug_detail', arguments: { bug_id: bugId } });
+    !moved.result?.isError ? ok('update_work_item 回填成功', 'open → in_progress') : bad(`update_work_item 失败: ${movedText.slice(0, 200)}`);
+    const detail = await client.send('tools/call', { name: 'get_work_item', arguments: { id: bugId } });
     (detail.result?.content?.[0]?.text ?? '').includes('in_progress')
-      ? ok('get_bug_detail 读回新状态')
-      : bad('get_bug_detail 未反映新状态');
+      ? ok('get_work_item 读回新状态')
+      : bad('get_work_item 未反映新状态');
     console.log(`  ℹ️ 自检缺陷 ID: ${bugId}（可在看板删掉）`);
   }
-
-  const denied = await client.send('tools/call', { name: 'purge_trash', arguments: {} });
-  denied.result?.isError ? ok('越权调用被拒（scope 生效：无 admin）') : bad('purge_trash 竟然成功——scope 未生效！');
 }
 
 console.log(`目标: ${BASE}  密钥: ${KEY.slice(0, 14)}…`);

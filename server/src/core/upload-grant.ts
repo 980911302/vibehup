@@ -14,7 +14,7 @@ export const UPLOAD_GRANT_TTL_SEC = 600;
 
 export interface UploadGrantInput {
   projectId: string;
-  entityType: 'bug' | 'general';
+  entityType: 'bug' | 'task' | 'general';
   entityId: string | null;
   fileName: string;
   fileType: string;

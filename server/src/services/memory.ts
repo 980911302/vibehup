@@ -40,6 +40,6 @@ export async function getProjectMemoryForMcp(projectId: string) {
       content: d.content.length > 300 ? `${d.content.slice(0, 300)}…` : d.content,
       tags: d.tags,
     })),
-    note: '项目记忆来自置顶笔记；需要更多用 list_notes 或 search。',
+    note: '项目记忆来自置顶笔记；需要更多用 search(type="note")。',
   };
 }

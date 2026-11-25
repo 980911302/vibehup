@@ -4,101 +4,65 @@ import { SUPPORTED_PROTOCOL_VERSIONS } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod';
 import { z as z4 } from 'zod/v4';
 import { AppError } from '../core/errors.js';
-import * as tools from './tools.js';
-import * as ext from './tools-extended.js';
-import { guarded } from './guard.js';
-import { SERVER_INSTRUCTIONS } from './workflow.js';
-import * as identity from './identity.js';
-import { TOOL_SCOPES } from './tool-scopes.js';
-import { registerMoreTools } from './register-more.js';
-import { mcpActor, refreshKeyedContext, resolveMcpContext } from './context.js';
-import { mcpStore } from './context-store.js';
-import { MCP_EVENT_METHODS, MCP_EVENT_PROTOCOL_VERSION, handleMcpEventMethod } from './events.js';
 import { BUG_STATUSES } from '../services/bug-flow.js';
 import { TASK_STATUSES } from '../services/tasks.js';
+import { refreshKeyedContext, resolveMcpContext } from './context.js';
+import { mcpStore } from './context-store.js';
+import { MCP_EVENT_METHODS, MCP_EVENT_PROTOCOL_VERSION, handleMcpEventMethod } from './events.js';
+import { guarded } from './guard.js';
+import { TOOL_SCOPES } from './tool-scopes.js';
+import * as tools from './tools.js';
+import * as fileTools from './tools-files.js';
+import * as skillTools from './tools-skills.js';
+import * as workTools from './tools-work.js';
+import { SERVER_INSTRUCTIONS } from './workflow.js';
 
 /**
- * VibeHub MCP Server（设计文档第 4 节 + 步骤 03 §3.2 工具矩阵）。
- * 基于 @modelcontextprotocol/sdk；stdio（本地信任）与 SSE（容器部署，卡片 11）共用本工厂。
+ * VibeHub MCP Server（R96 精简高内聚版：30 → 9 工具）。
+ * stdio（本地信任）与 SSE / Streamable HTTP（容器/远端部署）共用本工厂；
  * 所有工具经 guarded() 包装：scope 校验 → 执行 → Token 经济学校形 → 打点。
- *
- * 注意：MCP 协议占用 stdout，任何日志必须走 stderr。
  */
 
-/** 工具名清单（冒烟与文档对账用） */
 export const TOOL_NAMES = [
-  // 既有 7 个
   'get_project_context',
-  'list_bugs',
-  'get_bug_detail',
-  'read_attachment_text',
-  'inspect_image_asset',
-  'update_bug_status',
-  'append_scratchpad',
-  // 新增 8 个（ steps 03 §3.2）
-  'list_notes',
   'search',
-  'create_bug',
-  'add_bug_comment',
+  'get_work_item',
+  'create_work_item',
+  'update_work_item',
+  'read_attachment',
   'upload_attachment',
-  'list_tasks',
-  'update_task',
-  'purge_trash',
-  // 后补：AI 建任务（此前只能改不能建）
-  'create_task',
-  // R80：任务详情、删除与便签修改、技能
-  'get_task_detail',
-  'delete_task',
-  'delete_bug',
-  'update_note',
-  'delete_note',
-  'delete_attachment',
-  'list_skills',
-  'download_skill',
-  'upload_skill',
-  'delete_skill',
-  // R84：本地文件签名直传（curl），内容不经过对话
-  'create_upload_url',
-  // R90：AI 身份与交接
-  'get_me',
-  'list_members',
-  'handoff_work',
+  'append_note',
+  'get_skill',
 ] as const;
 
-const TASK_STATUS_ENUM = TASK_STATUSES;
+const ALL_WORK_STATUSES = [...new Set([...BUG_STATUSES, ...TASK_STATUSES])] as [string, ...string[]];
+const PROJECT_SLUG_DESC = '项目 slug；多项目时必填，只有一个进行中项目时可省略';
+const READ_ANNOT = { readOnlyHint: true, openWorldHint: false };
+const WRITE_ANNOT = { readOnlyHint: false, destructiveHint: false, openWorldHint: false };
 
-const TOKEN_BUDGET_NOTE =
-  '返回已按 Token 经济学校形：列表默认最多 20 条，has_more 为 true 时用分页参数继续；长文本自动截断到 500 字符，需要完整内容时用 read_attachment_text 分片读取。';
-
-/** 经 resolveProject 解析项目的工具共用（R76：不再按 MCP 服务进程 cwd 猜项目） */
-const PROJECT_SLUG_DESC = '项目 slug（Web 端「项目」页可复制）；多项目时必填，只有一个进行中项目时可省略';
-
-/** 交付证据包（R90）：AI 标记 resolved/review 时一并写，人验收先看证据 */
 const EVIDENCE_SCHEMA = z
   .object({
     commit: z.string().optional().describe('修复提交 hash'),
     pr_url: z.string().optional().describe('PR / MR 链接'),
-    tests: z.string().optional().describe('跑了什么测试、结果（如 vitest 348 passed）'),
-    changed_files: z.array(z.string()).optional().describe('改动的文件路径'),
+    tests: z.string().optional().describe('测试命令与结果（如 vitest 373 passed）'),
+    changed_files: z.array(z.string()).optional().describe('改动文件路径'),
     screenshots: z.array(z.string()).optional().describe('附件 ID 列表（先用 upload_attachment 上传）'),
-    notes: z.string().optional().describe('一句话说明改了什么、怎么验的'),
-    no_code_reason: z.string().optional().describe('非代码交付时写原因；与 commit/PR/tests/截图至少给一项'),
+    notes: z.string().optional().describe('一句话交付说明'),
+    no_code_reason: z.string().optional().describe('非代码交付原因；与 commit/PR/tests/截图至少给一项'),
   })
   .optional()
-  .describe('交付证据；标记 resolved/review 时尽量填，缺证据人无法通过验收');
+  .describe('交付证据包；标记 resolved/review 时尽量提供，缺证据无法直接验收通过');
 
-// MCP Events 使用的协议版本尚未进入 SDK 的静态版本表；保留 SDK 其余版本并补上该日期版本。
 if (!(SUPPORTED_PROTOCOL_VERSIONS as string[]).includes(MCP_EVENT_PROTOCOL_VERSION)) {
   (SUPPORTED_PROTOCOL_VERSIONS as string[]).push(MCP_EVENT_PROTOCOL_VERSION);
 }
 
+type Args<F extends (...a: never[]) => unknown> = Parameters<F>[1];
+
 export function createMcpServer(): McpServer {
   const server = new McpServer(
     { name: 'vibehub', version: '0.2.0' },
-    {
-      instructions: SERVER_INSTRUCTIONS,
-      capabilities: { events: {} } as never,
-    },
+    { instructions: SERVER_INSTRUCTIONS, capabilities: { events: {} } as never },
   );
 
   for (const method of MCP_EVENT_METHODS) {
@@ -106,400 +70,189 @@ export function createMcpServer(): McpServer {
     server.server.setRequestHandler(
       z4.object({ method: z4.literal(method), params: z4.record(z4.string(), z4.unknown()).optional() }).passthrough(),
       async (request) => {
-        const initial = mcpStore.get() ?? await resolveMcpContext();
+        const initial = mcpStore.get() ?? (await resolveMcpContext());
         const ctx = await refreshKeyedContext(initial);
         return handleMcpEventMethod(method, request.params ?? {}, ctx) as Promise<never>;
       },
     );
   }
 
-  // ============ 读取类 ============
-
   server.registerTool(
     'get_project_context',
     {
-      title: '获取项目上下文',
-      description: `获取项目当前活跃状态（冷启动用）：open/in_progress 缺陷、待验证缺陷（awaiting_verification）、验证中的缺陷与任务（verifying_bugs / verifying_tasks，带 status_actor 谁在验、status_changed_at 从什么时候开始）、处理中停留过久的（stale_items）、doing/review/todo 任务、最新 5 条便签，以及 reminders（该流转却还没流转的提醒，照做）。只有一个进行中项目时可省略 project_slug；多项目时必须传（不传会报错并列出可选 slug）。${TOKEN_BUDGET_NOTE}`,
-      inputSchema: {
-        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    guarded('get_project_context', TOOL_SCOPES.get_project_context, (_ctx, args) =>
-      tools.getProjectContext(args as { project_slug?: string }),
-    ),
-  );
-
-  server.registerTool(
-    'list_bugs',
-    {
-      title: '缺陷列表',
-      description: `分页/按状态拉取缺陷列表，返回扁平元数据（ID、标题、严重度、附件数量）。${TOKEN_BUDGET_NOTE}`,
-      inputSchema: {
-        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        status: z
-          .enum(BUG_STATUSES)
-          .optional()
-          .describe('按状态过滤：open 待处理 / in_progress 进行中 / resolved 已解决（待验证）/ verifying 验证中 / verified 已验证 / closed 已关闭（不修复）'),
-        page: z.number().int().min(1).optional().default(1),
-        page_size: z.number().int().min(1).max(200).optional().default(20),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    guarded('list_bugs', TOOL_SCOPES.list_bugs, (_ctx, args) =>
-      tools.listBugs(args as { project_slug?: string; status?: string; page?: number; page_size?: number }),
-    ),
-  );
-
-  server.registerTool(
-    'get_bug_detail',
-    {
-      title: '缺陷详情',
-      description: `提取 Bug 完整复现描述与附件清单（附件 ID 与文件规格）。长字段自动截断到 500 字符。`,
-      inputSchema: {
-        bug_id: z.string().describe('缺陷 ID'),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    guarded('get_bug_detail', TOOL_SCOPES.get_bug_detail, (_ctx, args) =>
-      tools.getBugDetail(args as { bug_id: string }),
-    ),
-  );
-
-  server.registerTool(
-    'read_attachment_text',
-    {
-      title: '读取文本附件',
+      title: '获取项目全景上下文',
       description:
-        '分片/范围读取文本与日志附件（.log/.txt/.json 等）。支持行号偏移、行数限制与 grep 关键词过滤，返回 has_more 截断标志，防止撑爆上下文窗口。',
-      inputSchema: {
-        attachment_id: z.string().describe('附件 ID'),
-        offset_line: z.number().int().min(1).optional().default(1).describe('起始行号，从 1 开始'),
-        limit_lines: z.number().int().min(1).max(2000).optional().default(200).describe('返回行数上限'),
-        grep_keyword: z.string().optional().describe('关键词过滤，仅返回包含该词的行'),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
+        '开工冷启动必调：一次返回当前身份（me）、可转交成员（members）、项目记忆（memory）、待处理/待验证/验证中/卡住的缺陷与任务、流转提醒（reminders）以及可用技能目录（skills）。多项目时必须传 project_slug。',
+      inputSchema: { project_slug: z.string().optional().describe(PROJECT_SLUG_DESC) },
+      annotations: READ_ANNOT,
     },
-    guarded('read_attachment_text', TOOL_SCOPES.read_attachment_text, (_ctx, args) =>
-      tools.readAttachmentText(args as {
-        attachment_id: string;
-        offset_line?: number;
-        limit_lines?: number;
-        grep_keyword?: string;
-      }),
-    ),
-  );
-
-  server.registerTool(
-    'inspect_image_asset',
-    {
-      title: '检查图片资产',
-      description:
-        '查看截图/图片：默认直接以图片返回（自动降采样到最大边 1080），你能直接看到画面，另附尺寸等元信息。' +
-        'path 只在与服务同机的 stdio 场景有用（返回服务端本地路径，容器部署时打不开）；base64 仅为兼容旧用法（编码塞在文本里，看不到图）。',
-      inputSchema: {
-        attachment_id: z.string().describe('附件 ID'),
-        target_max_dimension: z.number().int().min(64).max(4096).optional().default(1080).describe('目标最大边长'),
-        return_mode: z
-          .enum(['image', 'path', 'base64'])
-          .optional()
-          .default('image')
-          .describe('image（默认）直接返回图片；path 返回服务端本地路径；base64 返回编码文本（旧用法）'),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    guarded('inspect_image_asset', TOOL_SCOPES.inspect_image_asset, (_ctx, args) =>
-      tools.inspectImageAssetTool(args as {
-        attachment_id: string;
-        target_max_dimension?: number;
-        return_mode?: 'image' | 'path' | 'base64';
-      }),
-    ),
-  );
-
-  server.registerTool(
-    'list_notes',
-    {
-      title: '便签列表',
-      description: `拉取项目便签（Scratchpad），content 自动截断。${TOKEN_BUDGET_NOTE}`,
-      inputSchema: {
-        project_slug: z.string().optional().describe('项目 slug，选填（缺省查全部）'),
-        limit: z.number().int().min(1).max(100).optional().default(10),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    guarded('list_notes', TOOL_SCOPES.list_notes, (ctx, args) =>
-      ext.listNotes(ctx, args as { project_slug?: string; limit?: number }),
-    ),
+    guarded('get_project_context', TOOL_SCOPES.get_project_context, (ctx, a) => tools.getProjectContext(ctx, a)),
   );
 
   server.registerTool(
     'search',
     {
-      title: '全局搜索',
-      description: '跨缺陷/任务/便签/附件/项目检索（支持中文与拼音），每类默认 5 条。',
+      title: '检索与列工作项',
+      description:
+        '列表与搜索二合一：传 q 做关键词/拼音/语义检索；不传 q 则按项目分页列出缺陷、任务或便签（支持 type / status / label 过滤）。建卡前先传 q 查重。',
       inputSchema: {
-        q: z.string().describe('关键词'),
-        limit: z.number().int().min(1).max(20).optional().default(5),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    guarded('search', TOOL_SCOPES.search, (ctx, args) => ext.search(ctx, args as { q: string; limit?: number })),
-  );
-
-  server.registerTool(
-    'list_tasks',
-    {
-      title: '任务列表',
-      description: `拉取项目任务，可按状态、标签过滤；要看完整描述、附件和可走的下一步用 get_task_detail。${TOKEN_BUDGET_NOTE}`,
-      inputSchema: {
+        q: z.string().optional().describe('关键词（选填；不传则按条件列项目内条目）'),
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        status: z.enum(TASK_STATUS_ENUM).optional().describe('按状态过滤：todo 待办 / doing 进行中 / review 待验证 / verifying 验证中 / done 已完成 / cancelled 已取消'),
+        type: z.enum(['all', 'bug', 'task', 'note']).optional().describe('限定实体类型，默认 all'),
+        status: z.enum(ALL_WORK_STATUSES).optional().describe('按缺陷或任务状态过滤'),
         label: z.string().optional().describe('按标签过滤'),
+        page: z.number().int().min(1).optional().default(1),
+        limit: z.number().int().min(1).max(100).optional().default(20),
       },
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: READ_ANNOT,
     },
-    guarded('list_tasks', TOOL_SCOPES.list_tasks, (ctx, args) =>
-      ext.listTasks(ctx, args as { project_slug?: string; status?: string; label?: string }),
-    ),
-  );
-
-  // ============ 写入类 ============
-
-  server.registerTool(
-    'update_bug_status',
-    {
-      title: '更新缺陷状态',
-      description:
-        '流转缺陷状态，经手就要调，不等人提醒。状态机 open → in_progress → resolved → verifying → verified，不能跳级（一次只走一步，需要时连续调用），verified 是修复完成的终点。' +
-        '开始修 → in_progress；修完且自测通过 → resolved（写 resolution_notes 和 evidence，有提交带 commit_hash）；开始验证 → verifying（团队靠它看到有人在验）；验证通过 → verified；' +
-        '验证不通过 → in_progress 或 open 并填 reopen_reason（从 resolved/verifying/verified/closed 回流都必须填）；验不了交给别人 → resolved。' +
-        '重复/不修/无法复现 → closed，resolution_notes 必须写原因（只能从 open/in_progress/resolved 关）。返回 allowed_next_statuses 与 next_step。',
-      inputSchema: {
-        bug_id: z.string().describe('缺陷 ID'),
-        status: z.enum(BUG_STATUSES).describe('目标状态（只能是当前状态的下一步，见 get_bug_detail 的 allowed_next_statuses）'),
-        resolution_notes: z.string().optional().describe('resolved 时必写：根因、改了什么、怎么自测的；verified 时写在哪个环境怎么验证的；closed 时必写不修复的原因（重复写上缺陷号）'),
-        commit_hash: z.string().optional().describe('修复对应的 git commit hash（有提交才填）'),
-        evidence: EVIDENCE_SCHEMA,
-        reopen_reason: z.string().optional().describe('回流到 open/in_progress 时必填：验证没过的现象（从 verifying 打回会记为「验证不通过」）'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    guarded('update_bug_status', TOOL_SCOPES.update_bug_status, (ctx, args) =>
-      tools.updateBugStatus(args as Parameters<typeof tools.updateBugStatus>[0], mcpActor(ctx)),
-    ),
+    guarded('search', TOOL_SCOPES.search, (ctx, a) => tools.search(ctx, a)),
   );
 
   server.registerTool(
-    'create_bug',
+    'get_work_item',
     {
-      title: '创建缺陷',
+      title: '工作项详情',
       description:
-        'AI 把自己发现的问题建成工单（可关联已通过 upload_attachment 上传的截图/日志）。自动写入 AI 活动流。',
+        '读取单个缺陷（bug_）或任务（tsk_）详情：复现步骤/描述、标签、负责人、交付证据、附件清单及 allowed_next_statuses / next_step。长文本默认 500 字截断，需全文传 full: true。',
       inputSchema: {
+        id: z.string().describe('缺陷 ID（bug_...）或任务 ID（tsk_...）'),
+        type: z.enum(['bug', 'task']).optional().describe('显式类型（默认按 ID 前缀自动识别）'),
+        full: z.boolean().optional().describe('返回不截断的完整长文本'),
+      },
+      annotations: READ_ANNOT,
+    },
+    guarded('get_work_item', TOOL_SCOPES.get_work_item, (ctx, a) => workTools.getWorkItem(ctx, a)),
+  );
+
+  server.registerTool(
+    'create_work_item',
+    {
+      title: '新建缺陷或任务',
+      description:
+        '创建缺陷（type="bug"）或任务（type="task"），可关联已上传的 attachment_ids 并指定标签/负责人。建前请先用 search 查重。',
+      inputSchema: {
+        type: z.enum(['bug', 'task']).describe('bug（缺陷）或 task（任务）'),
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        title: z.string().describe('缺陷标题'),
+        title: z.string().describe('标题'),
+        description: z.string().optional().describe('任务描述（Markdown）；建 bug 且未传 steps_to_reproduce 时作复现说明'),
+        priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级'),
+        severity: z.enum(['low', 'normal', 'high', 'critical']).optional().describe('仅 bug：严重度'),
+        status: z.enum(['todo', 'doing']).optional().describe('仅 task：初始状态，默认 todo'),
+        steps_to_reproduce: z.string().optional().describe('仅 bug：复现步骤'),
+        expected_result: z.string().optional().describe('仅 bug：期望结果'),
+        actual_result: z.string().optional().describe('仅 bug：实际结果'),
+        labels: z.array(z.string()).optional().describe('标签列表'),
+        assignee_id: z.string().optional().describe('负责人 ID（取自 get_project_context.members 中 writable=true 的成员）'),
+        attachment_ids: z.array(z.string()).optional().describe('关联附件 ID 列表'),
+      },
+      annotations: WRITE_ANNOT,
+    },
+    guarded('create_work_item', TOOL_SCOPES.create_work_item, (ctx, a) => workTools.createWorkItem(ctx, a)),
+  );
+
+  server.registerTool(
+    'update_work_item',
+    {
+      title: '更新/流转/评论/转交工作项',
+      description:
+        '缺陷与任务写操作四合一：① 逐级流转 status（禁止跳级：bug 为 open→in_progress→resolved→verifying→verified，不修走 closed 必写 resolution_notes；task 为 todo→doing→review→verifying→done，另可 cancelled；回流/打回必写 reopen_reason）；② 填交付证据 evidence / commit_hash；③ 给缺陷追加 AI 评论 comment；④ 转交负责人 assignee_id（必填 handoff_reason 或 comment）。',
+      inputSchema: {
+        id: z.string().describe('缺陷 ID（bug_...）或任务 ID（tsk_...）'),
+        type: z.enum(['bug', 'task']).optional().describe('显式类型（默认自动识别）'),
+        status: z.enum(ALL_WORK_STATUSES).optional().describe('目标下一步状态（见 get_work_item 的 allowed_next_statuses）'),
+        resolution_notes: z.string().optional().describe('bug 标 resolved/verified/closed 时写根因、验证方式或不修原因'),
+        commit_hash: z.string().optional().describe('修复 git commit hash'),
+        reopen_reason: z.string().optional().describe('重开缺陷或打回任务时必填原因'),
+        evidence: EVIDENCE_SCHEMA,
+        comment: z.string().optional().describe('追加到缺陷活动流的 AI 评论'),
+        assignee_id: z.string().optional().describe('转交目标成员 ID（不可为 viewer）'),
+        handoff_reason: z.string().optional().describe('转交原因（最多 500 字）'),
+        title: z.string().optional().describe('修改标题'),
+        description: z.string().optional().describe('仅 task：整段替换描述（改前先 get_work_item(full: true)）'),
+        priority: z.enum(['low', 'medium', 'high']).optional(),
         severity: z.enum(['low', 'normal', 'high', 'critical']).optional(),
-        steps_to_reproduce: z.string().optional(),
-        expected_result: z.string().optional(),
-        actual_result: z.string().optional(),
-        attachment_ids: z.array(z.string()).optional().describe('关联的附件 ID 列表'),
+        labels: z.array(z.string()).optional().describe('整组替换标签'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: WRITE_ANNOT,
     },
-    guarded('create_bug', TOOL_SCOPES.create_bug, (ctx, args) =>
-      ext.createBug(ctx, args as Parameters<typeof ext.createBug>[1]),
-    ),
+    guarded('update_work_item', TOOL_SCOPES.update_work_item, (ctx, a) => workTools.updateWorkItem(ctx, a)),
   );
 
   server.registerTool(
-    'add_bug_comment',
+    'read_attachment',
     {
-      title: '追加缺陷评论',
-      description: 'AI 记录修复过程、定位结论或向人类追问（活动流中标记为 AI）。',
+      title: '读取附件（自动识图与分片读文本）',
+      description:
+        '读取截图或日志附件：图片自动降采样（默认最大边 1080）并以多模态图片块直接呈现给模型；日志/代码支持行号分片与 grep_keyword 过滤。',
       inputSchema: {
-        bug_id: z.string().describe('缺陷 ID'),
-        content: z.string().describe('评论内容'),
+        attachment_id: z.string().describe('附件 ID'),
+        offset_line: z.number().int().min(1).optional().default(1).describe('文本附件：起始行号'),
+        limit_lines: z.number().int().min(1).max(2000).optional().default(200).describe('文本附件：最大返回行数'),
+        grep_keyword: z.string().optional().describe('文本附件：仅返回包含该词的行'),
+        target_max_dimension: z.number().int().min(64).max(4096).optional().default(1080).describe('图片附件：降采样最大边'),
+        return_mode: z.enum(['image', 'path', 'base64']).optional().default('image').describe('图片返回模式，默认 image'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: READ_ANNOT,
     },
-    guarded('add_bug_comment', TOOL_SCOPES.add_bug_comment, (ctx, args) =>
-      ext.addBugComment(ctx, args as { bug_id: string; content: string }),
-    ),
-  );
-
-  server.registerTool(
-    'append_scratchpad',
-    {
-      title: '追加随手记',
-      description: 'AI 暂存临时想法或设计草案到项目便签墙（Scratchpad）。',
-      inputSchema: {
-        content: z.string().describe('便签内容（支持 Markdown）'),
-        project_slug: z.string().optional().describe('项目 slug，选填'),
-        tags: z.array(z.string()).optional().describe('标签数组，如 ["auth","tech-debt"]'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    guarded('append_scratchpad', TOOL_SCOPES.append_scratchpad, (_ctx, args) =>
-      tools.appendScratchpad(args as { content: string; project_slug?: string; tags?: string[] }),
-    ),
+    guarded('read_attachment', TOOL_SCOPES.read_attachment, (ctx, a) => fileTools.readAttachment(ctx, a)),
   );
 
   server.registerTool(
     'upload_attachment',
     {
-      title: '上传附件',
+      title: '上传附件（直传短文本或签发本地 curl 链接）',
       description:
-        '把内容作为附件贴回工单，返回 attachment id（可传给 create_bug 的 attachment_ids）。' +
-        '文本（日志片段、JSON、报错堆栈）直接传 content，不要转 base64；data_base64 只适合很小的二进制。' +
-        '本地文件（截图、压缩包、较大的日志）请改用 create_upload_url：拿到 curl 命令在终端执行，文件内容不经过对话。' +
-        '给了 bug_id 就挂到该缺陷（以缺陷所在项目为准，可不传 project_slug）。',
+        '上传二合一：① 小段文本（堆栈/JSON/日志片段）直接传 content 落盘；② 本地文件（截图/压缩包/大日志）不要传 content 和 data_base64，调用即返回一次性 curl -T 命令供终端直传，文件内容不经过对话。传 work_item_id 可直接挂到对应 bug 或 task。',
       inputSchema: {
-        project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        bug_id: z.string().optional().describe('关联到缺陷（缺省为项目通用附件）'),
-        file_name: z.string().describe('文件名，带扩展名（如 stacktrace.log、response.json）'),
+        file_name: z.string().describe('带扩展名的文件名（如 screenshot.png、trace.log）'),
         file_type: z.string().optional().describe('MIME 类型，缺省按扩展名推断'),
-        content: z.string().optional().describe('文本原文（与 data_base64 二选一）'),
-        data_base64: z.string().optional().describe('二进制内容的 Base64（与 content 二选一，仅适合很小的文件）'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    guarded('upload_attachment', TOOL_SCOPES.upload_attachment, (ctx, args) =>
-      ext.uploadAttachment(ctx, args as Parameters<typeof ext.uploadAttachment>[1]),
-    ),
-  );
-
-  server.registerTool(
-    'create_upload_url',
-    {
-      title: '申请上传链接',
-      description:
-        '上传本地文件（截图、日志文件、压缩包等，尤其是二进制或较大的文件）用它：返回一条 curl 命令，在终端执行即可把文件直接传到 VibeHub，' +
-        '文件内容不经过对话、不消耗 token。链接 10 分钟内有效、只能用一次；上传成功后终端输出里的 attachment.id 就是附件 ID。' +
-        '给了 bug_id 就挂到该缺陷。只有一小段文本时也可以直接用 upload_attachment 的 content。',
-      inputSchema: {
-        file_name: z.string().describe('文件名，带扩展名（如 screenshot.png、app.log）'),
-        file_type: z.string().optional().describe('MIME 类型，缺省按扩展名推断'),
-        bug_id: z.string().optional().describe('关联到缺陷（以缺陷所在项目为准）'),
+        work_item_id: z.string().optional().describe('关联的缺陷或任务 ID（缺省存为项目通用附件）'),
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
+        content: z.string().optional().describe('短文本原文（传本地文件时请留空以获取 curl 链接）'),
+        data_base64: z.string().optional().describe('极小二进制 Base64（与 content 互斥；大文件请留空走 curl）'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: WRITE_ANNOT,
     },
-    guarded('create_upload_url', TOOL_SCOPES.create_upload_url, (ctx, args) =>
-      ext.createUploadUrl(ctx, args as Parameters<typeof ext.createUploadUrl>[1]),
-    ),
+    guarded('upload_attachment', TOOL_SCOPES.upload_attachment, (ctx, a) => fileTools.uploadAttachment(ctx, a)),
   );
 
   server.registerTool(
-    'create_task',
+    'append_note',
     {
-      title: '创建任务',
-      description:
-        'AI 把拆出来的待办/验收遗留项建成任务（可关联已通过 upload_attachment 上传的附件、可带标签）。建之前先 search 查重。状态缺省 todo、优先级缺省 medium；马上就要动手的可直接建成 doing。',
+      title: '追加随手记',
+      description: '将排查草稿、上下文备忘写入项目随手记（Markdown）。单活跃项目时自动归属该项目，多项目必须传 project_slug。',
       inputSchema: {
+        content: z.string().describe('便签正文（Markdown）'),
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
-        title: z.string().describe('任务标题'),
-        description: z.string().optional().describe('任务描述（支持 Markdown）'),
-        priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级，缺省 medium'),
-        status: z.enum(['todo', 'doing']).optional().describe('初始状态，缺省 todo'),
-        labels: z.array(z.string()).optional().describe('标签，如 ["前端","登录"]'),
-        attachment_ids: z.array(z.string()).optional().describe('关联的附件 ID 列表'),
+        tags: z.array(z.string()).optional().describe('标签列表'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: WRITE_ANNOT,
     },
-    guarded('create_task', TOOL_SCOPES.create_task, (ctx, args) =>
-      ext.createTask(ctx, args as Parameters<typeof ext.createTask>[1]),
-    ),
+    guarded('append_note', TOOL_SCOPES.append_note, (ctx, a) => tools.appendNote(ctx, a)),
   );
 
   server.registerTool(
-    'update_task',
+    'get_skill',
     {
-      title: '更新任务',
+      title: '获取团队技能',
       description:
-        '流转任务状态（也可改优先级、标题、描述、标签，只改传入的字段），经手就要调。标记 review 时尽量带 evidence（commit/PR/测试/截图/notes）。流转不能跳级：todo → doing → review → verifying → done；开始做 → doing；做完并自测通过 → review（待验证）；开始验收 → verifying（验证中，团队靠它看到有人在验）；验收通过 → done（自己做的不算验收）；验收不通过 → doing 并填 reopen_reason；验不了交给别人 → review；不做了 → cancelled，重做 → todo。description 是整段替换，list_tasks 返回的是截断后的描述，要改先用 get_task_detail(full: true) 取全文。',
+        '按名称或 skill_id 取回技能 SKILL.md 与附带文件（可用技能见 get_project_context.skills）。超长技能支持带 path 与 offset 分批读取。',
       inputSchema: {
-        task_id: z.string().describe('任务 ID'),
-        status: z.enum(TASK_STATUS_ENUM).optional().describe('目标状态（只能是当前状态可走的下一步，见 get_task_detail 的 allowed_next_statuses）'),
-        reopen_reason: z.string().optional().describe('打回（review/verifying/done → doing）时必填：验收没过的现象'),
-        labels: z.array(z.string()).optional().describe('标签（整组替换）'),
-        priority: z.enum(['low', 'medium', 'high']).optional().describe('优先级'),
-        title: z.string().optional().describe('新标题'),
-        description: z.string().optional().describe('新描述（整段替换）'),
-        evidence: EVIDENCE_SCHEMA,
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    guarded('update_task', TOOL_SCOPES.update_task, (ctx, args) =>
-      ext.updateTask(ctx, args as Parameters<typeof ext.updateTask>[1]),
-    ),
-  );
-
-  server.registerTool(
-    'purge_trash',
-    {
-      title: '清理回收站',
-      description: '清理回收区中超过保留期（默认 30 天）的附件文件。需要 admin scope。',
-      inputSchema: {},
-      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    },
-    guarded('purge_trash', TOOL_SCOPES.purge_trash, (ctx, args) => ext.purgeTrash(ctx, args)),
-  );
-
-  server.registerTool(
-    'get_me',
-    {
-      title: '我是谁',
-      description: '返回当前 AI 的人类身份、密钥、角色能力与当前项目。开工或交接前先调，避免替错人/越权。',
-      inputSchema: {
+        name: z.string().optional().describe('技能名（项目专属技能优先于全局通用技能）'),
+        skill_id: z.string().optional().describe('技能 ID'),
         project_slug: z.string().optional().describe(PROJECT_SLUG_DESC),
+        path: z.string().optional().describe('仅取指定附带文件路径'),
+        offset: z.number().int().min(0).optional().describe('大文件分段起始偏移'),
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: READ_ANNOT,
     },
-    guarded('get_me', TOOL_SCOPES.get_me, (ctx, args) =>
-      identity.getMe(ctx, args as { project_slug?: string }),
-    ),
+    guarded('get_skill', TOOL_SCOPES.get_skill, (ctx, a) => skillTools.getSkill(ctx, a)),
   );
 
-  server.registerTool(
-    'list_members',
-    {
-      title: '团队成员',
-      description: '列出可交接的 active 成员（id/名字/角色）。转交前先查；只读成员不能作为负责人。非管理员看不到邮箱。',
-      inputSchema: {
-        limit: z.number().int().min(1).max(50).optional().describe('最多返回多少条，默认 20'),
-        q: z.string().optional().describe('按名字/邮箱搜索'),
-      },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    },
-    guarded('list_members', TOOL_SCOPES.list_members, (ctx, args) =>
-      identity.listMembers(ctx, args as { limit?: number; q?: string }),
-    ),
-  );
-
-  server.registerTool(
-    'handoff_work',
-    {
-      title: '转交缺陷/任务',
-      description: '把缺陷或任务转给某个可写成员，必须写一句原因。缺陷会写入活动流；任务记入 MCP 用量。转交前先用 list_members 取 assignee_id。',
-      inputSchema: {
-        entity_type: z.enum(['bug', 'task']).describe('bug 或 task'),
-        entity_id: z.string().describe('缺陷/任务 ID'),
-        assignee_id: z.string().describe('接手人 ID（list_members 返回）'),
-        reason: z.string().describe('转交原因（最多 500 字）'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    },
-    guarded('handoff_work', TOOL_SCOPES.handoff_work, (ctx, args) =>
-      identity.handoffWork(ctx, args as Parameters<typeof identity.handoffWork>[1]),
-    ),
-  );
-
-  registerMoreTools(server);
   return server;
 }
 
-/** stdio 入口：供 IDE Agent 以子进程方式拉起 */
 export async function startStdioServer(): Promise<void> {
   const server = createMcpServer();
   const transport = new StdioServerTransport();

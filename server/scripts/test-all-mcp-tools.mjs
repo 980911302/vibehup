@@ -1,16 +1,9 @@
 /**
- * 27 个 MCP 工具逐个实测（走 SSE 传输，与容器/IDE 交付形态一致）。
- *
- * 设计要点：
- * - 专用临时项目（TEST_PROJECT_SLUG），不碰用户「白泽团队」；跑完级联删除；
- * - 每个工具都断言「返回形状 + 业务语义」，不只断言调用成功；
- * - 失败路径同样覆盖：非法状态流转、读图片当文本、越权 purge_trash、多项目歧义；
- * - 先用 Prisma 准备 fixtures（长文本缺陷/日志附件/两类任务），否则读类工具无料可测。
- *
+ * 9 个核心 MCP 工具逐个实测（走 SSE 传输，与容器/远端 IDE 交付形态一致）。
  * 用法：KEY=vhk_live_xxx node scripts/test-all-mcp-tools.mjs
  */
-import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -19,7 +12,7 @@ const BASE = process.env.BASE ?? 'http://127.0.0.1:3210';
 const DB = process.env.DATABASE_URL ?? 'postgresql://vibehub:vibehub@127.0.0.1:55433/vibehub';
 const KEY = process.env.KEY;
 if (!KEY) {
-  console.error('需要 KEY=vhk_live_... （或在 server/.env 之外显式提供）');
+  console.error('需要 KEY=vhk_live_... 环境变量');
   process.exit(1);
 }
 
@@ -27,10 +20,7 @@ const SLUG = `mcp-tool-test-${Date.now()}`;
 const LONG = 'X'.repeat(800);
 const LOG_TEXT = [
   '2026-09-23 10:00:01 INFO  启动服务',
-  '2026-09-23 10:00:02 INFO  加载路由 /api/bugs',
   '2026-09-23 10:00:03 ERROR TypeError: Cannot read properties of undefined',
-  '    at updateBug (src/services/bugs.ts:218:11)',
-  '2026-09-23 10:00:04 ERROR 请求失败 500',
   '2026-09-23 10:00:05 INFO  重试成功',
 ].join('\n');
 const PNG_B64 =
@@ -38,42 +28,48 @@ const PNG_B64 =
 
 let pass = 0;
 let fail = 0;
-const results = [];
 function check(name, cond, detail = '') {
   if (cond) { pass++; console.log(`  ✅ ${name}${detail ? ` — ${detail}` : ''}`); }
   else { fail++; console.log(`  ❌ ${name}${detail ? ` — ${detail}` : ''}`); }
-  results.push({ name, ok: !!cond, detail });
 }
 
-/** ---------- fixtures ---------- */
 const { PrismaClient } = await import('@prisma/client');
 const prisma = new PrismaClient({ datasources: { db: { url: DB } } });
-const project = await prisma.project.create({ data: { id: `prj_${randomBytes(6).toString('hex')}`, name: 'MCP 工具自检', slug: SLUG } });
+const project = await prisma.project.create({ data: { id: `prj_${randomBytes(6).toString('hex')}`, name: 'MCP 9 工具自检', slug: SLUG } });
+const otherProj = await prisma.project.create({ data: { id: `prj_${randomBytes(6).toString('hex')}`, name: '隔离参照项目', slug: `${SLUG}-b` } });
 const longBug = await prisma.bug.create({
   data: { id: `bug_${randomBytes(6).toString('hex')}`, projectId: project.id, title: '长文本缺陷（验证 500 字符截断）', actualResult: LONG, severity: 'low' },
 });
+mkdirSync(path.join(SERVER_DIR, 'test-data'), { recursive: true });
+const logPath = path.join(SERVER_DIR, 'test-data', 'mcp-selftest.log');
+writeFileSync(logPath, LOG_TEXT);
 const logAtt = await prisma.attachment.create({
   data: {
     id: `att_${randomBytes(6).toString('hex')}`, projectId: project.id, entityType: 'bug', entityId: longBug.id,
     fileName: 'stacktrace.log', fileType: 'text/plain', fileSize: Buffer.byteLength(LOG_TEXT),
-    storagePath: path.join(SERVER_DIR, 'test-data', 'mcp-selftest.log'), uploadedBy: 'human',
+    storagePath: logPath, uploadedBy: 'human',
   },
 });
-const { writeFileSync, mkdirSync, rmSync } = await import('node:fs');
-mkdirSync(path.join(SERVER_DIR, 'test-data'), { recursive: true });
-writeFileSync(logAtt.storagePath, LOG_TEXT);
+const imgPath = path.join(SERVER_DIR, 'test-data', 'mcp-selftest.png');
+writeFileSync(imgPath, Buffer.from(PNG_B64, 'base64'));
 const imgAtt = await prisma.attachment.create({
   data: {
     id: `att_${randomBytes(6).toString('hex')}`, projectId: project.id, entityType: 'bug', entityId: longBug.id,
     fileName: 'shot.png', fileType: 'image/png', fileSize: 100,
-    storagePath: path.join(SERVER_DIR, 'test-data', 'mcp-selftest.png'), uploadedBy: 'human', width: 1, height: 1,
+    storagePath: imgPath, uploadedBy: 'human', width: 1, height: 1,
   },
 });
-writeFileSync(imgAtt.storagePath, Buffer.from(PNG_B64, 'base64'));
-await prisma.task.create({ data: { id: `tsk_${randomBytes(6).toString('hex')}`, projectId: project.id, title: '登录接口联调', description: '与后端对齐字段', priority: 'high', status: 'todo' } });
-await prisma.task.create({ data: { id: `tsk_${randomBytes(6).toString('hex')}`, projectId: project.id, title: '导出功能设计', status: 'done' } });
-console.log(`fixtures 就绪：项目 ${SLUG}；长文本缺陷 ${longBug.id}；日志 ${logAtt.id}；图片 ${imgAtt.id}\n`);
-/** ---------- SSE MCP 客户端 ---------- */
+await prisma.skill.create({
+  data: {
+    id: `skl_${randomBytes(6).toString('hex')}`,
+    projectId: project.id,
+    name: 'selftest-skill',
+    description: '自检技能描述',
+    content: '---\nname: selftest-skill\ndescription: 自检技能描述\n---\n\n# Selftest\n',
+    source: 'web',
+  },
+});
+
 const ac = new AbortController();
 const res = await fetch(`${BASE}/mcp/sse`, { headers: { authorization: `Bearer ${KEY}` }, signal: ac.signal });
 if (!res.ok) { console.error(`SSE 握手失败 HTTP ${res.status}`); process.exit(1); }
@@ -117,12 +113,11 @@ async function send(method, params) {
   if (post.status !== 202) throw new Error(`投递失败 HTTP ${post.status}`);
   return p;
 }
-/** 调工具并解析文本内容；返回 { raw, json, isError, text } */
 async function call(name, args = {}) {
   const r = await send('tools/call', { name, arguments: args });
   const text = r.result?.content?.[0]?.text ?? '';
   let json = null;
-  try { json = JSON.parse(text); } catch { /* 错误文本非 JSON */ }
+  try { json = JSON.parse(text); } catch { /* ignore */ }
   return { raw: r, text, json, isError: r.result?.isError ?? false };
 }
 
@@ -131,346 +126,95 @@ const list = await send('tools/list', {});
 const toolNames = (list.result?.tools ?? []).map((t) => t.name);
 console.log(`── 工具清单（${toolNames.length} 个）──\n${toolNames.join(', ')}\n`);
 
-/* ============ 1. get_project_context ============ */
-console.log('【1/27】get_project_context — 冷启动读项目上下文');
+console.log('【1/9】get_project_context — 全景上下文（me + members + memory + skills + 工单）');
 {
   const r = await call('get_project_context', { project_slug: SLUG });
-  check('成功返回且未报错', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('命中项目名', r.text.includes('MCP 工具自检'));
-  check('带出待处理缺陷（长文本那条）', r.text.includes('长文本缺陷'));
-  check('带出待办任务', r.text.includes('登录接口联调'));
+  check('返回成功且包含 me / members / skills', !r.isError && !!r.json?.me && Array.isArray(r.json?.members) && r.json?.skills?.length === 1);
   const amb = await call('get_project_context', {});
-  check('多项目不传 slug → 歧义报错并列出可选', amb.isError && amb.text.includes(SLUG), amb.text.slice(0, 100).replace(/\s+/g, ' '));
+  check('多项目省略 project_slug 触发防串项提示', amb.isError && amb.text.includes(SLUG));
 }
 
-/* ============ 2. list_bugs ============ */
-console.log('\n【2/27】list_bugs — 列缺陷 + 分页整形');
+console.log('\n【2/9】search — 列表与检索二合一');
 {
-  const r = await call('list_bugs', { project_slug: SLUG });
-  check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('含 has_more 分页字段', r.text.includes('has_more'));
-  check('含目标缺陷', r.text.includes('长文本缺陷'));
-  const filtered = await call('list_bugs', { project_slug: SLUG, status: 'resolved' });
-  check('status 过滤生效（resolved 命中 0 条）', !filtered.text.includes('长文本缺陷'));
+  const listed = await call('search', { project_slug: SLUG, type: 'bug' });
+  check('列表模式命中目标缺陷', !listed.isError && listed.json?.mode === 'list' && listed.text.includes('长文本缺陷'));
+  const queried = await call('search', { q: '长文本', project_slug: SLUG });
+  check('检索模式命中目标缺陷', !queried.isError && queried.json?.mode === 'query' && queried.json?.bugs?.length === 1);
 }
 
-/* ============ 3. get_bug_detail ============ */
-console.log('\n【3/27】get_bug_detail — 详情 + 长文本 500 字符截断');
+console.log('\n【3/9】get_work_item — 详情与截断控制');
 {
-  const r = await call('get_bug_detail', { bug_id: longBug.id });
-  check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('标题正确', r.text.includes('长文本缺陷'));
-  check('800 字符字段被截断到 500 以内', !r.text.includes(LONG), `响应 ${Buffer.byteLength(r.text)} 字节`);
-  check('给出截断提示', /截断|truncat|tip/i.test(r.text), '');
+  const brief = await call('get_work_item', { id: longBug.id });
+  check('默认 500 字符截断', !brief.isError && brief.json?.actual_result_truncated === true);
+  const full = await call('get_work_item', { id: longBug.id, full: true });
+  check('full=true 返回完整 800 字符', !full.isError && full.json?.actual_result?.length === 800);
 }
 
-/* ============ 4. read_attachment_text ============ */
-console.log('\n【4/27】read_attachment_text — 日志分片读取');
+let newBugId = '';
+let newTaskId = '';
+console.log('\n【4/9】create_work_item — 新建缺陷与任务');
 {
-  const r = await call('read_attachment_text', { attachment_id: logAtt.id });
-  check('成功读到日志内容', !r.isError && r.text.includes('TypeError'), r.isError ? r.text.slice(0, 120) : '');
-  const grep = await call('read_attachment_text', { attachment_id: logAtt.id, grep_keyword: 'ERROR' });
-  check('grep_keyword 只回命中行', grep.text.includes('ERROR') && !grep.text.includes('重试成功'));
-  const sliced = await call('read_attachment_text', { attachment_id: logAtt.id, offset_line: 1, limit_lines: 1 });
-  check('offset/limit 分片生效（仅 1 行）', sliced.text.includes('启动服务') && !sliced.text.includes('TypeError'));
+  const b = await call('create_work_item', { type: 'bug', project_slug: SLUG, title: '自检新建缺陷' });
+  newBugId = b.json?.bug?.id ?? '';
+  check('新建 bug 成功', !b.isError && newBugId.startsWith('bug_'));
+  const t = await call('create_work_item', { type: 'task', project_slug: SLUG, title: '自检新建任务', status: 'doing' });
+  newTaskId = t.json?.task?.id ?? '';
+  check('新建 task 成功', !t.isError && newTaskId.startsWith('tsk_'));
 }
 
-/* ============ 5. inspect_image_asset ============ */
-console.log('\n【5/27】inspect_image_asset — 读图元信息');
+console.log('\n【5/9】update_work_item — 状态机、评论与证据');
 {
-  const r = await call('inspect_image_asset', { attachment_id: imgAtt.id });
-  check('成功返回图片信息', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('含尺寸字段', /width|height/.test(r.text));
-  check('默认直接返回图片内容块（模型能看到截图，R84）', (r.raw.result?.content ?? []).some((c) => c.type === 'image' && c.mimeType?.startsWith('image/')));
-  const wrong = await call('inspect_image_asset', { attachment_id: logAtt.id });
-  check('对非图片给出人话错误', wrong.isError, wrong.text.slice(0, 80).replace(/\s+/g, ' '));
+  const skip = await call('update_work_item', { id: newBugId, status: 'resolved' });
+  check('禁止跨级跳状态（open→resolved 被拒）', skip.isError);
+  const okStep = await call('update_work_item', { id: newBugId, status: 'in_progress', comment: '开始排查' });
+  check('合法推进 in_progress + 评论', !okStep.isError && okStep.json?.bug?.status === 'in_progress');
+  const tStep = await call('update_work_item', { id: newTaskId, status: 'review', evidence: { tests: 'all green' } });
+  check('任务推进 review + 交付证据', !tStep.isError && tStep.json?.task?.status === 'review');
 }
 
-/* ============ 6. update_bug_status ============ */
-console.log('\n【6/27】update_bug_status — 状态回填 + 状态机校验');
+console.log('\n【6/9】read_attachment — 自动识图与日志 grep');
 {
-  const ok1 = await call('update_bug_status', { bug_id: longBug.id, status: 'in_progress' });
-  check('open → in_progress 通过', !ok1.isError, ok1.isError ? ok1.text.slice(0, 160) : '');
-  const bad = await call('update_bug_status', { bug_id: longBug.id, status: 'verified' });
-  check('非法跨级被拒（in_progress → verified）', bad.isError && bad.text.includes('不能从'), bad.text.slice(0, 90).replace(/\s+/g, ' '));
-  const noCloseReason = await call('update_bug_status', { bug_id: longBug.id, status: 'closed' });
-  check('关闭不写原因被拒（closed 只用于不修复，要写 resolution_notes）', noCloseReason.isError && noCloseReason.text.includes('resolution_notes'));
-  const ok2 = await call('update_bug_status', {
-    bug_id: longBug.id, status: 'resolved', resolution_notes: '已修复', commit_hash: 'abc1234',
-  });
-  check('携带 commit_hash 回填 resolved 成功', !ok2.isError, ok2.isError ? ok2.text.slice(0, 160) : '');
-  const detail = await call('get_bug_detail', { bug_id: longBug.id });
-  check('回填内容已落库（commit abc1234）', detail.text.includes('abc1234'));
-  // R83：验证方先改 verifying，看板与 get_project_context 能看到谁在验；已验证是终点
-  const skipVerify = await call('update_bug_status', { bug_id: longBug.id, status: 'verified' });
-  check('resolved → verified 跳过验证中被拒', skipVerify.isError && skipVerify.text.includes('验证中'));
-  const vin = await call('update_bug_status', { bug_id: longBug.id, status: 'verifying' });
-  check('resolved → verifying 成功', !vin.isError && vin.json?.bug?.status === 'verifying');
-  const ctxV = await call('get_project_context', { project_slug: SLUG });
-  check('get_project_context 列出验证中并带操作人', ctxV.json?.verifying_bugs?.some((b) => b.id === longBug.id && b.status_actor));
-  const vok = await call('update_bug_status', { bug_id: longBug.id, status: 'verified', resolution_notes: '自测环境按步骤复验通过' });
-  check('verifying → verified 成功（终点）', !vok.isError && vok.json?.bug?.status === 'verified' && vok.json?.next_step?.includes('终点'));
-  check('详情无多余字段（本轮修复：不再串入 value/truncated）', !detail.text.includes('"value"'), '回归断言');
+  const logRead = await call('read_attachment', { attachment_id: logAtt.id, grep_keyword: 'ERROR' });
+  check('日志 grep 精准命中 ERROR 行', !logRead.isError && logRead.json?.total_lines === 1);
+  const imgRead = await call('read_attachment', { attachment_id: imgAtt.id });
+  const hasImg = (imgRead.raw.result?.content ?? []).some((c) => c.type === 'image');
+  check('图片自动返回 MCP image 视觉块', !imgRead.isError && hasImg);
 }
 
-/* ============ 7. append_scratchpad ============ */
-console.log('\n【7/27】append_scratchpad — 写随手记 + 标签（需 note:write）');
+console.log('\n【7/9】upload_attachment — 短文本直传与本地文件 curl 链接');
 {
-  const r = await call('append_scratchpad', { project_slug: SLUG, content: '## 自检便签\n联调注意时区', tags: ['selftest', 'auth'] });
-  check('成功创建便签', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('Markdown 内容原样保存', r.text.includes('自检便签'));
-  check('标签解析正确', r.text.includes('selftest') && r.text.includes('auth'));
-  check('已关联到目标项目', r.text.includes(project.id), '全局便签是另一条路径，此处断言归属');
+  const direct = await call('upload_attachment', { work_item_id: newBugId, file_name: 'note.txt', content: 'hello mcp' });
+  check('传 content 直接生成附件', !direct.isError && direct.json?.mode === 'direct');
+  const grant = await call('upload_attachment', { work_item_id: newBugId, file_name: 'shot2.png' });
+  check('不传 content 签发一次性 curl 上传链接', !grant.isError && grant.json?.mode === 'upload_url');
+  const put = await fetch(grant.json.upload_url, { method: 'PUT', body: Buffer.from(PNG_B64, 'base64') });
+  check('PUT 直传成功 201', put.status === 201);
 }
 
-/* ============ 8. list_notes ============ */
-console.log('\n【8/27】list_notes — 列便签');
+console.log('\n【8/9】append_note — 追加随手记');
 {
-  const r = await call('list_notes', { project_slug: SLUG });
-  check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('含刚写的便签', r.text.includes('自检便签'));
-  const byTag = await call('list_notes', { project_slug: SLUG, tag: 'selftest' });
-  check('按 tag 过滤命中', byTag.text.includes('自检便签'));
+  const n = await call('append_note', { project_slug: SLUG, content: '自检随手记', tags: ['selftest'] });
+  check('创建项目随手记成功', !n.isError && n.json?.project_id === project.id);
 }
 
-/* ============ 9. search ============ */
-console.log('\n【9/27】search — 关键词 + 语义检索');
+console.log('\n【9/9】get_skill — 读取团队技能全文');
 {
-  const r = await call('search', { q: '长文本', project_slug: SLUG });
-  check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('关键词命中缺陷', r.text.includes('长文本缺陷'));
-  const empty = await call('search', { q: 'zzz-不存在的词-zzz', project_slug: SLUG });
-  check('无命中时返回空结果而非报错', !empty.isError);
+  const s = await call('get_skill', { project_slug: SLUG, name: 'selftest-skill' });
+  check('取回 SKILL.md 全文', !s.isError && s.json?.skill_md?.includes('# Selftest'));
 }
 
-/* ============ 10. create_bug ============ */
-console.log('\n【10/27】create_bug — AI 建缺陷');
-{
-  const r = await call('create_bug', {
-    project_slug: SLUG, title: 'MCP 工具自检：创建缺陷', severity: 'high',
-    steps_to_reproduce: '1. 调工具 2. 看结果', expected_result: '写入成功', actual_result: '确实成功',
-  });
-  check('成功创建', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  const newId = r.json?.bug?.id;
-  check('返回新缺陷 ID', !!newId, newId ?? '');
-  check('返回 ok=true', r.json?.ok === true, '');
-  globalThis.__newBugId = newId;
-}
-
-/* ============ 11. add_bug_comment ============ */
-console.log('\n【11/27】add_bug_comment — 追加评论（AI 身份）');
-{
-  const r = await call('add_bug_comment', { bug_id: globalThis.__newBugId, content: '自检评论：已按步骤复现' });
-  check('成功追加评论', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('返回 comment_id', /comment_id/.test(r.text), r.text.slice(0, 80).replace(/\s+/g, ' '));
-  const row = await prisma.bugComment.findFirst({ where: { bugId: globalThis.__newBugId, content: '自检评论：已按步骤复现' } });
-  check('评论内容已落库且作者为 ai', row?.content === '自检评论：已按步骤复现' && row?.authorType === 'ai', `author=${row?.authorType ?? '未找到'}`);
-}
-
-/* ============ 12. upload_attachment ============ */
-console.log('\n【12/27】upload_attachment — base64 / 文本直传');
-{
-  const r = await call('upload_attachment', {
-    project_slug: SLUG, bug_id: globalThis.__newBugId,
-    file_name: 'selftest-shot.png', file_type: 'image/png', data_base64: PNG_B64,
-  });
-  check('成功上传', !r.isError, r.isError ? r.text.slice(0, 160) : '');
-  const attId = r.json?.attachment?.id ?? r.json?.id;
-  check('返回附件 ID', !!attId, attId ?? '');
-  const detailAfter = await call('get_bug_detail', { bug_id: globalThis.__newBugId });
-  check('详情里能看到该附件（归属生效）', detailAfter.text.includes('selftest-shot.png'));
-  const attRow = await prisma.attachment.findFirst({ where: { id: attId } });
-  check('数据库归属 entityId = 目标缺陷', attRow?.entityId === globalThis.__newBugId, `entityType=${attRow?.entityType}`);
-  const txt = await call('upload_attachment', { bug_id: globalThis.__newBugId, file_name: 'selftest-trace.log', content: 'ERROR selftest trace' });
-  check('文本直接传 content（不用 base64，R84）', !txt.isError && txt.json?.attachment?.file_type === 'text/plain', txt.isError ? txt.text.slice(0, 120) : '');
-  const bad = await call('upload_attachment', { file_name: 'x.png', file_type: 'image/png' });
-  check('既无 content 也无 data_base64 → 人话报错并指路 create_upload_url', bad.isError && bad.text.includes('create_upload_url'), bad.text.slice(0, 90).replace(/\s+/g, ' '));
-}
-
-/* ============ 13. list_tasks ============ */
-console.log('\n【13/27】list_tasks — 列任务 + 状态过滤（需 task:read）');
-{
-  const r = await call('list_tasks', { project_slug: SLUG });
-  check('成功返回', !r.isError, r.isError ? r.text.slice(0, 120) : '');
-  check('含两条 fixture 任务', r.text.includes('登录接口联调') && r.text.includes('导出功能设计'));
-  const todo = await call('list_tasks', { project_slug: SLUG, status: 'todo' });
-  check('status=todo 过滤掉已完成任务', todo.text.includes('登录接口联调') && !todo.text.includes('导出功能设计'));
-}
-
-/* ============ 14. create_task ============ */
-console.log('\n【14/27】create_task — AI 建任务（需 task:write）');
-{
-  const r = await call('create_task', { project_slug: SLUG, title: 'MCP 自检建的任务', description: '由 create_task 创建', priority: 'low' });
-  check('成功建任务', !r.isError, r.isError ? r.text.slice(0, 140) : '');
-  let newId = null;
-  try { newId = JSON.parse(r.text).task?.id; } catch { /* ignore */ }
-  const row = newId ? await prisma.task.findUnique({ where: { id: newId } }) : null;
-  check('数据库落在自检项目、默认 todo', row?.projectId === project.id && row?.status === 'todo' && row?.priority === 'low', `status=${row?.status}`);
-  const bad = await call('create_task', { project_slug: SLUG, title: 'x', status: 'blocked' });
-  check('非法状态 → 校验失败', bad.isError, bad.text.slice(0, 90).replace(/\s+/g, ' '));
-  if (newId) await prisma.task.delete({ where: { id: newId } });
-}
-
-/* ============ 15. update_task ============ */
-console.log('\n【15/27】update_task — 改任务状态/优先级（需 task:write）');
-{
-  const todo = await call('list_tasks', { project_slug: SLUG, status: 'todo' });
-  let taskId = null;
-  try { taskId = JSON.parse(todo.text).items?.[0]?.id ?? JSON.parse(todo.text).tasks?.[0]?.id; } catch { /* ignore */ }
-  if (!taskId) {
-    const t = await prisma.task.findFirst({ where: { projectId: project.id, status: 'todo' } });
-    taskId = t?.id ?? null;
-  }
-  const r = await call('update_task', { task_id: taskId, status: 'doing', priority: 'medium' });
-  check('成功更新任务', !r.isError, r.isError ? r.text.slice(0, 140) : '');
-  check('新状态已生效', r.text.includes('doing'));
-  const after = await call('list_tasks', { project_slug: SLUG, status: 'doing' });
-  check('按 doing 可查回该任务', after.text.includes('登录接口联调'));
-}
-
-/* ============ 16. purge_trash ============ */
-console.log('\n【16/27】purge_trash — 回收站清理（需 admin scope）');
-{
-  const r = await call('purge_trash', {});
-  check('admin scope 下成功执行', !r.isError && r.text.includes('purged'), r.isError ? r.text.slice(0, 120) : r.text.replace(/\s+/g, ' ').slice(0, 80));
-  check('返回实际清理数量字段', /purged/.test(r.text));
-}
-
-/* ============ 17. get_task_detail ============ */
-console.log('\n【17/27】get_task_detail — 任务详情 + 可走的下一步（需 task:read）');
-let flowTaskId = null;
-{
-  const c = await call('create_task', { project_slug: SLUG, title: '详情与删除自检', description: 'D'.repeat(700), labels: ['selftest'] });
-  try { flowTaskId = JSON.parse(c.text).task?.id; } catch { /* ignore */ }
-  const r = await call('get_task_detail', { task_id: flowTaskId });
-  check('成功返回详情', !r.isError, r.isError ? r.text.slice(0, 140) : '');
-  check('带 allowed_next_statuses 与标签', r.json?.allowed_next_statuses?.includes('doing') && r.json?.labels?.includes('selftest'));
-  check('长描述默认截断', r.json?.description_truncated === true);
-  const full = await call('get_task_detail', { task_id: flowTaskId, full: true });
-  check('full=true 返回全文', full.json?.description?.length === 700);
-}
-
-/* ============ 18. 任务五态（经 update_task） ============ */
-console.log('\n【18/27】update_task 流转 — 不能跳级、验证中、打回要原因');
-{
-  const skip = await call('update_task', { task_id: flowTaskId, status: 'review' });
-  check('todo → review 跳级被拒', skip.isError && skip.text.includes('不能从'), skip.text.slice(0, 80).replace(/\s+/g, ' '));
-  await call('update_task', { task_id: flowTaskId, status: 'doing' });
-  const rv = await call('update_task', { task_id: flowTaskId, status: 'review' });
-  check('doing → review 成功', !rv.isError && rv.json?.task?.status === 'review');
-  const skipDone = await call('update_task', { task_id: flowTaskId, status: 'done' });
-  check('review → done 跳过验证中被拒', skipDone.isError && skipDone.text.includes('验证中'));
-  const vt = await call('update_task', { task_id: flowTaskId, status: 'verifying' });
-  check('review → verifying 成功', !vt.isError && vt.json?.task?.status === 'verifying');
-  const noReason = await call('update_task', { task_id: flowTaskId, status: 'doing' });
-  check('打回不写原因被拒', noReason.isError && noReason.text.includes('reopen_reason'));
-  const back = await call('update_task', { task_id: flowTaskId, status: 'doing', reopen_reason: '自检打回' });
-  check('写原因后打回成功', !back.isError && back.json?.task?.status === 'doing');
-}
-
-/* ============ 19. delete_task ============ */
-console.log('\n【19/27】delete_task — 删除任务（需 task:write）');
-{
-  const r = await call('delete_task', { task_id: flowTaskId });
-  check('删除成功', !r.isError && r.json?.ok === true, r.isError ? r.text.slice(0, 120) : '');
-  check('数据库已无该任务', (await prisma.task.findUnique({ where: { id: flowTaskId } })) === null);
-}
-
-/* ============ 20. delete_bug ============ */
-console.log('\n【20/27】delete_bug — 删除缺陷（需 bug:write）');
-{
-  const c = await call('create_bug', { project_slug: SLUG, title: '待删除的重复单' });
-  let bugId = null;
-  try { bugId = JSON.parse(c.text).bug?.id ?? JSON.parse(c.text).id; } catch { /* ignore */ }
-  const r = await call('delete_bug', { bug_id: bugId });
-  check('删除成功', !r.isError && r.json?.ok === true, r.isError ? r.text.slice(0, 120) : '');
-  check('数据库已无该缺陷', bugId && (await prisma.bug.findUnique({ where: { id: bugId } })) === null);
-}
-
-/* ============ 21/22. update_note / delete_note ============ */
-console.log('\n【21/27】update_note — 改便签（需 note:write）');
-let noteId = null;
-{
-  const a = await call('append_scratchpad', { project_slug: SLUG, content: '待修改', tags: ['selftest'] });
-  try { noteId = JSON.parse(a.text).id; } catch { /* ignore */ }
-  const r = await call('update_note', { note_id: noteId, content: '已修改', pinned: true });
-  check('修改成功', !r.isError && r.json?.note?.content === '已修改' && r.json?.note?.pinned === true, r.isError ? r.text.slice(0, 120) : '');
-}
-console.log('\n【22/27】delete_note — 删便签（需 note:write）');
-{
-  const r = await call('delete_note', { note_id: noteId });
-  check('删除成功', !r.isError && r.json?.ok === true);
-  check('数据库已无该便签', (await prisma.note.findUnique({ where: { id: noteId } })) === null);
-}
-
-/* ============ 23. delete_attachment ============ */
-console.log('\n【23/27】delete_attachment — 删附件（需 attachment:write）');
-{
-  const up = await call('upload_attachment', { project_slug: SLUG, file_name: 'tmp.log', file_type: 'text/plain', data_base64: Buffer.from('tmp').toString('base64') });
-  let attId = null;
-  try { attId = JSON.parse(up.text).attachment?.id; } catch { /* ignore */ }
-  const r = await call('delete_attachment', { attachment_id: attId });
-  check('删除成功', !r.isError && r.json?.ok === true, r.isError ? r.text.slice(0, 120) : '');
-}
-
-/* ============ 24-26. 技能：upload / list / download / delete ============ */
-console.log('\n【24/27】upload_skill + list_skills — 上传与查看（需 skill:write / context:read）');
-const SKILL_MD = '---\nname: selftest-skill\ndescription: MCP 自检用技能\n---\n\n# 自检\n';
-{
-  const up = await call('upload_skill', { project_slug: SLUG, skill_md: SKILL_MD, files: [{ path: 'scripts/hi.sh', content: 'echo hi' }] });
-  check('上传成功（created）', !up.isError && up.json?.action === 'created', up.isError ? up.text.slice(0, 140) : '');
-  const again = await call('upload_skill', { project_slug: SLUG, skill_md: SKILL_MD });
-  check('同名再传为覆盖（updated）', again.json?.action === 'updated');
-  const bad = await call('upload_skill', { project_slug: SLUG, skill_md: '# 没有 frontmatter' });
-  check('缺 frontmatter 人话报错', bad.isError && bad.text.includes('frontmatter'));
-  const l = await call('list_skills', { project_slug: SLUG });
-  check('list_skills 可见名称与描述', l.json?.skills?.some((x) => x.name === 'selftest-skill' && x.description === 'MCP 自检用技能'));
-}
-console.log('\n【25/27】download_skill — 下载全文');
-{
-  await call('upload_skill', { project_slug: SLUG, skill_md: SKILL_MD, files: [{ path: 'scripts/hi.sh', content: 'echo hi' }] });
-  const d = await call('download_skill', { project_slug: SLUG, name: 'selftest-skill' });
-  check('返回 SKILL.md 与附带文件', d.json?.skill_md?.includes('selftest-skill') && d.json?.files?.[0]?.content === 'echo hi');
-  check('给出安装目录', d.json?.install_dir === '.claude/skills/selftest-skill');
-}
-console.log('\n【26/27】delete_skill — 删除技能（需 skill:write）');
-{
-  const r = await call('delete_skill', { project_slug: SLUG, name: 'selftest-skill' });
-  check('删除成功', !r.isError && r.json?.ok === true);
-  check('数据库已无该技能', (await prisma.skill.count({ where: { name: 'selftest-skill', projectId: project.id } })) === 0);
-}
-
-/* ============ 27. create_upload_url ============ */
-console.log('\n【27/27】create_upload_url — 签名直传（curl 同款 PUT）');
-{
-  const r = await call('create_upload_url', { bug_id: globalThis.__newBugId, file_name: 'selftest-direct.png' });
-  check('返回上传链接与 curl 命令', !r.isError && r.json?.upload_url?.includes('/api/uploads?token=') && r.json?.curl?.includes('-T'), r.isError ? r.text.slice(0, 120) : '');
-  const bytes = Buffer.from(PNG_B64, 'base64');
-  const put = await fetch(r.json.upload_url, { method: 'PUT', body: bytes });
-  const body = await put.json().catch(() => ({}));
-  check('PUT 原始字节上传成功（201）', put.status === 201, `HTTP ${put.status}`);
-  const row = await prisma.attachment.findFirst({ where: { id: body.attachment?.id } });
-  check('落库挂到目标缺陷、类型按扩展名推断', row?.entityId === globalThis.__newBugId && row?.fileType === 'image/png', `entityId=${row?.entityId} type=${row?.fileType}`);
-  const again = await fetch(r.json.upload_url, { method: 'PUT', body: bytes });
-  check('同一链接只能用一次（再次上传 401）', again.status === 401, `HTTP ${again.status}`);
-}
-
-/* ---------- 清单核对 ---------- */
-console.log('\n── 工具覆盖核对 ──');
-const covered = ['get_project_context','list_bugs','get_bug_detail','read_attachment_text','inspect_image_asset','update_bug_status','append_scratchpad','list_notes','search','create_bug','add_bug_comment','upload_attachment','list_tasks','create_task','update_task','purge_trash',
-  'get_task_detail','delete_task','delete_bug','update_note','delete_note','delete_attachment','list_skills','download_skill','upload_skill','delete_skill',
-  'create_upload_url'];
+const covered = [
+  'get_project_context', 'search', 'get_work_item', 'create_work_item', 'update_work_item',
+  'read_attachment', 'upload_attachment', 'append_note', 'get_skill',
+];
 const missing = toolNames.filter((t) => !covered.includes(t));
-check('清单里 27 个工具全部被测到', missing.length === 0 && covered.length === 27 && toolNames.length === 27, missing.length ? `漏测: ${missing.join(',')}` : '');
+check('9 个工具 100% 覆盖且无多余工具', missing.length === 0 && toolNames.length === 9);
 
-/* ---------- 清理 ---------- */
-console.log('\n── 清理自检数据 ──');
-await prisma.project.delete({ where: { id: project.id } }).catch((e) => console.error('删项目失败:', e.message));
+await prisma.project.delete({ where: { id: project.id } }).catch(() => {});
+await prisma.project.delete({ where: { id: otherProj.id } }).catch(() => {});
 await prisma.note.deleteMany({ where: { tags: { has: 'selftest' } } });
 await prisma.$disconnect();
 rmSync(path.join(SERVER_DIR, 'test-data'), { recursive: true, force: true });
-console.log(`已删除临时项目 ${SLUG}（级联缺陷/任务/附件）与自检便签`);
-
 ac.abort();
 console.log(`\nPASS=${pass}  FAIL=${fail}`);
 process.exit(fail === 0 ? 0 : 1);

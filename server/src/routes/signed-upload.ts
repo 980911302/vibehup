@@ -21,7 +21,7 @@ export const signedUploadRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.put('/', async (request, reply) => {
     const { token } = request.query as { token?: string };
     const grant = token ? verifyUploadGrant(token) : null;
-    if (!grant) throw new UnauthorizedError('上传链接无效或已过期，请重新调用 create_upload_url 申请');
+    if (!grant) throw new UnauthorizedError('上传链接无效或已过期，请重新调用 upload_attachment 申请');
     await assertIssuerStillAllowed(grant);
 
     const buffer = Buffer.isBuffer(request.body) ? request.body : Buffer.alloc(0);
@@ -29,7 +29,7 @@ export const signedUploadRoutes: FastifyPluginAsync = async (fastify) => {
       throw new ValidationError('请求体为空：请用 curl -T <本地文件路径> <上传链接> 上传文件内容');
     }
     if (!consumeUploadGrant(grant)) {
-      throw new UnauthorizedError('这个上传链接已经用过了（只能用一次），请重新调用 create_upload_url 申请');
+      throw new UnauthorizedError('这个上传链接已经用过了（只能用一次），请重新调用 upload_attachment 申请');
     }
 
     const attachment = await attachmentsService.uploadFromBuffer({
@@ -49,6 +49,7 @@ export const signedUploadRoutes: FastifyPluginAsync = async (fastify) => {
         file_name: attachment.fileName,
         file_type: attachment.fileType,
         file_size: attachment.fileSize,
+        work_item_id: grant.entityId,
         bug_id: grant.entityType === 'bug' ? grant.entityId : null,
       },
     };

@@ -71,8 +71,8 @@ export function SkillDetailDialog({ skillId, canEdit, projects, onClose, onChang
               <DialogDescription>{skill.description}</DialogDescription>
             </DialogHeader>
             <p className="rounded-md bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-tertiary)]">
-              IDE 里的 AI 通过 MCP 使用：<code className="text-[var(--text-secondary)]">list_skills</code> 查看、
-              <code className="text-[var(--text-secondary)]">download_skill name=&quot;{skill.name}&quot;</code> 下载到 .claude/skills/{skill.name}/
+              IDE 里的 AI 通过 MCP 使用：<code className="text-[var(--text-secondary)]">get_project_context</code> 查看技能清单、
+              <code className="text-[var(--text-secondary)]">get_skill name=&quot;{skill.name}&quot;</code> 下载到 .claude/skills/{skill.name}/
             </p>
             <div className="grid max-h-[52vh] grid-cols-1 gap-3 overflow-hidden md:grid-cols-[230px_1fr]">
               <FileList skill={skill} active={openFile?.path ?? 'SKILL.md'} onSelect={(p) => (p === 'SKILL.md' ? setOpenFile(null) : void viewFile(p))} />

@@ -219,26 +219,26 @@ await send('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clie
 await mcp.notify('notifications/initialized');
 
 const toolsList = await send('tools/list', {});
-ok('C2 tools/list = 15', toolsList.result?.tools?.length === 15);
+ok('C2 tools/list = 9', toolsList.result?.tools?.length === 9);
 
 const ctx = JSON.parse(text(await callTool('get_project_context', { project_slug: proj.slug })))
-ok('C3 get_project_context 见缺陷', ctx.open_bugs?.length >= 1, `open=${ctx.open_bugs?.length}`);
+ok('C3 get_project_context 见缺陷与身份', ctx.open_bugs?.length >= 1 && !!ctx.me, `open=${ctx.open_bugs?.length}`);
 
-const up2 = JSON.parse(text(await callTool('upload_attachment', { project_slug: proj.slug, bug_id: bug.id, file_name: 'ai-stack.log', file_type: 'text/plain', data_base64: Buffer.from(Array.from({length: 60}, (_, i) => i === 9 ? 'ERROR AI stacktrace at Foo.bar' : `log line ${i}`).join('\n')).toString('base64') })))
+const up2 = JSON.parse(text(await callTool('upload_attachment', { project_slug: proj.slug, work_item_id: bug.id, file_name: 'ai-stack.log', file_type: 'text/plain', content: Array.from({length: 60}, (_, i) => i === 9 ? 'ERROR AI stacktrace at Foo.bar' : `log line ${i}`).join('\n') })))
 ok('C4 AI 贴回日志附件', up2.ok === true && up2.attachment.file_name === 'ai-stack.log');
-const txt = JSON.parse(text(await callTool('read_attachment_text', { attachment_id: up2.attachment.id, grep_keyword: 'ERROR' })));
-ok('C5 read_attachment_text 分片+grep', txt.total_lines === 1 && txt.content.includes('ERROR'), `命中 ${txt.total_lines} 行`);
+const txt = JSON.parse(text(await callTool('read_attachment', { attachment_id: up2.attachment.id, grep_keyword: 'ERROR' })));
+ok('C5 read_attachment 分片+grep', txt.total_lines === 1 && txt.content.includes('ERROR'), `命中 ${txt.total_lines} 行`);
 
-const img = JSON.parse(text(await callTool('inspect_image_asset', { attachment_id: attId, target_max_dimension: 540, return_mode: 'base64' })))
-ok('C6 inspect_image_asset 降采样 base64', img.width === 540 && img.base64?.length > 100, `${img.width}px`);
+const img = JSON.parse(text(await callTool('read_attachment', { attachment_id: attId, target_max_dimension: 540, return_mode: 'base64' })))
+ok('C6 read_attachment 识图降采样', img.width === 540 && img.base64?.length > 100, `${img.width}px`);
 
-const cmt = await callTool('add_bug_comment', { bug_id: bug.id, content: 'AI：已定位连接池配置过小' });
-ok('C7 add_bug_comment', cmt.result?.isError !== true);
+const cmt = await callTool('update_work_item', { id: bug.id, comment: 'AI：已定位连接池配置过小' });
+ok('C7 update_work_item 追加评论', cmt.result?.isError !== true);
 
-const updRejected = await callTool('update_bug_status', { bug_id: bug2.id, status: 'resolved', resolution_notes: 'AI 修复' })
+const updRejected = await callTool('update_work_item', { id: bug2.id, status: 'resolved', resolution_notes: 'AI 修复' })
 ok('C8a MCP 链路状态机生效（open→resolved 被拒）', updRejected.result?.isError === true, text(updRejected).slice(0, 40))
-await callTool('update_bug_status', { bug_id: bug2.id, status: 'in_progress' })
-const upd = await callTool('update_bug_status', { bug_id: bug2.id, status: 'resolved', resolution_notes: 'AI 已修复', commit_hash: 'aifinal1' })
+await callTool('update_work_item', { id: bug2.id, status: 'in_progress' })
+const upd = await callTool('update_work_item', { id: bug2.id, status: 'resolved', resolution_notes: 'AI 已修复', commit_hash: 'aifinal1' })
 const updData = JSON.parse(text(upd));
 ok('C8b MCP 合法流转+回填 commit', updData.ok === true && updData.bug.git_commit_hash === 'aifinal1');
 

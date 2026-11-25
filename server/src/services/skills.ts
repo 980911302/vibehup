@@ -214,7 +214,7 @@ export async function listSkills(query: { projectId?: string; includeGlobal?: bo
 export async function findSkillByName(name: string, projectId: string | null): Promise<Skill> {
   const rows = await prisma.skill.findMany({ where: { name, OR: [{ projectId }, { projectId: null }] } });
   const skill = rows.find((s) => s.projectId === projectId) ?? rows.find((s) => s.projectId === null);
-  if (!skill) throw new NotFoundError(`没有名为「${name}」的技能，先用 list_skills 查看可用技能`);
+  if (!skill) throw new NotFoundError(`没有名为「${name}」的技能，先用 get_project_context 查看可用技能`);
   return skill;
 }
 

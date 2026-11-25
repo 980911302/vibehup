@@ -2,15 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { prisma } from '../core/prisma.js';
 import { resetDb } from '../test-helpers.js';
 import * as projectsService from './projects.js';
-import * as ext from '../mcp/tools-extended.js';
+import * as workTools from '../mcp/tools-work.js';
 import type { McpContext } from '../mcp/context.js';
-
-/**
- * MCP 未指定 project_slug 时的项目解析（R76）。
- * 旧逻辑按「MCP 服务进程自己的」cwd 前缀匹配 slug，匹配不到就静默回落到最近更新的项目——
- * 容器/SSE 部署下 cwd 是 /app，stdio 按 README 配置 cwd 是 vibehub/server，都不是 IDE 的工作区，
- * AI 不带 slug 调写工具时数据会悄悄写进别的项目。
- */
 
 const ctx: McpContext = { mode: 'local', apiKeyId: null, scopes: new Set(['bug:write']), actorLabel: 'local' };
 
@@ -36,7 +29,6 @@ describe('resolveProject(未指定)', () => {
   });
 
   it('不按 MCP 服务进程的工作目录猜项目', async () => {
-    // 测试进程 cwd = server/，旧逻辑会用 "server" 前缀命中下面这个项目
     await projectsService.createProject({ name: 'server' });
     await projectsService.createProject({ name: '另一个项目' });
 
@@ -53,11 +45,11 @@ describe('resolveProject(未指定)', () => {
 });
 
 describe('MCP 写工具不带 project_slug', () => {
-  it('多项目时 create_bug 报错且不落任何数据', async () => {
+  it('多项目时 create_work_item 报错且不落任何数据', async () => {
     await projectsService.createProject({ name: '用户中心' });
     await projectsService.createProject({ name: '支付网关' });
 
-    await expect(ext.createBug(ctx, { title: 'AI 自动建单' })).rejects.toThrow('project_slug');
+    await expect(workTools.createWorkItem(ctx, { type: 'bug', title: 'AI 自动建单' })).rejects.toThrow('project_slug');
     expect(await prisma.bug.count()).toBe(0);
   });
 });

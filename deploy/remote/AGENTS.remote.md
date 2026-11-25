@@ -188,7 +188,7 @@ tar czf /root/vibehub-backups/data-$(date +%F).tar.gz -C /var/lib/vibehub/data .
 
 ---
 
-## 8. MCP 接入（现行 27 个工具）
+## 8. MCP 接入（R96 精简版：9 个高内聚工具）
 
 IDE Agent 使用 **SSE** 接入：
 
@@ -207,7 +207,7 @@ IDE Agent 使用 **SSE** 接入：
 - 端点是 `GET /mcp/sse`（Bearer 握手，回 `sessionId`）+ `POST /mcp/messages?sessionId=…`；无/错密钥一律 **401**。
 - 密钥在 Web 端「密钥」页创建，**明文只显示一次**，默认 90 天过期；撤销即时生效（长连接每次调用按 ID 复核）。
 - scope 决定能调哪些工具：`context:read`、`bug:write`、`attachment:read`/`attachment:write`、
-  `note:write`、`task:read`/`task:write`、`skill:write`、`admin`（清回收站）。
+  `note:write`、`task:read`/`task:write`、`skill:write`、`admin`。
   日常「读上下文 + 回填」给 `context:read,attachment:read,bug:write` 足够。
 - ChatGPT Work 使用 Streamable HTTP `https://<公网地址>/mcp`。OAuth 2.1 discovery 位于 `/.well-known/oauth-authorization-server` 与 `/.well-known/oauth-protected-resource/mcp`；动态客户端注册使用 `/oauth/register`，授权码 + PKCE 使用 `/oauth/authorize`、`/oauth/token`。授权页要求 VibeHub 账号登录并明确同意所请求的 scope；成功后签发 90 天 MCP 密钥，可在 Web「密钥」页撤销。`VIBEHUB_PUBLIC_URL` 必须等于外部 HTTPS 基址（不带末尾斜杠），否则 discovery 与 resource 校验不匹配。TLS 由 Nginx 终止并反代至 Fastify `127.0.0.1:3210`。MCP Events 仍支持 `server/discover`、`events/list`、`events/subscribe`、`events/unsubscribe`；webhook callback 必须是 HTTPS 公网地址。
 - 技能安装到本机 Claude Code / Codex：`bash skills/install.sh`，或远程
@@ -235,30 +235,26 @@ VIBEHUB_MCP_EVENT_RELAY_TOKEN=<与中转主机相同的独立令牌>
 
 内网 HTTP 只允许用于 ZeroTier 等已加密可信网络，服务不能绑定公网接口。中转要求独立 Bearer 令牌，仅接受 OpenAI 回调域名的 HTTPS 443 请求，使用 HTTPS DNS、公网 IP 固定、正常 TLS 校验；禁止重定向。只转发既有签名头和正文，不传签名密钥。`GET /health` 同样需要 Bearer 认证。
 
-后台工具读取的会话恢复也已补齐：Work 自动运行可能沿用服务重启前的 MCP 会话 ID，或直接调用工具而不发送 initialize；发送端在每次 Bearer 鉴权后恢复同密钥 SDK 会话，替换旧 rawHeaders，其他密钥会话仍拒绝。升级后应实际触发事件检查 get_task_detail 能读取新任务，不能仅看订阅成功。
+后台工具读取的会话恢复也已补齐：Work 自动运行可能沿用服务重启前的 MCP 会话 ID，或直接调用工具而不发送 initialize；发送端在每次 Bearer 鉴权后恢复同密钥 SDK 会话，替换旧 rawHeaders，其他密钥会话仍拒绝。升级后应实际触发事件检查 `get_work_item` 能读取新任务，不能仅看订阅成功。
 
 当前中转运行于用户指定的 Mac mini：`~/.local/share/vibehub-event-relay/`（包含 `relay.env`，权限 600），由 `~/Library/LaunchAgents/top.zhanglinlin.vibehub-event-relay.plist` 常驻启动（RunAtLoad + KeepAlive），日志在 `~/Library/Logs/VibeHubEventRelay/`。重启：`launchctl kickstart -k gui/$(id -u)/top.zhanglinlin.vibehub-event-relay`。它依赖 Mac 在线、用户会话及本地 Clash 代理；退出该用户会话或关闭代理会中断事件投递，重新登录后 LaunchAgent 自动恢复。实测系统直连 OpenAI 失败，本机代理路径 TLS 成功；代理 CONNECT 到经 HTTPS DNS 验证的公网 IP，TLS SNI 和证书校验保持回调域名。
 
 部署顺序：备份旧代码/环境 → 检查中转主机的实际 OpenAI DNS/TLS 连通性 → 启动中转 → 从 VibeHub 主机认证访问中转 health → 部署发送端并设置环境 → 重启检查 health → 重试 Work 原生事件订阅并核对数据库订阅记录 → 新建经用户授权的任务确认 Work 被唤醒。最后两项未通过不能宣称事件闭环完成。回滚：还原环境与备份产物、重启原服务，停用中转。
 
-### 工具清单（27 个 = 读取 11 + 写入 16；唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
+### 工具清单（9 个 = 读取 5 + 写入 4；唯一出处 `server/src/mcp/server.ts` 的 `TOOL_NAMES`）
 
-读取：`get_project_context`、`list_bugs`、`get_bug_detail`、`read_attachment_text`、`inspect_image_asset`、
-`list_notes`、`search`、`list_tasks`、`get_task_detail`、`list_skills`、`download_skill`
+读取：`get_project_context`（含 `me` / `members` / `memory` / `skills`）、`search`（检索与列表过滤合一）、`get_work_item`（`bug_` / `tsk_` 详情）、`read_attachment`（自动识图与分片读日志）、`get_skill`
 
-写入：`update_bug_status`、`create_bug`、`add_bug_comment`、`delete_bug`、`append_scratchpad`、`update_note`、
-`delete_note`、`upload_attachment`、`create_upload_url`、`delete_attachment`、`create_task`、`update_task`、
-`delete_task`、`upload_skill`、`delete_skill`、`purge_trash`（需 `admin`）
+写入：`create_work_item`、`update_work_item`（状态机 + 证据 + 评论 + 转交四合一）、`upload_attachment`（短文本直传与一次性 `curl -T` 链接二合一）、`append_note`
 
 ### 易踩的参数坑（实测确认）
 
-- `update_bug_status` 的参数是 **`commit_hash`**，不是 `git_commit_hash`。
+- `update_work_item` 的提交号参数是 **`commit_hash`**，不是 `git_commit_hash`。
 - 状态**不能跳级**：缺陷 `open → in_progress → resolved → verifying → verified`（`verified` 是修复终点）；
   `closed` 只用于重复/不修/无法复现，必须写 `resolution_notes`。任务 `todo → doing → review → verifying → done`（另可 `cancelled`）。
-- `append_scratchpad` 不传 `project_slug` 会落成**全局便签**（项目下查不到）。
-- **多项目时必须传 `project_slug`**（不传会报错并列出可选值——刻意设计，防止 AI 写进别的项目）。
-- 传文件：文本用 `upload_attachment` 的 `content`；本地文件用 `create_upload_url` 拿 curl 命令直传，内容不经过对话。
-- 看图：`inspect_image_asset` 默认直接返回图片内容块（模型能看到截图），不要用 `return_mode: base64`。
+- `append_note` 在单活跃项目下自动归属该项目；**多项目时所有工具都必须传 `project_slug`**（不传会报错并列出可选值，防止 AI 写进别的项目）。
+- 传文件：短文本用 `upload_attachment` 的 `content`；本地文件调 `upload_attachment`（不传 `content`）拿 `curl -T` 命令直传，内容不经过对话。
+- 看图：`read_attachment` 遇到图片附件默认直接返回多模态图片内容块（模型能看到截图），不要用 `return_mode: base64`。
 
 ---
 
